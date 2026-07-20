@@ -11,6 +11,10 @@ import {
 import {
   adminStats,
   aiReply,
+  staffAiReply,
+  staffWelcomeMessage,
+  resolveStaffOcrTargets,
+  extractBankReference,
   applyDueDayToInvoices,
   availableApartments,
   AvailableApartment,
@@ -19,7 +23,6 @@ import {
   Invoice,
   invoicesByResident,
   nowLabel,
-  PaymentMethod,
   PaymentRecord,
   amountsMatch,
   buildPaymentRef,
@@ -45,14 +48,12 @@ import {
   writeBankSettings,
 } from '../config/paymentSettings'
 import {
-  createCheckoutSession,
-  isStripeConfigured,
-  markStripeSessionProcessed,
-  verifyCheckoutSession,
-  wasStripeSessionProcessed,
-} from '../lib/stripeCheckout'
+  formatScreenshotAnalysis,
+  recognizeTransferProof,
+} from '../lib/transferProofOcr'
 
-const OPS_KEY = 'mlihrents_ops_v4'
+const OPS_KEY = 'mlihrents_ops_v5'
+const LEGACY_OPS_KEYS = ['mlihrents_ops_v4']
 
 interface PersistedOps {
   residentList: Resident[]
@@ -69,8 +70,25 @@ function ensureSeedApartments(list: Resident[]): Resident[] {
   const byId = new Map(list.map((r) => [r.id, r]))
   return apartmentUnits.map((seed) => {
     if (seed.id === sampleA1TestTenant.id) return { ...sampleA1TestTenant }
-    return byId.get(seed.id) ?? seed
+    const saved = byId.get(seed.id)
+    if (!saved) return seed
+    return {
+      ...seed,
+      ...saved,
+      building: saved.building?.trim() ? saved.building : seed.building,
+      buildingNumber: saved.buildingNumber?.trim() ? saved.buildingNumber : seed.buildingNumber,
+      apartment: seed.apartment,
+      id: seed.id,
+    }
   })
+}
+
+function normalizePersistedOps(parsed: PersistedOps): PersistedOps {
+  return {
+    ...parsed,
+    residentList: ensureSeedApartments(parsed.residentList ?? []),
+    invoiceMap: ensureSeedInvoices(parsed.invoiceMap ?? {}),
+  }
 }
 
 function ensureSeedInvoices(map: Record<string, Invoice[]>): Record<string, Invoice[]> {
@@ -90,10 +108,16 @@ function ensureSeedInvoices(map: Record<string, Invoice[]>): Record<string, Invo
 
 function readPersistedOps(): PersistedOps | null {
   try {
-    const raw = localStorage.getItem(OPS_KEY)
+    let raw = localStorage.getItem(OPS_KEY)
+    if (!raw) {
+      for (const legacyKey of LEGACY_OPS_KEYS) {
+        raw = localStorage.getItem(legacyKey)
+        if (raw) break
+      }
+    }
     if (!raw) return null
     const parsed = JSON.parse(raw) as PersistedOps
-    if (parsed && typeof parsed === 'object') return parsed
+    if (parsed && typeof parsed === 'object') return normalizePersistedOps(parsed)
   } catch {
     /* ignore */
   }
@@ -126,9 +150,6 @@ interface DataContextValue {
   ticketNote: string
   setTicketNote: (v: string) => void
   checkoutInvoiceId: string | null
-  payMethod: PaymentMethod
-  setPayMethod: (m: PaymentMethod) => void
-  stripeConfigured: boolean
   bankProof: { name: string; dataUrl: string } | null
   setBankProofFromFile: (file: File | null) => void
   clearBankProof: () => void
@@ -156,11 +177,15 @@ interface DataContextValue {
   /** Extend an overdue invoice due date by the given number of days (default 7). */
   extendInvoiceDueDate: (invoiceId: string, days?: number) => void
   completePayment: (e: FormEvent) => void
-  startApplePayCheckout: () => Promise<void>
-  applyStripeCheckoutReturn: (sessionId: string) => Promise<void>
   createTicket: (e: FormEvent) => void
   escalateToHuman: () => void
   sendChat: (text: string) => void
+  staffMessages: ChatMessage[]
+  staffChatInput: string
+  setStaffChatInput: (v: string) => void
+  staffChatEndRef: React.RefObject<HTMLDivElement | null>
+  sendStaffChat: (text: string) => void
+  staffAnalyzing: boolean
   saveRentPlan: () => void
   saveResidentLoginPin: (phone: string, pin: string) => void
   registerNewResident: (input: {
@@ -233,7 +258,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     persisted?.invoiceExtensions ?? {},
   )
   const [checkoutInvoiceId, setCheckoutInvoiceId] = useState<string | null>(null)
-  const [payMethod, setPayMethod] = useState<PaymentMethod>('bank')
   const [bankProof, setBankProof] = useState<{ name: string; dataUrl: string } | null>(null)
   const [paying, setPaying] = useState(false)
   const [payments, setPayments] = useState<PaymentRecord[]>(persisted?.payments ?? seedPayments)
@@ -249,6 +273,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
   ])
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const [staffChatInput, setStaffChatInput] = useState('')
+  const [staffMessages, setStaffMessages] = useState<ChatMessage[]>(() => [
+    {
+      id: 'staff-w0',
+      role: 'ai',
+      text: staffWelcomeMessage('en'),
+      time: nowLabel(),
+    },
+  ])
+  const staffChatEndRef = useRef<HTMLDivElement>(null)
+  const [staffAnalyzing, setStaffAnalyzing] = useState(false)
+
+  useEffect(() => {
+    setResidentList((prev) => {
+      const next = ensureSeedApartments(prev)
+      if (next.length === prev.length && next.every((unit, index) => unit.id === prev[index]?.id)) {
+        return prev
+      }
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     try {
@@ -363,6 +408,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, humanMode])
+
+  useEffect(() => {
+    staffChatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [staffMessages])
+
+  useEffect(() => {
+    setStaffMessages((prev) => {
+      if (prev.length !== 1 || prev[0]?.id !== 'staff-w0') return prev
+      return [{ ...prev[0], text: staffWelcomeMessage(lang) }]
+    })
+  }, [lang])
 
   useEffect(() => {
     if (!toast) return
@@ -510,7 +566,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return
     }
     setCheckoutInvoiceId(id)
-    setPayMethod('bank')
     setBankProof(null)
   }
 
@@ -570,106 +625,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     setBankSettings(next)
     showToast(tr('bankSettingsSaved'))
-  }
-
-  function recordSettledPayment(input: {
-    invoiceId: string
-    residentId: string
-    residentName: string
-    unit: string
-    amount: number
-    method: PaymentMethod
-    destination: string
-    confirmedAmount?: number
-  }) {
-    const paidAt = `${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · ${nowLabel()}`
-    const record: PaymentRecord = {
-      id: `PAY-${Date.now().toString().slice(-6)}`,
-      invoiceId: input.invoiceId,
-      residentId: input.residentId,
-      residentName: input.residentName,
-      unit: input.unit,
-      amount: input.amount,
-      method: input.method,
-      status: 'settled',
-      paidAt,
-      destination: input.destination,
-      confirmedAmount: input.confirmedAmount ?? input.amount,
-    }
-    setPayments((prev) => [record, ...prev])
-    setPaidIds((prev) => (prev.includes(input.invoiceId) ? prev : [...prev, input.invoiceId]))
-    setInvoiceMap((prev) => ({
-      ...prev,
-      [input.residentId]: (prev[input.residentId] ?? []).map((inv) =>
-        inv.id === input.invoiceId ? { ...inv, status: 'paid' as const } : inv,
-      ),
-    }))
-    setResidentList((prev) =>
-      prev.map((r) =>
-        r.id === input.residentId
-          ? { ...r, amountPaid: Math.min(r.contractTotal, r.amountPaid + input.amount) }
-          : r,
-      ),
-    )
-  }
-
-  async function startApplePayCheckout() {
-    if (!checkoutInvoice || !liveResident.id) return
-    if (!isStripeConfigured()) {
-      showToast(tr('stripeNotConfigured'))
-      return
-    }
-    if (invoiceHasPendingPayment(checkoutInvoice.id)) {
-      showToast(
-        lang === 'ar'
-          ? 'هذا التحويل قيد المراجعة من الإدارة'
-          : 'This payment is already pending admin review',
-      )
-      return
-    }
-    setPaying(true)
-    try {
-      const unit = `${liveResident.buildingNumber}-${liveResident.apartment}`.replace(/^-/, '') || liveResident.apartment
-      const url = await createCheckoutSession({
-        amount: checkoutInvoice.amount,
-        invoiceId: checkoutInvoice.id,
-        residentId: liveResident.id,
-        residentName: liveResident.name,
-        unit,
-        period: checkoutInvoice.period,
-      })
-      window.location.href = url
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : tr('stripeCheckoutFailed'))
-      setPaying(false)
-    }
-  }
-
-  async function applyStripeCheckoutReturn(sessionId: string) {
-    if (!sessionId || wasStripeSessionProcessed(sessionId)) return
-    try {
-      const result = await verifyCheckoutSession(sessionId)
-      if (!result.paid || !result.invoiceId || !result.residentId) return
-      if (session?.residentId && result.residentId !== session.residentId) {
-        showToast(tr('stripeWrongAccount'))
-        return
-      }
-      recordSettledPayment({
-        invoiceId: result.invoiceId,
-        residentId: result.residentId,
-        residentName: result.residentName || liveResident.name,
-        unit: result.unit,
-        amount: result.amount,
-        method: 'apple_pay',
-        destination: 'Stripe · Apple Pay / Card',
-        confirmedAmount: result.amount,
-      })
-      markStripeSessionProcessed(sessionId)
-      setCheckoutInvoiceId(null)
-      showToast(tr('applePaySuccess'))
-    } catch {
-      showToast(tr('stripeVerifyFailed'))
-    }
   }
 
   function completePayment(e: FormEvent) {
@@ -864,6 +819,91 @@ export function DataProvider({ children }: { children: ReactNode }) {
     ])
   }
 
+  function sendStaffChat(text: string) {
+    const trimmed = text.trim()
+    if (!trimmed || staffAnalyzing) return
+    const userMsg: ChatMessage = {
+      id: `staff-u-${Date.now()}`,
+      role: 'user',
+      text: trimmed,
+      time: nowLabel(),
+    }
+    setStaffMessages((prev) => [...prev, userMsg])
+    setStaffChatInput('')
+
+    const ctx = {
+      payments,
+      pendingPayments,
+      invoiceMap,
+      residentList,
+      paidIds,
+    }
+    const ocrTargets = resolveStaffOcrTargets(trimmed, ctx)
+    const thinkingId = `staff-ai-${Date.now()}`
+
+    if (ocrTargets.length > 0) {
+      setStaffAnalyzing(true)
+      setStaffMessages((prev) => [
+        ...prev,
+        {
+          id: thinkingId,
+          role: 'ai',
+          text: tr('staffScanningScreenshot'),
+          time: nowLabel(),
+        },
+      ])
+    }
+
+    void (async () => {
+      try {
+        let replyText = staffAiReply(trimmed, lang, ctx)
+
+        if (ocrTargets.length > 0) {
+          const givenBankRef = extractBankReference(trimmed)
+          const scans: string[] = []
+          for (const payment of ocrTargets) {
+            if (!payment.transferProof) continue
+            const ocr = await recognizeTransferProof(payment.transferProof.dataUrl, payment.amount)
+            scans.push(formatScreenshotAnalysis(ocr, payment, lang, givenBankRef))
+          }
+          if (scans.length > 0) {
+            replyText += `\n\n${scans.join('\n\n')}`
+          }
+        }
+
+        setStaffMessages((prev) => {
+          const withoutThinking =
+            ocrTargets.length > 0 ? prev.filter((m) => m.id !== thinkingId) : prev
+          return [
+            ...withoutThinking,
+            {
+              id: `staff-ai-${Date.now()}`,
+              role: 'ai',
+              text: replyText,
+              time: nowLabel(),
+            },
+          ]
+        })
+      } catch {
+        setStaffMessages((prev) => {
+          const withoutThinking =
+            ocrTargets.length > 0 ? prev.filter((m) => m.id !== thinkingId) : prev
+          return [
+            ...withoutThinking,
+            {
+              id: `staff-ai-${Date.now()}`,
+              role: 'ai',
+              text: tr('staffScanFailed'),
+              time: nowLabel(),
+            },
+          ]
+        })
+      } finally {
+        setStaffAnalyzing(false)
+      }
+    })()
+  }
+
   function sendChat(text: string) {
     const trimmed = text.trim()
     if (!trimmed) return
@@ -959,9 +999,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ticketNote,
         setTicketNote,
         checkoutInvoiceId,
-        payMethod,
-        setPayMethod,
-        stripeConfigured: isStripeConfigured(),
         bankProof,
         setBankProofFromFile,
         clearBankProof,
@@ -988,11 +1025,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
         closeCheckout,
         extendInvoiceDueDate,
         completePayment,
-        startApplePayCheckout,
-        applyStripeCheckoutReturn,
         createTicket,
         escalateToHuman,
         sendChat,
+        staffMessages,
+        staffChatInput,
+        setStaffChatInput,
+        staffChatEndRef,
+        sendStaffChat,
+        staffAnalyzing,
         saveRentPlan,
         saveResidentLoginPin,
         registerNewResident,

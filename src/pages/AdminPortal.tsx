@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  adminStats,
   amountsMatch,
+  apartmentBuildingLetter,
   apartmentDisplayTitle,
   apartmentSortKey,
   arrearsList,
   AvailableApartment,
+  BUILDING_INVENTORY,
+  buildingLabel,
   formatMoney,
   paymentMethodLabel,
   remainingBalance,
@@ -21,6 +23,7 @@ import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
+import { StaffPaymentAssistant } from '../components/StaffPaymentAssistant'
 import { bankSummary, isBankConfigured } from '../config/paymentSettings'
 
 type Tab = 'info' | 'payments' | 'available' | 'chat'
@@ -124,6 +127,9 @@ export default function AdminPortal() {
     })
   }, [pendingPayments])
 
+  const occupiedUnits = residentList.filter((r) => r.name.trim()).length
+  const totalUnits = residentList.length
+
   useEffect(() => {
     setPinDraft(selectedResident.pin)
     setPhoneDraft(selectedResident.phone)
@@ -208,42 +214,57 @@ export default function AdminPortal() {
       (a, b) => apartmentSortKey(a.apartment) - apartmentSortKey(b.apartment),
     )
 
+    const byBuilding = BUILDING_INVENTORY.map((building) => ({
+      building,
+      units: sorted.filter((r) => apartmentBuildingLetter(r.apartment) === building.letter),
+    })).filter((group) => group.units.length > 0)
+
     return (
-      <div className="list">
-        {sorted.map((r) => {
-          const unit = unitCodeLabel(r)
-          const active = r.id === selectedResidentId
-          const title = apartmentDisplayTitle(r, lang)
-          const vacant = !r.name.trim()
-          return (
-            <button
-              key={r.id}
-              type="button"
-              className={`resident-pick ${active ? 'active' : ''}`}
-              onClick={() => setSelectedResidentId(r.id)}
-            >
-              <span>
-                <strong>{title}</strong>
-                <span className="meta">
-                  {unit}
-                  {!vacant && r.phone ? ` · ${r.phone}` : vacant ? ` · ${tr('vacantUnit')}` : ''}
-                  {showFinancialMeta && (
-                    <>
-                      <br />
-                      {lang === 'ar' ? `الاستحقاق: يوم ${r.rentDueDay}` : `Due day: ${r.rentDueDay}`}
-                      {' · '}
-                      {rentScheduleLabel(r.rentSchedule, lang)}
-                      {' · '}
-                      {lang === 'ar' ? 'متبقي' : 'left'}{' '}
-                      {formatMoney(remainingBalance(r), r.currency)}
-                    </>
-                  )}
-                </span>
-              </span>
-              {r.status && r.status !== 'active' && <Badge lang={lang} status={r.status} />}
-            </button>
-          )
-        })}
+      <div className="building-unit-groups">
+        {byBuilding.map(({ building, units }) => (
+          <div key={building.letter} className="building-unit-group">
+            <h3 className="section-label building-group-label">
+              {buildingLabel(building.letter, lang)} · {units.length}{' '}
+              {lang === 'ar' ? 'وحدات' : 'units'}
+            </h3>
+            <div className="list">
+              {units.map((r) => {
+                const unit = unitCodeLabel(r)
+                const active = r.id === selectedResidentId
+                const title = apartmentDisplayTitle(r, lang)
+                const vacant = !r.name.trim()
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={`resident-pick ${active ? 'active' : ''}`}
+                    onClick={() => setSelectedResidentId(r.id)}
+                  >
+                    <span>
+                      <strong>{title}</strong>
+                      <span className="meta">
+                        {unit}
+                        {!vacant && r.phone ? ` · ${r.phone}` : vacant ? ` · ${tr('vacantUnit')}` : ''}
+                        {showFinancialMeta && (
+                          <>
+                            <br />
+                            {lang === 'ar' ? `الاستحقاق: يوم ${r.rentDueDay}` : `Due day: ${r.rentDueDay}`}
+                            {' · '}
+                            {rentScheduleLabel(r.rentSchedule, lang)}
+                            {' · '}
+                            {lang === 'ar' ? 'متبقي' : 'left'}{' '}
+                            {formatMoney(remainingBalance(r), r.currency)}
+                          </>
+                        )}
+                      </span>
+                    </span>
+                    {r.status && r.status !== 'active' && <Badge lang={lang} status={r.status} />}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     )
   }
@@ -320,7 +341,7 @@ export default function AdminPortal() {
             <div className="grid-3">
               <section className="panel stat">
                 <span className="value">
-                  {adminStats.occupied}/{adminStats.units}
+                  {occupiedUnits}/{totalUnits}
                 </span>
                 <span className="label">{tr('occupiedUnits')}</span>
               </section>
@@ -669,6 +690,7 @@ export default function AdminPortal() {
                 <p>{tr('adminPaymentsLead')}</p>
               </div>
             </header>
+            <StaffPaymentAssistant />
             <div className="grid-3">
               <section className="panel stat">
                 <span className="value">{formatMoney(adminBalance).replace('AED ', '')}</span>

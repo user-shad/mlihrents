@@ -71,24 +71,11 @@ Fill in real company details in `src/legal/siteLegal.ts` before go-live, then ha
 
 - Phone-linked apartment profiles  
 - Rent schedules (monthly / quarterly / 6 months / yearly / full lease) + remaining balance  
-- Payments: **bank transfer** (admin verification) or **Apple Pay / card** via Stripe Checkout  
+- Payments: **bank transfer** (admin verification)  
 - Maintenance tickets  
 - MLIH AI chat + human handoff + service numbers  
 - English / Arabic (RTL)  
 - Available apartments on the public homepage  
-
-## Apple Pay (Stripe)
-
-Real Apple Pay uses [Stripe Checkout](https://stripe.com). Add these in **Vercel → Project → Settings → Environment Variables**:
-
-| Variable | Where |
-|----------|--------|
-| `STRIPE_SECRET_KEY` | Stripe Dashboard → API keys (secret) |
-| `VITE_STRIPE_PUBLISHABLE_KEY` | Stripe Dashboard → API keys (publishable) |
-
-Redeploy after saving. Residents choose **Apple Pay** at checkout — on iPhone/Safari, Apple Pay appears on the Stripe page.
-
-Test card: `4242 4242 4242 4242` · any future expiry · any CVC.
 
 ## Next (real backend)
 

@@ -140,6 +140,398 @@ export function buildPaymentRef(_unit: string, invoiceId: string) {
   return invoiceId.trim()
 }
 
+export type PaymentLookupMatch =
+  | 'pending_review'
+  | 'settled'
+  | 'partial'
+  | 'rejected'
+  | 'invoice_unpaid'
+  | 'invoice_paid'
+  | 'not_found'
+
+export interface PaymentLookupResult {
+  ref: string
+  match: PaymentLookupMatch
+  payment?: PaymentRecord
+  invoice?: Invoice
+  resident?: Resident
+  allPaymentsForRef: PaymentRecord[]
+}
+
+function normalizeRef(ref: string) {
+  return ref.trim().toUpperCase()
+}
+
+/** Extract invoice reference from admin text (e.g. INV-TEST-A1). */
+export function extractInvoiceReference(input: string): string | null {
+  const inv = input.match(/\b(INV-[A-Z0-9-]+)\b/i)
+  if (inv) return inv[1]
+  const pay = input.match(/\b(PAY-\d+)\b/i)
+  if (pay) return pay[1]
+  return null
+}
+
+/** Extract bank reference number from admin text (e.g. Wio "Reference number" 1422869093). */
+export function extractBankReference(input: string): string | null {
+  const labeled = input.match(
+    /(?:reference|ref(?:erence)?|bank\s*ref|رقم(?:\s*ال)?مرجع)[:\s#-]*(\d{6,15})/i,
+  )
+  if (labeled) return labeled[1]
+
+  if (/(?:compare|match|verify|check|قارن|تحقق|مطابقة|مرجع)/i.test(input)) {
+    const digits = input.match(/\b(\d{6,15})\b/)
+    if (digits) return digits[1]
+  }
+
+  return null
+}
+
+/** @deprecated Use extractInvoiceReference or extractBankReference */
+export function extractPaymentReference(input: string): string | null {
+  return extractInvoiceReference(input) ?? extractBankReference(input)
+}
+
+/** Extract an AED amount from admin inquiry text. */
+export function extractInquiryAmount(input: string): number | null {
+  const q = input.toLowerCase()
+  const patterns = [
+    /(?:amount|aed|درهم|مبلغ)\s*[:=]?\s*(\d+(?:\.\d{1,2})?)/i,
+    /(\d+(?:\.\d{1,2})?)\s*(?:aed|درهم)/i,
+  ]
+  for (const pattern of patterns) {
+    const m = q.match(pattern)
+    if (m) {
+      const n = Number(m[1])
+      if (Number.isFinite(n) && n > 0) return n
+    }
+  }
+  return null
+}
+
+export function lookupPaymentRef(
+  ref: string,
+  payments: PaymentRecord[],
+  invoiceMap: Record<string, Invoice[]>,
+  residentList: Resident[],
+  paidIds: string[],
+): PaymentLookupResult {
+  const key = normalizeRef(ref)
+  const allPaymentsForRef = payments
+    .filter((p) => normalizeRef(p.paymentRef ?? '') === key || normalizeRef(p.invoiceId) === key)
+    .sort((a, b) => b.id.localeCompare(a.id))
+
+  let invoice: Invoice | undefined
+  let resident: Resident | undefined
+  for (const r of residentList) {
+    const inv = (invoiceMap[r.id] ?? []).find((i) => normalizeRef(i.id) === key)
+    if (inv) {
+      invoice = inv
+      resident = r
+      break
+    }
+  }
+
+  const payment = allPaymentsForRef[0]
+  if (!resident && payment) {
+    resident = residentList.find((r) => r.id === payment.residentId)
+  }
+
+  let match: PaymentLookupMatch
+  if (payment) {
+    match = payment.status
+  } else if (invoice) {
+    match = paidIds.includes(invoice.id) ? 'invoice_paid' : 'invoice_unpaid'
+  } else {
+    match = 'not_found'
+  }
+
+  return { ref: ref.trim(), match, payment, invoice, resident, allPaymentsForRef }
+}
+
+export interface StaffAiContext {
+  payments: PaymentRecord[]
+  pendingPayments: PaymentRecord[]
+  invoiceMap: Record<string, Invoice[]>
+  residentList: Resident[]
+  paidIds: string[]
+}
+
+function formatLookupReply(
+  lookup: PaymentLookupResult,
+  statedAmount: number | null,
+  lang: 'en' | 'ar',
+): string {
+  const ar = lang === 'ar'
+  const { ref, match, payment, invoice, resident, allPaymentsForRef } = lookup
+  const lines: string[] = []
+
+  lines.push(ar ? `المرجع: ${ref}` : `Reference: ${ref}`)
+  lines.push('')
+
+  if (match === 'not_found') {
+    lines.push(
+      ar
+        ? '❌ لم أجد فاتورة أو دفعة بهذا الرقم. تأكد من رقم الفاتورة (مثل INV-TEST-A1) كما يظهر في وصف التحويل البنكي.'
+        : '❌ No invoice or payment found for this reference. Check the invoice number (e.g. INV-TEST-A1) as it appears in the bank transfer description.',
+    )
+    return lines.join('\n')
+  }
+
+  const tenantLine =
+    resident &&
+    (ar
+      ? `الساكن: ${resident.name || '—'} · ${resident.buildingNumber ? `${resident.buildingNumber}-` : ''}${resident.apartment}`
+      : `Tenant: ${resident.name || '—'} · ${resident.buildingNumber ? `${resident.buildingNumber}-` : ''}${resident.apartment}`)
+
+  switch (match) {
+    case 'pending_review':
+      lines.push(ar ? '⏳ الحالة: قيد المراجعة — لم تُؤكَّد بعد' : '⏳ Status: Pending review — not confirmed yet')
+      if (tenantLine) lines.push(tenantLine)
+      if (payment) {
+        lines.push(
+          ar
+            ? `مبلغ الفاتورة: ${formatMoney(payment.amount)}`
+            : `Invoice amount: ${formatMoney(payment.amount)}`,
+        )
+        lines.push(ar ? `تاريخ الإرسال: ${payment.paidAt}` : `Submitted: ${payment.paidAt}`)
+        lines.push(ar ? `رقم الدفعة: ${payment.id}` : `Payment ID: ${payment.id}`)
+        if (payment.transferProof) {
+          lines.push(
+            ar
+              ? '✓ يوجد لقطة شاشة — سأقرأها تلقائياً للمقارنة.'
+              : '✓ Transfer screenshot attached — scanning automatically for comparison.',
+          )
+        } else {
+          lines.push(
+            ar
+              ? '⚠️ لا توجد لقطة تحويل — لا يمكن المسح التلقائي.'
+              : '⚠️ No transfer screenshot — auto-scan not available.',
+          )
+        }
+      }
+      lines.push(
+        ar
+          ? '\nطابق هذا الرقم على كشف الحساب البنكي، ثم أكّد أو ارفض من قائمة «المدفوعات للتحقق».'
+          : '\nMatch this reference on the bank statement, then confirm or reject in the verification queue below.',
+      )
+      break
+
+    case 'settled':
+      lines.push(ar ? '✅ الحالة: مدفوعة ومؤكدة' : '✅ Status: Paid and confirmed')
+      if (tenantLine) lines.push(tenantLine)
+      if (payment) {
+        lines.push(
+          ar
+            ? `المبلغ المؤكد: ${formatMoney(payment.confirmedAmount ?? payment.amount)}`
+            : `Verified amount: ${formatMoney(payment.confirmedAmount ?? payment.amount)}`,
+        )
+        lines.push(ar ? `تاريخ التأكيد: ${payment.reviewedAt ?? payment.paidAt}` : `Settled: ${payment.reviewedAt ?? payment.paidAt}`)
+      } else if (invoice) {
+        lines.push(
+          ar ? `مبلغ الفاتورة: ${formatMoney(invoice.amount)}` : `Invoice amount: ${formatMoney(invoice.amount)}`,
+        )
+      }
+      break
+
+    case 'partial':
+      lines.push(ar ? '⚠️ الحالة: دفعة جزئية مؤكدة' : '⚠️ Status: Partial payment confirmed')
+      if (tenantLine) lines.push(tenantLine)
+      if (payment) {
+        lines.push(
+          ar
+            ? `المبلغ المتوقع: ${formatMoney(payment.amount)} · المؤكد: ${formatMoney(payment.confirmedAmount ?? payment.amount)}`
+            : `Expected: ${formatMoney(payment.amount)} · Verified: ${formatMoney(payment.confirmedAmount ?? payment.amount)}`,
+        )
+        lines.push(
+          ar ? 'الفاتورة قد تظل غير مسددة بالكامل — راجع خطة الإيجار.' : 'Invoice may still be open — check the rent plan.',
+        )
+      }
+      break
+
+    case 'rejected':
+      lines.push(ar ? '❌ الحالة: مرفوضة — الفاتورة ما زالت غير مدفوعة' : '❌ Status: Rejected — invoice still unpaid')
+      if (tenantLine) lines.push(tenantLine)
+      if (payment?.reviewNote) {
+        lines.push(ar ? `ملاحظة: ${payment.reviewNote}` : `Note: ${payment.reviewNote}`)
+      }
+      if (allPaymentsForRef.length > 1) {
+        lines.push(
+          ar
+            ? `(${allPaymentsForRef.length} محاولات دفع مسجلة لهذا المرجع)`
+            : `(${allPaymentsForRef.length} payment attempts on file for this reference)`,
+        )
+      }
+      break
+
+    case 'invoice_unpaid':
+      lines.push(
+        ar
+          ? '❌ غير مدفوعة — لم يُرسل إثبات تحويل بعد'
+          : '❌ Not paid — no transfer proof submitted yet',
+      )
+      if (tenantLine) lines.push(tenantLine)
+      if (invoice) {
+        lines.push(
+          ar
+            ? `الفاتورة: ${invoice.period} · ${formatMoney(invoice.amount)} · مستحق ${invoice.dueDate}`
+            : `Invoice: ${invoice.period} · ${formatMoney(invoice.amount)} · due ${invoice.dueDate}`,
+        )
+        lines.push(
+          ar
+            ? 'بانتظار أن يرسل الساكن لقطة التحويل من بوابة الدفع.'
+            : 'Waiting for the resident to submit transfer proof from the Pay tab.',
+        )
+      }
+      break
+
+    case 'invoice_paid':
+      lines.push(ar ? '✅ الحالة: الفاتورة مدفوعة' : '✅ Status: Invoice marked paid')
+      if (tenantLine) lines.push(tenantLine)
+      if (invoice) {
+        lines.push(
+          ar
+            ? `الفاتورة: ${invoice.period} · ${formatMoney(invoice.amount)}`
+            : `Invoice: ${invoice.period} · ${formatMoney(invoice.amount)}`,
+        )
+      }
+      break
+  }
+
+  const expected =
+    payment?.amount ?? invoice?.amount ?? (payment?.confirmedAmount != null ? payment.confirmedAmount : null)
+  if (statedAmount != null && expected != null) {
+    lines.push('')
+    if (amountsMatch(statedAmount, expected)) {
+      lines.push(
+        ar
+          ? `✓ المبلغ المذكور (${formatMoney(statedAmount)}) يطابق الفاتورة — يمكنك التأكيد.`
+          : `✓ Stated amount (${formatMoney(statedAmount)}) matches the invoice — safe to confirm.`,
+      )
+    } else if (statedAmount < expected) {
+      lines.push(
+        ar
+          ? `⚠️ المبلغ المذكور (${formatMoney(statedAmount)}) أقل من الفاتورة (${formatMoney(expected)}) — فكّر في «تأكيد جزئي».`
+          : `⚠️ Stated amount (${formatMoney(statedAmount)}) is less than the invoice (${formatMoney(expected)}) — consider “Confirm as partial”.`,
+      )
+    } else {
+      lines.push(
+        ar
+          ? `⚠️ المبلغ المذكور (${formatMoney(statedAmount)}) أعلى من الفاتورة (${formatMoney(expected)}) — راجع قبل التأكيد.`
+          : `⚠️ Stated amount (${formatMoney(statedAmount)}) exceeds the invoice (${formatMoney(expected)}) — review before confirming.`,
+      )
+    }
+  }
+
+  return lines.join('\n')
+}
+
+/** Staff-side AI for payment verification and reference lookup */
+export function staffAiReply(input: string, lang: 'en' | 'ar', ctx: StaffAiContext): string {
+  const q = input.toLowerCase().trim()
+  const ar = lang === 'ar'
+
+  const invoiceRef = extractInvoiceReference(input)
+  const bankRef = extractBankReference(input)
+  const statedAmount = extractInquiryAmount(input)
+
+  if (invoiceRef) {
+    const lookup = lookupPaymentRef(invoiceRef, ctx.payments, ctx.invoiceMap, ctx.residentList, ctx.paidIds)
+    return formatLookupReply(lookup, statedAmount, lang)
+  }
+
+  if (bankRef) {
+    const withProof = ctx.pendingPayments.filter((p) => p.transferProof)
+    if (withProof.length === 0) {
+      return ar
+        ? `لا توجد لقطات تحويل معلقة للمقارنة مع المرجع ${bankRef}.`
+        : `No pending transfer screenshots to compare against reference ${bankRef}.`
+    }
+    return ar
+      ? `سأقرأ حقل «Reference number» في ${withProof.length} لقطة(ات) وأقارنه بالمرجع ${bankRef}.`
+      : `I'll read the “Reference number” field from ${withProof.length} screenshot(s) and compare to ${bankRef}.`
+  }
+
+  if (/pending|waiting|verify|queue|review|قيد|معلق|تحقق|انتظار/.test(q)) {
+    if (ctx.pendingPayments.length === 0) {
+      return ar ? '✓ لا توجد تحويلات بانتظار التحقق.' : '✓ No bank transfers waiting for verification.'
+    }
+    const header = ar
+      ? `${ctx.pendingPayments.length} تحويل(ات) بانتظار التحقق:\n`
+      : `${ctx.pendingPayments.length} transfer(s) pending verification:\n`
+    const rows = ctx.pendingPayments
+      .map((p, i) => {
+        const refCode = p.paymentRef ?? p.invoiceId
+        return ar
+          ? `${i + 1}. ${refCode} · ${p.residentName} · ${formatMoney(p.amount)}`
+          : `${i + 1}. ${refCode} · ${p.residentName} · ${formatMoney(p.amount)}`
+      })
+      .join('\n')
+    return `${header}\n${rows}\n\n${ar ? 'اسأل عن مرجع محدد للتفاصيل، مثل: تحقق من INV-TEST-A1' : 'Ask about a specific reference for details, e.g. “Check INV-TEST-A1”.'}`
+  }
+
+  if (/how many|count|عدد|كم/.test(q) && /pending|waiting|قيد|معلق/.test(q)) {
+    const n = ctx.pendingPayments.length
+    return ar
+      ? `هناك ${n} تحويل(ات) بانتظار التحقق.`
+      : `There ${n === 1 ? 'is' : 'are'} ${n} transfer(s) pending verification.`
+  }
+
+  if (/reference|ref|invoice number|رقم|مرجع|فاتورة/.test(q) && /how|what|work|كيف|ما/.test(q)) {
+    return ar
+      ? 'في لقطة التحويل (مثل Wio Bank)، ابحث عن حقل «Reference number» — هذا هو رقم المرجع البنكي.\n\nأدخل الرقم من كشف حسابك للمقارنة:\n«قارن المرجع 1422869093»'
+      : 'On the transfer screenshot (e.g. Wio Bank), find the “Reference number” field — that is the bank reference.\n\nEnter the number from your statement to compare:\n“Compare reference 1422869093”'
+  }
+
+  if (/arrears|overdue|late|متأخر|متأخرات|مستحق/.test(q)) {
+    const overdueResidents = ctx.residentList.filter((r) => r.status === 'arrears')
+    if (overdueResidents.length === 0) {
+      return ar ? 'لا يوجد سكان بحالة «متأخرات» حالياً.' : 'No residents currently marked in arrears.'
+    }
+    const rows = overdueResidents
+      .map((r) => `• ${r.name || '—'} · ${r.buildingNumber ? `${r.buildingNumber}-` : ''}${r.apartment}`)
+      .join('\n')
+    return ar ? `وحدات متأخرة:\n\n${rows}` : `Units in arrears:\n\n${rows}`
+  }
+
+  if (/help|what can|ماذا|مساعدة/.test(q)) {
+    return ar
+      ? 'يمكنني:\n• مقارنة رقم المرجع البنكي مع اللقطة (مثل 1422869093)\n• التحقق من حالة فاتورة (INV-…)\n• عرض المدفوعات قيد المراجعة\n\nمثال: «قارن المرجع 1422869093»'
+      : 'I can:\n• Compare a bank reference number to the screenshot (e.g. 1422869093)\n• Check invoice status (INV-…)\n• List pending verifications\n\nExample: “Compare reference 1422869093”'
+  }
+
+  return ar
+    ? 'أدخل رقم المرجع من كشف الحساب للمقارنة مع اللقطة، مثل: «قارن المرجع 1422869093». أو «المدفوعات المعلقة» لعرض القائمة.'
+    : 'Enter the reference from your bank statement to compare with the screenshot, e.g. “Compare reference 1422869093”. Or say “pending payments”.'
+}
+
+export function staffWelcomeMessage(lang: 'en' | 'ar'): string {
+  return lang === 'ar'
+    ? 'أقارن رقم المرجع الذي تدخله مع حقل «Reference number» في لقطة التحويل. مثل: «قارن المرجع 1422869093».'
+    : 'I compare the reference you enter with the “Reference number” field on the transfer screenshot. E.g. “Compare reference 1422869093”.'
+}
+
+/** Payments whose transfer proof should be OCR-scanned for this staff query. */
+export function resolveStaffOcrTargets(input: string, ctx: StaffAiContext): PaymentRecord[] {
+  const q = input.toLowerCase().trim()
+  const invoiceRef = extractInvoiceReference(input)
+  const bankRef = extractBankReference(input)
+
+  if (invoiceRef) {
+    const lookup = lookupPaymentRef(invoiceRef, ctx.payments, ctx.invoiceMap, ctx.residentList, ctx.paidIds)
+    if (lookup.payment?.transferProof) return [lookup.payment]
+  }
+
+  if (bankRef) {
+    return ctx.pendingPayments.filter((p) => p.transferProof).slice(0, 5)
+  }
+
+  if (/pending|waiting|verify|scan|screenshot|proof|compare|match|لقطة|صورة|مسح|قارن|مقارنة/.test(q)) {
+    return ctx.pendingPayments.filter((p) => p.transferProof).slice(0, 5)
+  }
+
+  return []
+}
+
 export function amountsMatch(a: number, b: number, tolerance = 0.009) {
   return Math.abs(a - b) <= tolerance
 }
@@ -177,17 +569,28 @@ export interface AvailableApartment {
 /** Empty seed — add units from Admin → Available */
 export const availableApartments: AvailableApartment[] = []
 
+/** Building inventory: A0–A12, B1–B8, C1–C7, D1–D8 (36 units). */
+export const BUILDING_INVENTORY = [
+  { letter: 'A', start: 0, count: 13 },
+  { letter: 'B', start: 1, count: 8 },
+  { letter: 'C', start: 1, count: 7 },
+  { letter: 'D', start: 1, count: 8 },
+] as const
+
+export const TOTAL_UNIT_COUNT = BUILDING_INVENTORY.reduce((sum, b) => sum + b.count, 0)
+
 /** Build an empty apartment slot for admin to fill in later. */
-export function buildEmptyApartment(code: string): Resident {
-  const normalized = code.trim().toUpperCase()
+export function buildEmptyApartment(buildingLetter: string, unitNumber: number): Resident {
+  const letter = buildingLetter.trim().toUpperCase()
+  const code = `${letter}${unitNumber}`
   return {
-    id: `apt-${normalized.toLowerCase()}`,
+    id: `apt-${code.toLowerCase()}`,
     name: '',
     phone: '',
     pin: '',
-    building: '',
-    buildingNumber: '',
-    apartment: normalized,
+    building: `Building ${letter}`,
+    buildingNumber: letter,
+    apartment: code,
     floor: 0,
     parking: '',
     leaseEnd: '',
@@ -201,13 +604,29 @@ export function buildEmptyApartment(code: string): Resident {
   }
 }
 
-/** Fixed apartment inventory — A1 through A12, empty until admin fills them in. */
+function generateApartmentUnits(): Resident[] {
+  const units: Resident[] = []
+  for (const building of BUILDING_INVENTORY) {
+    for (let i = 0; i < building.count; i++) {
+      const unitNumber = building.start + i
+      const code = `${building.letter}${unitNumber}`
+      if (code === 'A1') {
+        units.push({ ...sampleA1TestTenant })
+      } else {
+        units.push(buildEmptyApartment(building.letter, unitNumber))
+      }
+    }
+  }
+  return units
+}
+
+/** Fixed unit inventory across buildings A–D. */
 export const sampleA1TestTenant: Resident = {
   id: 'apt-a1',
   name: 'Test Tenant A1',
   phone: '0501234567',
   pin: '1111',
-  building: 'MLIH Building',
+  building: 'Building A',
   buildingNumber: 'A',
   apartment: 'A1',
   floor: 1,
@@ -234,27 +653,38 @@ export const testInvoiceA1: Invoice = {
   status: 'due',
 }
 
-export const apartmentUnits: Resident[] = Array.from({ length: 12 }, (_, i) => {
-  const code = `A${i + 1}`
-  if (code === 'A1') return { ...sampleA1TestTenant }
-  return buildEmptyApartment(code)
-})
+export const apartmentUnits: Resident[] = generateApartmentUnits()
 
-export const demoResident = apartmentUnits[0]
+export const demoResident = sampleA1TestTenant
 
 /** Seed apartment records for admin operations */
 export const residents: Resident[] = [...apartmentUnits]
 
 export function apartmentSortKey(apartment: string) {
-  const match = apartment.trim().match(/^A(\d+)$/i)
-  return match ? Number(match[1]) : 999
+  const match = apartment.trim().match(/^([A-D])(\d+)$/i)
+  if (!match) return 9999
+  const letter = match[1].toUpperCase()
+  const num = Number(match[2])
+  const letterOrder: Record<string, number> = { A: 0, B: 100, C: 200, D: 300 }
+  return (letterOrder[letter] ?? 900) + num
 }
 
 export function unitCodeLabel(r: Resident) {
   const apt = r.apartment?.trim()
+  if (apt && /^[A-D]\d+$/i.test(apt)) return apt.toUpperCase()
   const bld = r.buildingNumber?.trim()
   if (bld && apt) return `${bld}-${apt}`
   return apt || bld || '—'
+}
+
+export function buildingLabel(letter: string, lang: 'en' | 'ar' = 'en') {
+  const l = letter.trim().toUpperCase()
+  return lang === 'ar' ? `المبنى ${l}` : `Building ${l}`
+}
+
+export function apartmentBuildingLetter(apartment: string) {
+  const match = apartment.trim().match(/^([A-D])/i)
+  return match ? match[1].toUpperCase() : ''
 }
 
 export function apartmentDisplayTitle(r: Resident, lang: 'en' | 'ar' = 'en') {
@@ -287,7 +717,7 @@ export const ticketsByResident: Record<string, Ticket[]> = {}
 export const announcements: Announcement[] = []
 
 export const adminStats = {
-  units: 12,
+  units: TOTAL_UNIT_COUNT,
   occupied: 0,
   arrears: 0,
   openTickets: 0,
