@@ -286,6 +286,16 @@ export default function ResidentPortal() {
             {!checkoutInvoice && (
               <div style={{ marginBottom: '1rem' }}>
                 <RentBalanceCard resident={liveResident} lang={lang} tr={tr} />
+                {dueInvoice && !invoiceHasPendingPayment(dueInvoice.id) && (
+                  <button
+                    className="btn btn-accent"
+                    type="button"
+                    style={{ marginTop: '0.85rem', width: '100%' }}
+                    onClick={() => openCheckout(dueInvoice.id)}
+                  >
+                    {tr('payNow')} · {formatMoney(dueInvoice.amount)}
+                  </button>
+                )}
               </div>
             )}
 
@@ -510,9 +520,9 @@ export default function ResidentPortal() {
                             <button
                               className="btn btn-ghost btn-sm"
                               type="button"
-                              onClick={() => extendInvoiceDueDate(inv.id, 7)}
+                              onClick={() => extendInvoiceDueDate(inv.id, 3)}
                             >
-                              {tr('extendBy7')}
+                              {tr('extendBy3')}
                             </button>
                           )}
                           {inv.status !== 'paid' && !pending && (

@@ -62,6 +62,8 @@ export default function AdminPortal() {
     pendingPayments,
     confirmBankPayment,
     rejectBankPayment,
+    adminRecordPayment,
+    invoiceHasPendingPayment,
     adminResidentInvoices,
     adminResidentTickets,
     adminResidentPayments,
@@ -1378,10 +1380,29 @@ export default function AdminPortal() {
                   <RentBalanceCard resident={selectedResident} lang={lang} tr={tr} />
                 </div>
 
+                {(() => {
+                  const dueInv = adminResidentInvoices.find(
+                    (inv) => inv.status === 'due' || inv.status === 'overdue',
+                  )
+                  const duePending = dueInv ? invoiceHasPendingPayment(dueInv.id) : false
+                  if (!dueInv || duePending) return null
+                  return (
+                    <button
+                      className="btn btn-accent"
+                      type="button"
+                      style={{ marginTop: '0.85rem', width: '100%' }}
+                      onClick={() => adminRecordPayment(dueInv.id)}
+                    >
+                      {tr('payNow')} · {formatMoney(dueInv.amount)}
+                    </button>
+                  )
+                })()}
+
                 <h3 className="section-label">{tr('paymentsInvoices')}</h3>
                 <div className="list">
                   {adminResidentInvoices.map((inv) => {
                     const linkedPay = adminResidentPayments.find((p) => p.invoiceId === inv.id)
+                    const pending = linkedPay?.status === 'pending_review'
                     return (
                     <div className="list-row" key={inv.id}>
                       <div>
@@ -1409,14 +1430,29 @@ export default function AdminPortal() {
                           </div>
                         )}
                       </div>
-                      <Badge
-                        lang={lang}
-                        status={
-                          linkedPay?.status === 'pending_review'
-                            ? 'pending_review'
-                            : inv.status
-                        }
-                      />
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.65rem',
+                          flexWrap: 'wrap',
+                          justifyContent: 'flex-end',
+                        }}
+                      >
+                        <Badge
+                          lang={lang}
+                          status={pending ? 'pending_review' : inv.status}
+                        />
+                        {inv.status !== 'paid' && !pending && (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            type="button"
+                            onClick={() => adminRecordPayment(inv.id)}
+                          >
+                            {tr('pay')}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     )
                   })}

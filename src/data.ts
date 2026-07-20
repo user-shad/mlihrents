@@ -843,6 +843,45 @@ export function paidPercent(resident: Resident) {
   return Math.min(100, Math.round((resident.amountPaid / resident.contractTotal) * 100))
 }
 
+/** Current calendar period label for installment invoices */
+export function currentPeriodLabel(lang: 'en' | 'ar' = 'en') {
+  const d = new Date()
+  if (lang === 'ar') {
+    return d.toLocaleDateString('ar-AE', { month: 'long', year: 'numeric' })
+  }
+  return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+}
+
+/**
+ * Build a due invoice for the current installment when the rent plan has
+ * remaining balance but no invoice exists yet.
+ */
+export function buildInstallmentInvoice(
+  resident: Resident,
+  lang: 'en' | 'ar' = 'en',
+): Invoice | null {
+  const remaining = remainingBalance(resident)
+  if (remaining <= 0 || resident.rentAmount <= 0) return null
+
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = now.getMonth() + 1
+  const dueDay = Math.min(28, Math.max(1, resident.rentDueDay || 1))
+  const dueDateIso = `${y}-${String(m).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`
+  const unit = (resident.apartment || resident.id).replace(/\s+/g, '')
+  const id = `INV-${unit}-${y}${String(m).padStart(2, '0')}`
+  const amount = Math.min(resident.rentAmount, remaining)
+
+  return {
+    id,
+    period: currentPeriodLabel(lang),
+    amount,
+    dueDateIso,
+    dueDate: formatIsoDueDate(dueDateIso, lang),
+    status: isPastDue(dueDateIso) ? 'overdue' : 'due',
+  }
+}
+
 export function rentScheduleLabel(schedule: RentSchedule, lang: 'en' | 'ar' = 'en') {
   const en: Record<RentSchedule, string> = {
     monthly: 'Monthly',
@@ -932,16 +971,24 @@ export function isPastDue(iso?: string, today = new Date()) {
 export function applyDueDayToInvoices(list: Invoice[], dueDay: number, lang: 'en' | 'ar' = 'en'): Invoice[] {
   return list.map((inv) => {
     if (inv.status === 'paid') return inv
-    const month =
-      inv.period.includes('July') || inv.period.includes('Jul')
-        ? 'Jul 2026'
-        : inv.period.includes('June') || inv.period.includes('Jun')
-          ? 'Jun 2026'
-          : inv.period.includes('May')
-            ? 'May 2026'
-            : 'Jul 2026'
     const extensionDays = inv.extensionDays ?? 0
-    const effectiveIso = addDaysToIso(dueDayToIso(dueDay, month), extensionDays)
+    let baseIso = inv.dueDateIso
+    if (!baseIso) {
+      const month =
+        inv.period.includes('July') || inv.period.includes('Jul')
+          ? 'Jul 2026'
+          : inv.period.includes('June') || inv.period.includes('Jun')
+            ? 'Jun 2026'
+            : inv.period.includes('May')
+              ? 'May 2026'
+              : 'Jul 2026'
+      baseIso = dueDayToIso(dueDay, month)
+    } else {
+      const [y, m] = baseIso.split('-')
+      const safeDay = Math.min(28, Math.max(1, dueDay))
+      baseIso = `${y}-${m}-${String(safeDay).padStart(2, '0')}`
+    }
+    const effectiveIso = addDaysToIso(baseIso, extensionDays)
     const overdue = isPastDue(effectiveIso)
     return {
       ...inv,

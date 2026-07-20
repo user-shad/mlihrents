@@ -24,6 +24,10 @@ import {
   PaymentRecord,
   amountsMatch,
   buildPaymentRef,
+  buildInstallmentInvoice,
+  formatMoney,
+  remainingBalance,
+  unitCodeLabel,
   RentSchedule,
   Resident,
   apartmentUnits,
@@ -174,6 +178,8 @@ interface DataContextValue {
   invoiceHasPendingPayment: (invoiceId: string) => boolean
   confirmBankPayment: (paymentId: string, verifiedAmount: number, asPartial?: boolean) => void
   rejectBankPayment: (paymentId: string, note?: string) => void
+  /** Staff records that an invoice was paid (cash / confirmed transfer) */
+  adminRecordPayment: (invoiceId: string) => void
   toast: string | null
   chatInput: string
   setChatInput: (v: string) => void
@@ -404,6 +410,42 @@ export function DataProvider({
   const dueInvoice = visibleInvoices.find((i) => i.status === 'due' || i.status === 'overdue')
   const checkoutInvoice = visibleInvoices.find((i) => i.id === checkoutInvoiceId) ?? null
 
+  // Auto-create installment invoice so residents always have a Pay button when rent remains
+  useEffect(() => {
+    if (!liveResident.id) return
+    if (remainingBalance(liveResident) <= 0 || liveResident.rentAmount <= 0) return
+    const existing = invoiceMap[liveResident.id] ?? []
+    const hasOpen = existing.some(
+      (inv) => inv.status !== 'paid' && !paidIds.includes(inv.id),
+    )
+    if (hasOpen) return
+    const next = buildInstallmentInvoice(liveResident, lang)
+    if (!next) return
+    if (existing.some((inv) => inv.id === next.id)) return
+    setInvoiceMap((prev) => ({
+      ...prev,
+      [liveResident.id]: [next, ...(prev[liveResident.id] ?? [])],
+    }))
+  }, [liveResident, invoiceMap, paidIds, lang])
+
+  // Same for the apartment selected in admin payments
+  useEffect(() => {
+    if (!selectedResident.id) return
+    if (remainingBalance(selectedResident) <= 0 || selectedResident.rentAmount <= 0) return
+    const existing = invoiceMap[selectedResident.id] ?? []
+    const hasOpen = existing.some(
+      (inv) => inv.status !== 'paid' && !paidIds.includes(inv.id),
+    )
+    if (hasOpen) return
+    const next = buildInstallmentInvoice(selectedResident, lang)
+    if (!next) return
+    if (existing.some((inv) => inv.id === next.id)) return
+    setInvoiceMap((prev) => ({
+      ...prev,
+      [selectedResident.id]: [next, ...(prev[selectedResident.id] ?? [])],
+    }))
+  }, [selectedResident, invoiceMap, paidIds, lang])
+
   const adminBalance = useMemo(() => {
     const incoming = payments
       .filter((p) => p.status === 'settled' || p.status === 'partial')
@@ -476,21 +518,36 @@ export function DataProvider({
       0,
       Number(installmentDraft) || suggestInstallment(contractTotal, scheduleDraft),
     )
+    const updated: Resident = {
+      ...selectedResident,
+      rentDueDay: day,
+      rentSchedule: scheduleDraft,
+      contractTotal,
+      amountPaid,
+      rentAmount,
+    }
     setResidentList((prev) =>
-      prev.map((r) =>
-        r.id === selectedResidentId
-          ? {
-              ...r,
-              rentDueDay: day,
-              rentSchedule: scheduleDraft,
-              contractTotal,
-              amountPaid,
-              rentAmount,
-            }
-          : r,
-      ),
+      prev.map((r) => (r.id === selectedResidentId ? updated : r)),
     )
+    ensureInstallmentInvoiceFor(updated)
     showToast(tr('rentPlanSaved'))
+  }
+
+  /** Create a current-period invoice when rent remains but no unpaid invoice exists. */
+  function ensureInstallmentInvoiceFor(resident: Resident) {
+    if (remainingBalance(resident) <= 0 || resident.rentAmount <= 0) return
+    const existing = invoiceMap[resident.id] ?? []
+    const hasOpen = existing.some(
+      (inv) => inv.status !== 'paid' && !paidIds.includes(inv.id),
+    )
+    if (hasOpen) return
+    const next = buildInstallmentInvoice(resident, lang)
+    if (!next) return
+    if (existing.some((inv) => inv.id === next.id)) return
+    setInvoiceMap((prev) => ({
+      ...prev,
+      [resident.id]: [next, ...(prev[resident.id] ?? [])],
+    }))
   }
 
   function saveResidentLoginPin(phone: string, pin: string) {
@@ -704,7 +761,7 @@ export function DataProvider({
     reader.readAsDataURL(file)
   }
 
-  function extendInvoiceDueDate(invoiceId: string, days = 7) {
+  function extendInvoiceDueDate(invoiceId: string, days = 3) {
     setInvoiceExtensions((prev) => ({
       ...prev,
       [invoiceId]: (prev[invoiceId] ?? 0) + days,
@@ -932,6 +989,65 @@ export function DataProvider({
       ),
     )
     showToast(lang === 'ar' ? 'تم رفض التحويل — الفاتورة ما زالت مستحقة' : 'Transfer rejected — invoice remains due')
+  }
+
+  function adminRecordPayment(invoiceId: string) {
+    const invoice = adminResidentInvoices.find((inv) => inv.id === invoiceId)
+    if (!invoice || invoice.status === 'paid') return
+    if (invoiceHasPendingPayment(invoiceId)) {
+      showToast(
+        lang === 'ar'
+          ? 'هذا التحويل قيد المراجعة — أكّده من قائمة الانتظار'
+          : 'This payment is pending review — confirm it from the pending list',
+      )
+      return
+    }
+    const resident = selectedResident
+    const unit = unitCodeLabel(resident)
+    const paidAt = `${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · ${nowLabel()}`
+    const record: PaymentRecord = {
+      id: `PAY-${Date.now().toString().slice(-6)}`,
+      invoiceId,
+      residentId: resident.id,
+      residentName: resident.name || unit,
+      unit,
+      amount: invoice.amount,
+      method: 'bank',
+      status: 'settled',
+      paidAt,
+      destination: bankSettings.accountName || adminStats.accountName,
+      paymentRef: buildPaymentRef(unit, invoiceId),
+      confirmedAmount: invoice.amount,
+      reviewedAt: paidAt,
+      reviewNote: lang === 'ar' ? 'سجّلته الإدارة' : 'Recorded by admin',
+    }
+    setPayments((prev) => [record, ...prev])
+    setPaidIds((prev) => (prev.includes(invoiceId) ? prev : [...prev, invoiceId]))
+    setInvoiceMap((prev) => ({
+      ...prev,
+      [resident.id]: (prev[resident.id] ?? []).map((inv) =>
+        inv.id === invoiceId ? { ...inv, status: 'paid' as const } : inv,
+      ),
+    }))
+    setResidentList((prev) =>
+      prev.map((r) =>
+        r.id === resident.id
+          ? { ...r, amountPaid: Math.min(r.contractTotal, r.amountPaid + invoice.amount) }
+          : r,
+      ),
+    )
+    setPaidDraft((prev) => {
+      const next = Math.min(
+        Number(contractDraft) || resident.contractTotal,
+        (Number(prev) || 0) + invoice.amount,
+      )
+      return String(next)
+    })
+    showToast(
+      lang === 'ar'
+        ? `تم تسجيل الدفع · ${formatMoney(invoice.amount)}`
+        : `Payment recorded · ${formatMoney(invoice.amount)}`,
+    )
   }
 
   function createTicket(e: FormEvent) {
@@ -1180,6 +1296,7 @@ export function DataProvider({
         invoiceHasPendingPayment,
         confirmBankPayment,
         rejectBankPayment,
+        adminRecordPayment,
         toast,
         chatInput,
         setChatInput,
