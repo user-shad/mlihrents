@@ -26,7 +26,7 @@ import { siteLegal } from '../legal/siteLegal'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
 import { StaffPaymentAssistant } from '../components/StaffPaymentAssistant'
 import { bankSummary, isBankConfigured } from '../config/paymentSettings'
-import { fetchSyncHealth, forceSyncNow, getSyncMode, getSyncStatus } from '../lib/cloudSync'
+import { fetchSyncHealth, getSyncMode, getSyncStatus } from '../lib/cloudSync'
 
 type Tab = 'info' | 'payments' | 'available' | 'chat'
 
@@ -99,7 +99,6 @@ export default function AdminPortal() {
   const [syncHint, setSyncHint] = useState<string | null>(() => getSyncStatus().hint)
   const [syncError, setSyncError] = useState<string | null>(() => getSyncStatus().lastError)
   const [syncBackends, setSyncBackends] = useState(() => getSyncStatus().backends)
-  const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
     const refresh = () => {
@@ -116,18 +115,6 @@ export default function AdminPortal() {
     return () => window.clearInterval(id)
   }, [])
 
-  async function handleSyncNow() {
-    setSyncing(true)
-    try {
-      const status = await forceSyncNow()
-      setCloudSyncActive(status.mode === 'cloud')
-      setSyncHint(status.hint)
-      setSyncError(status.lastError)
-      setSyncBackends(status.backends)
-    } finally {
-      setSyncing(false)
-    }
-  }
   const [pinDraft, setPinDraft] = useState(selectedResident.pin)
   const [phoneDraft, setPhoneDraft] = useState(selectedResident.phone)
   const [editName, setEditName] = useState(selectedResident.name)
@@ -382,15 +369,6 @@ export default function AdminPortal() {
                 .join(', ') || tr('syncBackendNone')}
             </p>
           )}
-          <button
-            className="btn btn-ghost btn-sm"
-            type="button"
-            style={{ marginTop: '0.5rem', width: '100%' }}
-            disabled={syncing}
-            onClick={() => void handleSyncNow()}
-          >
-            {syncing ? tr('syncInProgress') : tr('syncNow')}
-          </button>
         </div>
 
         <div className="side-footer">
