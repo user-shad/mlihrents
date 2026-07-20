@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   buildPaymentDueAnnouncements,
   buildPaymentRef,
@@ -44,6 +44,9 @@ export default function ResidentPortal() {
     paying,
     bankSettings,
     bankConfigured,
+    payMethod,
+    setPayMethod,
+    stripeConfigured,
     invoiceHasPendingPayment,
     toast,
     chatInput,
@@ -54,6 +57,8 @@ export default function ResidentPortal() {
     closeCheckout,
     extendInvoiceDueDate,
     completePayment,
+    startApplePayCheckout,
+    applyStripeCheckoutReturn,
     createTicket,
     escalateToHuman,
     sendChat,
@@ -63,8 +68,32 @@ export default function ResidentPortal() {
   const residentName = liveResident.name || session?.name || ''
   const residentFirstName = residentName.split(' ')[0] || residentName || 'there'
 
-  const [tab, setTab] = useState<Tab>('home')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab')
+  const [tab, setTab] = useState<Tab>(
+    initialTab === 'pay' || initialTab === 'tickets' || initialTab === 'chat' || initialTab === 'profile'
+      ? initialTab
+      : 'home',
+  )
   const paymentNotices = buildPaymentDueAnnouncements(visibleInvoices, lang)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const stripeSessionId = params.get('stripe_session_id')
+    if (stripeSessionId) {
+      void applyStripeCheckoutReturn(stripeSessionId).finally(() => {
+        setSearchParams({}, { replace: true })
+        setTab('pay')
+      })
+      return
+    }
+    if (params.get('pay_cancelled')) {
+      showToast(tr('payCancelled'))
+      setSearchParams({}, { replace: true })
+      setTab('pay')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on return from Stripe
+  }, [])
 
   function handleLogout() {
     resetHumanMode()
@@ -311,12 +340,81 @@ export default function ResidentPortal() {
                   {tr('payingFrom')} {residentName || tr('tenant')} · {unitCodeLabel(liveResident)}
                 </p>
 
-                {!bankConfigured ? (
+                <h3
+                  className="section-label"
+                  style={{ borderTop: 'none', paddingTop: 0, marginTop: '0.5rem' }}
+                >
+                  {tr('paymentMethod')}
+                </h3>
+                <div className="pay-methods" role="radiogroup" aria-label="Payment method">
+                  <button
+                    type="button"
+                    className={`pay-method ${payMethod === 'bank' ? 'active' : ''}`}
+                    onClick={() => setPayMethod('bank')}
+                    aria-pressed={payMethod === 'bank'}
+                  >
+                    <span className="pay-method-icon" aria-hidden>
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 10l9-6 9 6" />
+                        <path d="M5 10v8h14v-8" />
+                        <path d="M3 18h18" />
+                      </svg>
+                    </span>
+                    <span>
+                      <strong>{tr('bankPay')}</strong>
+                      <span className="meta">{tr('bankPayMeta')}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`pay-method ${payMethod === 'apple_pay' ? 'active' : ''}`}
+                    onClick={() => setPayMethod('apple_pay')}
+                    aria-pressed={payMethod === 'apple_pay'}
+                  >
+                    <span className="pay-method-icon" aria-hidden>
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                        <path d="M17.05 12.65c-.02-2.18 1.78-3.22 1.86-3.27-1.02-1.48-2.6-1.68-3.16-1.7-1.34-.14-2.62.79-3.3.79-.69 0-1.76-.77-2.9-.75-1.49.02-2.87.87-3.63 2.21-1.56 2.7-.4 6.7 1.12 8.9.74 1.08 1.62 2.28 2.77 2.24 1.12-.05 1.54-.72 2.89-.72 1.34 0 1.72.72 2.9.7 1.2-.02 1.96-1.09 2.69-2.18.85-1.24 1.2-2.44 1.22-2.5-.03-.01-2.33-.89-2.36-3.72zM14.7 5.9c.61-.74 1.02-1.77.91-2.8-.88.04-1.95.59-2.58 1.33-.56.65-1.06 1.7-.93 2.7 1 .08 2-.51 2.6-1.23z" />
+                      </svg>
+                    </span>
+                    <span>
+                      <strong>{tr('applePay')}</strong>
+                      <span className="meta">{tr('applePayMeta')}</span>
+                    </span>
+                  </button>
+                </div>
+
+                {payMethod === 'apple_pay' && (
+                  <div className="bank-transfer-block" style={{ marginBottom: '1rem' }}>
+                    <p className="hint" style={{ margin: '0 0 0.75rem' }}>
+                      {tr('applePayHint')}
+                    </p>
+                    {!stripeConfigured && (
+                      <div className="bank-link-box">
+                        <strong>{tr('stripeNotConfigured')}</strong>
+                        <span className="meta">{tr('stripeNotConfiguredHelp')}</span>
+                      </div>
+                    )}
+                    <button
+                      className="btn btn-accent btn-block"
+                      type="button"
+                      disabled={paying || !stripeConfigured}
+                      onClick={() => void startApplePayCheckout()}
+                    >
+                      {paying
+                        ? tr('processing')
+                        : `${tr('payWithApple')} · ${formatMoney(checkoutInvoice.amount)}`}
+                    </button>
+                  </div>
+                )}
+
+                {payMethod === 'bank' && !bankConfigured && (
                   <div className="bank-link-box" style={{ marginBottom: '1rem' }}>
                     <strong>{tr('bankNotConfiguredResident')}</strong>
                     <span className="meta">{tr('bankNotConfiguredResidentHelp')}</span>
                   </div>
-                ) : (
+                )}
+
+                {payMethod === 'bank' && bankConfigured && (
                   <>
                     <h3
                       className="section-label"
@@ -444,20 +542,19 @@ export default function ResidentPortal() {
                         )}
                       </div>
                     </div>
+                    <form onSubmit={completePayment}>
+                      <button
+                        className="btn btn-accent btn-block"
+                        type="submit"
+                        disabled={paying || !bankProof}
+                      >
+                        {paying
+                          ? tr('processing')
+                          : `${tr('submitTransferProof')} · ${formatMoney(checkoutInvoice.amount)}`}
+                      </button>
+                    </form>
                   </>
                 )}
-
-                <form onSubmit={completePayment}>
-                  <button
-                    className="btn btn-accent btn-block"
-                    type="submit"
-                    disabled={paying || !bankConfigured || !bankProof}
-                  >
-                    {paying
-                      ? tr('processing')
-                      : `${tr('submitTransferProof')} · ${formatMoney(checkoutInvoice.amount)}`}
-                  </button>
-                </form>
               </section>
             ) : (
               <>

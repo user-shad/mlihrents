@@ -19,6 +19,7 @@ import {
   Invoice,
   invoicesByResident,
   nowLabel,
+  PaymentMethod,
   PaymentRecord,
   amountsMatch,
   buildPaymentRef,
@@ -43,6 +44,13 @@ import {
   readBankSettings,
   writeBankSettings,
 } from '../config/paymentSettings'
+import {
+  createCheckoutSession,
+  isStripeConfigured,
+  markStripeSessionProcessed,
+  verifyCheckoutSession,
+  wasStripeSessionProcessed,
+} from '../lib/stripeCheckout'
 
 const OPS_KEY = 'mlihrents_ops_v4'
 
@@ -118,6 +126,9 @@ interface DataContextValue {
   ticketNote: string
   setTicketNote: (v: string) => void
   checkoutInvoiceId: string | null
+  payMethod: PaymentMethod
+  setPayMethod: (m: PaymentMethod) => void
+  stripeConfigured: boolean
   bankProof: { name: string; dataUrl: string } | null
   setBankProofFromFile: (file: File | null) => void
   clearBankProof: () => void
@@ -145,6 +156,8 @@ interface DataContextValue {
   /** Extend an overdue invoice due date by the given number of days (default 7). */
   extendInvoiceDueDate: (invoiceId: string, days?: number) => void
   completePayment: (e: FormEvent) => void
+  startApplePayCheckout: () => Promise<void>
+  applyStripeCheckoutReturn: (sessionId: string) => Promise<void>
   createTicket: (e: FormEvent) => void
   escalateToHuman: () => void
   sendChat: (text: string) => void
@@ -220,6 +233,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     persisted?.invoiceExtensions ?? {},
   )
   const [checkoutInvoiceId, setCheckoutInvoiceId] = useState<string | null>(null)
+  const [payMethod, setPayMethod] = useState<PaymentMethod>('bank')
   const [bankProof, setBankProof] = useState<{ name: string; dataUrl: string } | null>(null)
   const [paying, setPaying] = useState(false)
   const [payments, setPayments] = useState<PaymentRecord[]>(persisted?.payments ?? seedPayments)
@@ -496,6 +510,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return
     }
     setCheckoutInvoiceId(id)
+    setPayMethod('bank')
     setBankProof(null)
   }
 
@@ -555,6 +570,106 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     setBankSettings(next)
     showToast(tr('bankSettingsSaved'))
+  }
+
+  function recordSettledPayment(input: {
+    invoiceId: string
+    residentId: string
+    residentName: string
+    unit: string
+    amount: number
+    method: PaymentMethod
+    destination: string
+    confirmedAmount?: number
+  }) {
+    const paidAt = `${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · ${nowLabel()}`
+    const record: PaymentRecord = {
+      id: `PAY-${Date.now().toString().slice(-6)}`,
+      invoiceId: input.invoiceId,
+      residentId: input.residentId,
+      residentName: input.residentName,
+      unit: input.unit,
+      amount: input.amount,
+      method: input.method,
+      status: 'settled',
+      paidAt,
+      destination: input.destination,
+      confirmedAmount: input.confirmedAmount ?? input.amount,
+    }
+    setPayments((prev) => [record, ...prev])
+    setPaidIds((prev) => (prev.includes(input.invoiceId) ? prev : [...prev, input.invoiceId]))
+    setInvoiceMap((prev) => ({
+      ...prev,
+      [input.residentId]: (prev[input.residentId] ?? []).map((inv) =>
+        inv.id === input.invoiceId ? { ...inv, status: 'paid' as const } : inv,
+      ),
+    }))
+    setResidentList((prev) =>
+      prev.map((r) =>
+        r.id === input.residentId
+          ? { ...r, amountPaid: Math.min(r.contractTotal, r.amountPaid + input.amount) }
+          : r,
+      ),
+    )
+  }
+
+  async function startApplePayCheckout() {
+    if (!checkoutInvoice || !liveResident.id) return
+    if (!isStripeConfigured()) {
+      showToast(tr('stripeNotConfigured'))
+      return
+    }
+    if (invoiceHasPendingPayment(checkoutInvoice.id)) {
+      showToast(
+        lang === 'ar'
+          ? 'هذا التحويل قيد المراجعة من الإدارة'
+          : 'This payment is already pending admin review',
+      )
+      return
+    }
+    setPaying(true)
+    try {
+      const unit = `${liveResident.buildingNumber}-${liveResident.apartment}`.replace(/^-/, '') || liveResident.apartment
+      const url = await createCheckoutSession({
+        amount: checkoutInvoice.amount,
+        invoiceId: checkoutInvoice.id,
+        residentId: liveResident.id,
+        residentName: liveResident.name,
+        unit,
+        period: checkoutInvoice.period,
+      })
+      window.location.href = url
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : tr('stripeCheckoutFailed'))
+      setPaying(false)
+    }
+  }
+
+  async function applyStripeCheckoutReturn(sessionId: string) {
+    if (!sessionId || wasStripeSessionProcessed(sessionId)) return
+    try {
+      const result = await verifyCheckoutSession(sessionId)
+      if (!result.paid || !result.invoiceId || !result.residentId) return
+      if (session?.residentId && result.residentId !== session.residentId) {
+        showToast(tr('stripeWrongAccount'))
+        return
+      }
+      recordSettledPayment({
+        invoiceId: result.invoiceId,
+        residentId: result.residentId,
+        residentName: result.residentName || liveResident.name,
+        unit: result.unit,
+        amount: result.amount,
+        method: 'apple_pay',
+        destination: 'Stripe · Apple Pay / Card',
+        confirmedAmount: result.amount,
+      })
+      markStripeSessionProcessed(sessionId)
+      setCheckoutInvoiceId(null)
+      showToast(tr('applePaySuccess'))
+    } catch {
+      showToast(tr('stripeVerifyFailed'))
+    }
   }
 
   function completePayment(e: FormEvent) {
@@ -844,6 +959,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ticketNote,
         setTicketNote,
         checkoutInvoiceId,
+        payMethod,
+        setPayMethod,
+        stripeConfigured: isStripeConfigured(),
         bankProof,
         setBankProofFromFile,
         clearBankProof,
@@ -870,6 +988,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         closeCheckout,
         extendInvoiceDueDate,
         completePayment,
+        startApplePayCheckout,
+        applyStripeCheckoutReturn,
         createTicket,
         escalateToHuman,
         sendChat,
