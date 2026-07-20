@@ -382,7 +382,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       accounts: payload?.accounts ?? [],
       ops: payload?.ops ?? {},
       updated_at: payload?.updated_at ?? null,
-      blob_debug: lastBlobDebug,
     })
     return
   }
