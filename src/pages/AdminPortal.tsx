@@ -85,6 +85,7 @@ export default function AdminPortal() {
     saveResidentLoginPin,
     clearResidentLogin,
     updateResidentInfo,
+    clearApartmentInfo,
     resetHumanMode,
     availableListings,
     addAvailableListing,
@@ -601,6 +602,32 @@ export default function AdminPortal() {
                   }
                 >
                   {tr('saveApartmentInfo')}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  style={{ marginTop: '0.5rem', marginInlineStart: '0.5rem' }}
+                  onClick={() => {
+                    if (!window.confirm(tr('clearApartmentConfirm'))) return
+                    clearApartmentInfo()
+                    setEditName('')
+                    setEditPhone('')
+                    setEditEmail('')
+                    setEditParking('')
+                    setEditOccupants('1')
+                    setEditMoveIn('')
+                    setEditLeaseEnd('')
+                    setEditStatus('active')
+                    setPhoneDraft('')
+                    setPinDraft('')
+                    setContractDraft('0')
+                    setPaidDraft('0')
+                    setInstallmentDraft('0')
+                    setDueDayDraft('1')
+                    setScheduleDraft('monthly')
+                  }}
+                >
+                  {tr('clearApartmentInfo')}
                 </button>
 
                 {isBuildingAdmin && (

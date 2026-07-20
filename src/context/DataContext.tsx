@@ -220,6 +220,7 @@ interface DataContextValue {
     leaseEnd: string
     status: 'active' | 'arrears' | 'notice'
   }) => void
+  clearApartmentInfo: () => void
   resetHumanMode: () => void
   syncWelcomeMessage: () => void
   availableListings: AvailableApartment[]
@@ -580,6 +581,50 @@ export function DataProvider({
       ),
     )
     showToast(tr('apartmentUpdated'))
+  }
+
+  function clearApartmentInfo() {
+    const resident = residentList.find((r) => r.id === selectedResidentId)
+    if (!resident) return
+    const invoiceIds = (invoiceMap[selectedResidentId] ?? []).map((inv) => inv.id)
+    clearResidentCredentials(selectedResidentId)
+    setResidentList((prev) =>
+      prev.map((r) =>
+        r.id === selectedResidentId
+          ? {
+              ...r,
+              name: '',
+              phone: '',
+              pin: '',
+              email: undefined,
+              parking: '',
+              occupants: undefined,
+              moveIn: undefined,
+              leaseEnd: '',
+              rentAmount: 0,
+              rentDueDay: 1,
+              rentSchedule: 'monthly',
+              contractTotal: 0,
+              amountPaid: 0,
+              status: 'active',
+            }
+          : r,
+      ),
+    )
+    setInvoiceMap((prev) => {
+      const next = { ...prev }
+      delete next[selectedResidentId]
+      return next
+    })
+    if (invoiceIds.length > 0) {
+      setInvoiceExtensions((prev) => {
+        const next = { ...prev }
+        for (const id of invoiceIds) delete next[id]
+        return next
+      })
+      setPaidIds((prev) => prev.filter((id) => !invoiceIds.includes(id)))
+    }
+    showToast(tr('apartmentCleared'))
   }
 
   function openCheckout(id: string) {
@@ -1065,6 +1110,7 @@ export function DataProvider({
         clearResidentLogin,
         registerNewResident,
         updateResidentInfo,
+        clearApartmentInfo,
         resetHumanMode,
         syncWelcomeMessage,
         availableListings: listings,

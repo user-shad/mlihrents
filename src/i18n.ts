@@ -71,6 +71,10 @@ const en: Dict = {
   editApartmentHelp: 'Update tenant, unit, lease, and status for this apartment. Changes apply immediately.',
   saveApartmentInfo: 'Save apartment info',
   apartmentUpdated: 'Apartment information updated',
+  clearApartmentInfo: 'Clear apartment info',
+  clearApartmentConfirm:
+    'Empty this unit? Tenant details, login credentials, rent plan, and invoices for this apartment will be cleared. The unit number stays.',
+  apartmentCleared: 'Apartment cleared — unit is vacant',
   editResident: 'Edit apartment information',
   editResidentHelp: 'Update tenant, unit, lease, and status for this apartment. Changes apply immediately.',
   saveResidentInfo: 'Save apartment info',
@@ -412,6 +416,10 @@ const ar: Dict = {
   editApartmentHelp: 'حدّث بيانات الساكن والوحدة والعقد والحالة. تُحفظ التغييرات فوراً.',
   saveApartmentInfo: 'حفظ بيانات الشقة',
   apartmentUpdated: 'تم تحديث بيانات الشقة',
+  clearApartmentInfo: 'مسح بيانات الشقة',
+  clearApartmentConfirm:
+    'تفريغ هذه الوحدة؟ سيتم مسح بيانات الساكن وبيانات الدخول وخطة الإيجار والفواتير. يبقى رقم الوحدة كما هو.',
+  apartmentCleared: 'تم تفريغ الشقة — الوحدة شاغرة الآن',
   editResident: 'تعديل بيانات الشقة',
   editResidentHelp: 'حدّث بيانات الساكن والوحدة والعقد والحالة. تُحفظ التغييرات فوراً.',
   saveResidentInfo: 'حفظ بيانات الشقة',
