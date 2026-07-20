@@ -17,8 +17,6 @@ import {
   serviceDirectory,
   suggestInstallment,
   unitCodeLabel,
-  staffAccounts,
-  normalizePhone,
 } from '../data'
 import { statusLabel } from '../i18n'
 import { useAuth } from '../context/AuthContext'
@@ -48,7 +46,7 @@ const emptyListingForm = {
 
 export default function AdminPortal() {
   const navigate = useNavigate()
-  const { logout, accounts, session, changeStaffPassword } = useAuth()
+  const { logout, accounts, session } = useAuth()
   const { lang, tr } = useLang()
   const {
     residentList,
@@ -94,17 +92,7 @@ export default function AdminPortal() {
   } = useData()
 
   const [tab, setTab] = useState<Tab>('info')
-  const [staffCurrentPin, setStaffCurrentPin] = useState('')
-  const [staffNewPin, setStaffNewPin] = useState('')
-  const [staffConfirmPin, setStaffConfirmPin] = useState('')
   const isBuildingAdmin = session?.staffTier === 'admin'
-  const staffAccount = accounts.find(
-    (a) => a.role === 'admin' && session && a.phone === session.phone,
-  )
-  const bootstrapPin = staffAccounts.find(
-    (s) => normalizePhone(s.phone) === session?.phone,
-  )?.pin
-  const usingDefaultPin = Boolean(staffAccount && bootstrapPin && staffAccount.pin === bootstrapPin)
   const [pinDraft, setPinDraft] = useState(selectedResident.pin)
   const [phoneDraft, setPhoneDraft] = useState(selectedResident.phone)
   const [editName, setEditName] = useState(selectedResident.name)
@@ -328,73 +316,6 @@ export default function AdminPortal() {
           <span>{isBuildingAdmin ? tr('staffRoleAdmin') : tr('staffRoleOps')}</span>
         </div>
 
-        <section className="panel" style={{ margin: '1rem 0', padding: '0.75rem' }}>
-          <h3 className="section-label" style={{ marginTop: 0 }}>
-            {tr('changeStaffPassword')}
-          </h3>
-          <p className="meta" style={{ marginTop: 0, fontSize: '0.85rem' }}>
-            {tr('changeStaffPasswordHelp')}
-          </p>
-          <div className="form-row">
-            <label htmlFor="staffCurrentPin">{tr('currentPassword')}</label>
-            <input
-              id="staffCurrentPin"
-              type="password"
-              value={staffCurrentPin}
-              onChange={(e) => setStaffCurrentPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              inputMode="numeric"
-              maxLength={4}
-              autoComplete="current-password"
-            />
-          </div>
-          <div className="form-row">
-            <label htmlFor="staffNewPin">{tr('newPin')}</label>
-            <input
-              id="staffNewPin"
-              type="password"
-              value={staffNewPin}
-              onChange={(e) => setStaffNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              inputMode="numeric"
-              maxLength={4}
-              autoComplete="new-password"
-            />
-          </div>
-          <div className="form-row">
-            <label htmlFor="staffConfirmPin">{tr('confirmPin')}</label>
-            <input
-              id="staffConfirmPin"
-              type="password"
-              value={staffConfirmPin}
-              onChange={(e) => setStaffConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              inputMode="numeric"
-              maxLength={4}
-              autoComplete="new-password"
-            />
-          </div>
-          <button
-            className="btn btn-primary btn-sm"
-            type="button"
-            style={{ marginTop: '0.5rem', width: '100%' }}
-            onClick={() => {
-              if (staffNewPin !== staffConfirmPin) {
-                showToast(tr('pinMismatch'))
-                return
-              }
-              const err = changeStaffPassword(staffCurrentPin, staffNewPin)
-              if (err) {
-                showToast(tr(err))
-                return
-              }
-              setStaffCurrentPin('')
-              setStaffNewPin('')
-              setStaffConfirmPin('')
-              showToast(tr('staffPasswordChanged'))
-            }}
-          >
-            {tr('updateStaffPassword')}
-          </button>
-        </section>
-
         <div className="side-footer">
           <button className="btn btn-ghost btn-sm logout-btn" type="button" onClick={handleLogout}>
             {tr('signOut')}
@@ -409,15 +330,6 @@ export default function AdminPortal() {
             {tr('signOut')}
           </button>
         </div>
-
-        {usingDefaultPin && (
-          <div className="panel go-live-banner" role="alert">
-            <strong>{tr('changeDefaultPasswordTitle')}</strong>
-            <p className="meta" style={{ margin: '0.35rem 0 0' }}>
-              {tr('changeDefaultPasswordLead')}
-            </p>
-          </div>
-        )}
 
         {tab === 'info' && (
           <>

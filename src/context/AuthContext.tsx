@@ -33,7 +33,6 @@ interface AuthContextValue {
   loginResident: (phone: string, pin: string) => string | null
   loginAdmin: (phone: string, pin: string) => string | null
   setResidentPin: (residentId: string, phone: string, pin: string, name: string) => string | null
-  changeStaffPassword: (currentPin: string, newPin: string) => string | null
   registerResidentAccount: (input: {
     name: string
     phone: string
@@ -220,20 +219,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null
   }
 
-  function changeStaffPassword(currentPin: string, newPin: string): string | null {
-    if (!session || session.role !== 'admin') return 'staffNotFound'
-    if (!isValidPin(newPin)) return 'pinInvalid'
-    const account = accounts.find((a) => a.role === 'admin' && a.phone === session.phone)
-    if (!account) return 'staffNotFound'
-    if (account.pin !== currentPin) return 'wrongPin'
-    setAccounts((prev) =>
-      prev.map((a) =>
-        a.role === 'admin' && a.phone === session.phone ? { ...a, pin: newPin } : a,
-      ),
-    )
-    return null
-  }
-
   function setResidentPin(residentId: string, phone: string, pin: string, name: string): string | null {
     if (!isValidPin(pin)) return 'pinInvalid'
     const key = normalizePhone(phone)
@@ -271,7 +256,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loginResident,
         loginAdmin,
         setResidentPin,
-        changeStaffPassword,
         registerResidentAccount,
         logout,
       }}
