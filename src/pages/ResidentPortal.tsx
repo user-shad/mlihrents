@@ -8,7 +8,6 @@ import {
   paymentMethodLabel,
   remainingBalance,
   rentScheduleLabel,
-  serviceDirectory,
   unitCodeLabel,
 } from '../data'
 import { siteLegal } from '../legal/siteLegal'
@@ -45,6 +44,7 @@ export default function ResidentPortal() {
     paying,
     bankSettings,
     bankConfigured,
+    serviceDirectory,
     invoiceHasPendingPayment,
     toast,
     chatInput,

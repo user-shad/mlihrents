@@ -14,7 +14,6 @@ import {
   remainingBalance,
   rentScheduleLabel,
   RentSchedule,
-  serviceDirectory,
   suggestInstallment,
   unitCodeLabel,
 } from '../data'
@@ -93,6 +92,10 @@ export default function AdminPortal() {
     removeAvailableListing,
     bankSettings,
     saveBankSettings,
+    serviceDirectory,
+    addServiceContact,
+    updateServiceContact,
+    removeServiceContact,
   } = useData()
 
   const [tab, setTab] = useState<Tab>('info')
@@ -116,6 +119,16 @@ export default function AdminPortal() {
     }, 10000)
     return () => window.clearInterval(id)
   }, [])
+
+  const emptyServiceForm = {
+    role: '',
+    name: '',
+    phone: '',
+    category: '',
+    notes: '',
+  }
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
+  const [serviceForm, setServiceForm] = useState(emptyServiceForm)
 
   const [pinDraft, setPinDraft] = useState(selectedResident.pin)
   const [phoneDraft, setPhoneDraft] = useState(selectedResident.phone)
@@ -422,21 +435,136 @@ export default function AdminPortal() {
               </p>
               <div className="list">
                 {serviceDirectory.map((c) => (
-                  <div className="list-row" key={c.id}>
-                    <div>
+                  <div className="list-row" key={c.id} style={{ alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
                       <strong>
                         {c.role} · {c.name}
                       </strong>
                       <div className="meta">
-                        {c.category} · {c.notes}
+                        {c.category}
+                        {c.notes ? ` · ${c.notes}` : ''}
                       </div>
+                      <a className="meta" href={`tel:${c.phone.replace(/\s/g, '')}`}>
+                        {c.phone}
+                      </a>
                     </div>
-                    <a className="btn btn-ghost btn-sm" href={`tel:${c.phone.replace(/\s/g, '')}`}>
-                      {c.phone}
-                    </a>
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        type="button"
+                        onClick={() => {
+                          setEditingServiceId(c.id)
+                          setServiceForm({
+                            role: c.role,
+                            name: c.name,
+                            phone: c.phone,
+                            category: c.category,
+                            notes: c.notes,
+                          })
+                        }}
+                      >
+                        {tr('editServiceContact')}
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm(tr('removeServiceContact') + '?')) return
+                          removeServiceContact(c.id)
+                          if (editingServiceId === c.id) {
+                            setEditingServiceId(null)
+                            setServiceForm(emptyServiceForm)
+                          }
+                        }}
+                      >
+                        {tr('removeServiceContact')}
+                      </button>
+                    </div>
                   </div>
                 ))}
+                {serviceDirectory.length === 0 && (
+                  <p className="meta">{tr('serviceContactEmpty')}</p>
+                )}
               </div>
+
+              <h3 className="section-label" style={{ marginTop: '1.25rem' }}>
+                {editingServiceId ? tr('editServiceContact') : tr('addServiceContact')}
+              </h3>
+              <div className="rent-plan-editor">
+                <div className="form-row">
+                  <label htmlFor="svcRole">{tr('serviceRole')}</label>
+                  <input
+                    id="svcRole"
+                    value={serviceForm.role}
+                    onChange={(e) => setServiceForm((f) => ({ ...f, role: e.target.value }))}
+                    placeholder="AC technician"
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="svcName">{tr('serviceName')}</label>
+                  <input
+                    id="svcName"
+                    value={serviceForm.name}
+                    onChange={(e) => setServiceForm((f) => ({ ...f, name: e.target.value }))}
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="svcPhone">{tr('phone')}</label>
+                  <input
+                    id="svcPhone"
+                    value={serviceForm.phone}
+                    onChange={(e) => setServiceForm((f) => ({ ...f, phone: e.target.value }))}
+                    inputMode="tel"
+                    placeholder="+971 50 000 0000"
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="svcCategory">{tr('serviceCategory')}</label>
+                  <input
+                    id="svcCategory"
+                    value={serviceForm.category}
+                    onChange={(e) => setServiceForm((f) => ({ ...f, category: e.target.value }))}
+                    placeholder="HVAC"
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="svcNotes">{tr('serviceNotes')}</label>
+                  <input
+                    id="svcNotes"
+                    value={serviceForm.notes}
+                    onChange={(e) => setServiceForm((f) => ({ ...f, notes: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <button
+                className="btn btn-primary btn-sm"
+                type="button"
+                style={{ marginTop: '0.75rem' }}
+                onClick={() => {
+                  if (editingServiceId) {
+                    updateServiceContact(editingServiceId, serviceForm)
+                  } else {
+                    addServiceContact(serviceForm)
+                  }
+                  setEditingServiceId(null)
+                  setServiceForm(emptyServiceForm)
+                }}
+              >
+                {tr('saveServiceContact')}
+              </button>
+              {editingServiceId && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  style={{ marginTop: '0.5rem', marginInlineStart: '0.5rem' }}
+                  onClick={() => {
+                    setEditingServiceId(null)
+                    setServiceForm(emptyServiceForm)
+                  }}
+                >
+                  {tr('cancelEdit')}
+                </button>
+              )}
             </section>
 
             <div className="admin-split" style={{ marginTop: '1rem' }}>

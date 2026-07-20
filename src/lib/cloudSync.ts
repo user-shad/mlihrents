@@ -9,10 +9,12 @@ import type {
 } from '../data'
 import {
   availableApartments,
+  defaultServiceDirectory,
   invoicesByResident,
   residents,
   seedPayments,
   ticketsByResident,
+  type ServiceContact,
 } from '../data'
 import { defaultBankSettings } from '../config/paymentSettings'
 import { isSupabaseConfigured, supabase } from './supabase'
@@ -34,6 +36,7 @@ export interface PortalOps {
   invoiceExtensions: Record<string, number>
   paidIds: string[]
   bankSettings: BankAccountSettings
+  serviceDirectory: ServiceContact[]
 }
 
 export interface BootstrapData {
@@ -142,6 +145,7 @@ export function createDefaultOps(): PortalOps {
     invoiceExtensions: {},
     paidIds: [],
     bankSettings: defaultBankSettings,
+    serviceDirectory: defaultServiceDirectory,
   }
 }
 
@@ -222,6 +226,10 @@ function normalizeCloudOps(raw: unknown): PortalOps {
     invoiceExtensions: ops.invoiceExtensions ?? {},
     paidIds: ops.paidIds ?? [],
     bankSettings: ops.bankSettings ?? defaultBankSettings,
+    serviceDirectory:
+      Array.isArray(ops.serviceDirectory) && ops.serviceDirectory.length > 0
+        ? ops.serviceDirectory
+        : defaultServiceDirectory,
   }
 }
 

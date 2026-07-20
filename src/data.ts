@@ -704,8 +704,8 @@ export function paymentMethodLabel(method: PaymentMethod) {
   }
 }
 
-/** Template service contacts — edit names/numbers for your building */
-export const serviceDirectory: ServiceContact[] = [
+/** Template service contacts — admin can edit in Info → service directory */
+export const defaultServiceDirectory: ServiceContact[] = [
   {
     id: 'c-ac',
     role: 'AC technician',
@@ -807,9 +807,14 @@ export const serviceDirectory: ServiceContact[] = [
   },
 ]
 
-export function findServiceContact(input: string): ServiceContact | undefined {
+export const serviceDirectory = defaultServiceDirectory
+
+export function findServiceContact(
+  input: string,
+  directory: ServiceContact[] = defaultServiceDirectory,
+): ServiceContact | undefined {
   const q = input.toLowerCase()
-  return serviceDirectory.find((c) => c.keywords.some((k) => q.includes(k)))
+  return directory.find((c) => c.keywords.some((k) => q.includes(k)))
 }
 
 export const arrearsList: { unit: string; name: string; amount: number; days: number }[] = []
@@ -970,13 +975,14 @@ export function buildPaymentDueAnnouncements(
 export function aiReply(
   input: string,
   lang: 'en' | 'ar' = 'en',
+  directory: ServiceContact[] = defaultServiceDirectory,
 ): {
   text: string
   escalate?: boolean
   contact?: ServiceContact
 } {
   const q = input.toLowerCase()
-  const contact = findServiceContact(q)
+  const contact = findServiceContact(q, directory)
   const ar = lang === 'ar'
 
   if (/rent|pay|invoice|due|إيجار|الايجار|ادفع|فاتورة|مستحق/.test(q)) {
@@ -1002,7 +1008,7 @@ export function aiReply(
   }
 
   if (/number|contact|phone|أرقام|رقم|خدمات|who.*(call|fix)|call.*(tech|ac|plumb|electric)/.test(q)) {
-    const lines = serviceDirectory.map((c) => `• ${c.role}: ${c.name} — ${c.phone}`).join('\n')
+    const lines = directory.map((c) => `• ${c.role}: ${c.name} — ${c.phone}`).join('\n')
     return {
       text: ar
         ? `إليك قائمة أرقام الخدمات:\n\n${lines}\n\nصف المشكلة وسأرسل الرقم المناسب مع زر اتصال.`
@@ -1015,7 +1021,7 @@ export function aiReply(
       text: ar
         ? 'يمكنني إنشاء تذكرة صيانة مع بيانات وحدتك. صف المشكلة أو قل «أنشئ تذكرة»، أو استخدم تبويب التذاكر.'
         : 'I can create a maintenance ticket with your unit details. Describe the issue, say “create ticket”, or use the Tickets tab.',
-      contact: serviceDirectory.find((c) => c.id === 'c-ac'),
+      contact: directory.find((c) => /ac|hvac|cool/i.test(c.category + c.role)) ?? directory[0],
     }
   }
   if (/visitor|guest|gate|qr|pass|زائر|ضيف/.test(q)) {
@@ -1023,7 +1029,7 @@ export function aiReply(
       text: ar
         ? 'تصاريح الزوار من الملف الشخصي. لمشاكل الاستقبال، تواصل مع الأمن عبر أرقام الخدمات.'
         : 'Guest passes are available from your Profile. For lobby access issues, contact security via the service numbers.',
-      contact: serviceDirectory.find((c) => c.id === 'c-security'),
+      contact: directory.find((c) => /secur/i.test(c.category + c.role)),
     }
   }
   if (/amenit|gym|pool|parking|مسبح|جيم|موقف/.test(q)) {
@@ -1039,7 +1045,7 @@ export function aiReply(
         ? 'سأوصلك بموظف دعم المبنى مع تمرير بيانات وحدتك وهذه المحادثة.'
         : 'Connecting you to a building support agent. I’ll pass your unit details and this chat so you don’t have to repeat yourself.',
       escalate: true,
-      contact: serviceDirectory.find((c) => c.id === 'c-manager'),
+      contact: directory.find((c) => /manag/i.test(c.category + c.role)) ?? directory[0],
     }
   }
   if (/lease|contract|renew|عقد|تجديد/.test(q)) {
@@ -1047,7 +1053,7 @@ export function aiReply(
       text: ar
         ? 'تفاصيل عقدك تظهر في ملفك. لأسئلة التجديد، يمكنني توصيلك بمدير المبنى.'
         : 'Your lease details are on your Profile. For renewal questions, I can connect you to the building manager.',
-      contact: serviceDirectory.find((c) => c.id === 'c-manager'),
+      contact: directory.find((c) => /manag/i.test(c.category + c.role)) ?? directory[0],
     }
   }
 

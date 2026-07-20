@@ -31,6 +31,8 @@ import {
   suggestInstallment,
   Ticket,
   welcomeMessage,
+  type ServiceContact,
+  defaultServiceDirectory,
 } from '../data'
 import { useAuth } from './AuthContext'
 import { useLang } from './LangContext'
@@ -131,6 +133,10 @@ function normalizePersistedOps(parsed: PortalOps): PortalOps {
     ...cleaned,
     residentList: ensureSeedApartments(cleaned.residentList ?? []),
     invoiceMap: ensureSeedInvoices(cleaned.invoiceMap ?? {}),
+    serviceDirectory:
+      Array.isArray(cleaned.serviceDirectory) && cleaned.serviceDirectory.length > 0
+        ? cleaned.serviceDirectory
+        : defaultServiceDirectory,
   }
 }
 
@@ -230,6 +236,13 @@ interface DataContextValue {
   bankSettings: BankAccountSettings
   bankConfigured: boolean
   saveBankSettings: (settings: BankAccountSettings) => void
+  serviceDirectory: ServiceContact[]
+  addServiceContact: (input: Omit<ServiceContact, 'id' | 'keywords' | 'hours'> & { keywords?: string[] }) => void
+  updateServiceContact: (
+    id: string,
+    input: Partial<Omit<ServiceContact, 'id'>>,
+  ) => void
+  removeServiceContact: (id: string) => void
 }
 
 const DataContext = createContext<DataContextValue | null>(null)
@@ -250,6 +263,9 @@ export function DataProvider({
   const [listings, setListings] = useState<AvailableApartment[]>(() => bootOps.listings)
   const [bankSettings, setBankSettings] = useState<BankAccountSettings>(() =>
     isBankConfigured(bootOps.bankSettings) ? bootOps.bankSettings : readBankSettings(),
+  )
+  const [serviceDirectory, setServiceDirectory] = useState<ServiceContact[]>(
+    () => bootOps.serviceDirectory ?? defaultServiceDirectory,
   )
   const [invoiceMap, setInvoiceMap] = useState<Record<string, Invoice[]>>(() => bootOps.invoiceMap)
   const [ticketMap, setTicketMap] = useState<Record<string, Ticket[]>>(() => bootOps.ticketMap)
@@ -307,6 +323,9 @@ export function DataProvider({
       if (isBankConfigured(next.bankSettings)) {
         setBankSettings(next.bankSettings)
       }
+      if (next.serviceDirectory?.length) {
+        setServiceDirectory(next.serviceDirectory)
+      }
     })
   }, [])
 
@@ -320,10 +339,21 @@ export function DataProvider({
       invoiceExtensions,
       paidIds,
       bankSettings,
+      serviceDirectory,
     }
     writeLocalOps(ops)
     queueCloudOps(ops)
-  }, [residentList, listings, payments, invoiceMap, ticketMap, invoiceExtensions, paidIds, bankSettings])
+  }, [
+    residentList,
+    listings,
+    payments,
+    invoiceMap,
+    ticketMap,
+    invoiceExtensions,
+    paidIds,
+    bankSettings,
+    serviceDirectory,
+  ])
 
   function showToast(msg: string) {
     setToast(msg)
@@ -698,6 +728,75 @@ export function DataProvider({
     showToast(tr('bankSettingsSaved'))
   }
 
+  function keywordsFromContact(role: string, name: string, category: string, notes: string) {
+    const raw = `${role} ${name} ${category} ${notes}`.toLowerCase()
+    const parts = raw
+      .split(/[^a-z0-9\u0600-\u06ff]+/i)
+      .map((p) => p.trim())
+      .filter((p) => p.length >= 2)
+    return [...new Set(parts)]
+  }
+
+  function addServiceContact(
+    input: Omit<ServiceContact, 'id' | 'keywords' | 'hours'> & { keywords?: string[] },
+  ) {
+    const role = input.role.trim()
+    const name = input.name.trim()
+    const phone = input.phone.trim()
+    if (!role || !phone) {
+      showToast(tr('serviceContactIncomplete'))
+      return
+    }
+    const category = input.category.trim() || role
+    const notes = input.notes.trim()
+    setServiceDirectory((prev) => [
+      ...prev,
+      {
+        id: `svc-${Date.now()}`,
+        role,
+        name: name || role,
+        phone,
+        category,
+        notes,
+        hours: '',
+        keywords: input.keywords?.length
+          ? input.keywords
+          : keywordsFromContact(role, name || role, category, notes),
+      },
+    ])
+    showToast(tr('serviceContactSaved'))
+  }
+
+  function updateServiceContact(id: string, input: Partial<Omit<ServiceContact, 'id'>>) {
+    setServiceDirectory((prev) =>
+      prev.map((c) => {
+        if (c.id !== id) return c
+        const next = {
+          ...c,
+          ...input,
+          role: input.role?.trim() ?? c.role,
+          name: input.name?.trim() ?? c.name,
+          phone: input.phone?.trim() ?? c.phone,
+          category: input.category?.trim() ?? c.category,
+          notes: input.notes?.trim() ?? c.notes,
+          hours: input.hours ?? c.hours,
+        }
+        return {
+          ...next,
+          keywords:
+            input.keywords ??
+            keywordsFromContact(next.role, next.name, next.category, next.notes),
+        }
+      }),
+    )
+    showToast(tr('serviceContactSaved'))
+  }
+
+  function removeServiceContact(id: string) {
+    setServiceDirectory((prev) => prev.filter((c) => c.id !== id))
+    showToast(tr('serviceContactRemoved'))
+  }
+
   function completePayment(e: FormEvent) {
     e.preventDefault()
     if (!checkoutInvoice || !liveResident.id) return
@@ -1005,7 +1104,7 @@ export function DataProvider({
       return
     }
 
-    const reply = aiReply(trimmed, lang)
+    const reply = aiReply(trimmed, lang, serviceDirectory)
     window.setTimeout(() => {
       setMessages((prev) => [
         ...prev,
@@ -1120,6 +1219,10 @@ export function DataProvider({
         bankSettings,
         bankConfigured: isBankConfigured(bankSettings),
         saveBankSettings,
+        serviceDirectory,
+        addServiceContact,
+        updateServiceContact,
+        removeServiceContact,
       }}
     >
       {children}
