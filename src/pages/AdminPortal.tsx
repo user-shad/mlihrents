@@ -25,6 +25,7 @@ import { useData } from '../context/DataContext'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
 import { StaffPaymentAssistant } from '../components/StaffPaymentAssistant'
 import { bankSummary, isBankConfigured } from '../config/paymentSettings'
+import { getSyncMode } from '../lib/cloudSync'
 
 type Tab = 'info' | 'payments' | 'available' | 'chat'
 
@@ -93,6 +94,15 @@ export default function AdminPortal() {
 
   const [tab, setTab] = useState<Tab>('info')
   const isBuildingAdmin = session?.staffTier === 'admin'
+  const [cloudSyncActive, setCloudSyncActive] = useState(() => getSyncMode() === 'cloud')
+
+  useEffect(() => {
+    setCloudSyncActive(getSyncMode() === 'cloud')
+    const id = window.setInterval(() => {
+      setCloudSyncActive(getSyncMode() === 'cloud')
+    }, 5000)
+    return () => window.clearInterval(id)
+  }, [])
   const [pinDraft, setPinDraft] = useState(selectedResident.pin)
   const [phoneDraft, setPhoneDraft] = useState(selectedResident.phone)
   const [editName, setEditName] = useState(selectedResident.name)
@@ -314,6 +324,16 @@ export default function AdminPortal() {
         <div className="user-card">
           <strong>{session?.name ?? tr('buildingManager')}</strong>
           <span>{isBuildingAdmin ? tr('staffRoleAdmin') : tr('staffRoleOps')}</span>
+          <p
+            className="meta"
+            style={{
+              margin: '0.5rem 0 0',
+              fontSize: '0.8rem',
+              color: cloudSyncActive ? 'var(--accent)' : 'var(--muted)',
+            }}
+          >
+            {cloudSyncActive ? tr('syncCloudActive') : tr('syncLocalOnly')}
+          </p>
         </div>
 
         <div className="side-footer">

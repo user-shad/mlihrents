@@ -40,6 +40,8 @@ const en: Dict = {
   changeDefaultPasswordTitle: 'Change your default password',
   changeDefaultPasswordLead:
     'You are still using the default staff password. Update it in the sidebar before sharing the site.',
+  syncCloudActive: 'Cloud sync active — changes appear on all devices',
+  syncLocalOnly: 'Local only — set up Supabase in Vercel to sync phone and laptop',
   updateStaffPassword: 'Update password',
   staffPasswordChanged: 'Your password was updated',
   staffRoleAdmin: 'Administrator',
@@ -371,6 +373,8 @@ const ar: Dict = {
   changeDefaultPasswordTitle: 'غيّر كلمة المرور الافتراضية',
   changeDefaultPasswordLead:
     'ما زلت تستخدم كلمة مرور الموظفين الافتراضية. حدّثها من الشريط الجانبي قبل مشاركة الموقع.',
+  syncCloudActive: 'المزامنة السحابية نشطة — التغييرات تظهر على جميع الأجهزة',
+  syncLocalOnly: 'محلي فقط — أعد Supabase في Vercel لمزامنة الهاتف والحاسوب',
   updateStaffPassword: 'تحديث كلمة المرور',
   staffPasswordChanged: 'تم تحديث كلمة مرورك',
   staffRoleAdmin: 'مدير المبنى',

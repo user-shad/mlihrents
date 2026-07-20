@@ -23,16 +23,31 @@ MLIHrents stores building data in **Supabase** so admin changes on one device ap
 ## 4. Add keys to Vercel
 
 1. Vercel → your **mlihrents** project → **Settings** → **Environment Variables**.
-2. Add both variables for **Production** (and Preview if you use preview deploys).
+2. Add these for **Production** (server-side — no `VITE_` prefix required):
+
+| Name | Value |
+|------|--------|
+| `SUPABASE_URL` | Project URL from Supabase → Settings → API |
+| `SUPABASE_SERVICE_ROLE_KEY` | **service_role** key (keep secret) |
+
+Optional (direct browser sync + realtime):
+
+| Name | Value |
+|------|--------|
+| `VITE_SUPABASE_URL` | Same Project URL |
+| `VITE_SUPABASE_ANON_KEY` | **anon public** key |
+
 3. **Redeploy** the site (Deployments → ⋯ → Redeploy).
+
+After redeploy, Admin sidebar should show **Cloud sync active**. If it says **Local only**, the keys are missing or the SQL schema was not run.
 
 ## 5. Local development (optional)
 
 Create `.env.local` in the project root:
 
 ```env
-VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-VITE_SUPABASE_ANON_KEY=your_anon_key_here
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
 ```
 
 Restart `npm run dev` after adding env vars.

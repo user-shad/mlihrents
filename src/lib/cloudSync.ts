@@ -22,6 +22,8 @@ export const OPS_KEY = 'mlihrents_ops_v5'
 const LEGACY_OPS_KEYS = ['mlihrents_ops_v4']
 const SYNC_ROW_ID = 'main'
 
+export type SyncMode = 'cloud' | 'local'
+
 export interface PortalOps {
   residentList: Resident[]
   listings: AvailableApartment[]
@@ -45,10 +47,16 @@ let bootstrapPromise: Promise<BootstrapData> | null = null
 let pendingAccounts: AccountRecord[] | undefined
 let pendingOps: PortalOps | undefined
 let flushTimer: ReturnType<typeof setTimeout> | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
 let suppressRemoteUntil = 0
 let accountsListener: AccountsListener | null = null
 let opsListener: OpsListener | null = null
 let realtimeStarted = false
+let syncMode: SyncMode = 'local'
+
+export function getSyncMode() {
+  return syncMode
+}
 
 export function createDefaultOps(): PortalOps {
   return {
@@ -104,7 +112,43 @@ function hasAccountsData(accounts: AccountRecord[]) {
   return accounts.some((a) => a.role === 'resident' && a.phone.trim())
 }
 
-async function loadCloudRow(): Promise<{ accounts: AccountRecord[]; ops: PortalOps } | null> {
+function normalizeCloudOps(raw: unknown): PortalOps {
+  if (!raw || typeof raw !== 'object') return createDefaultOps()
+  const ops = raw as PortalOps
+  return {
+    residentList: ops.residentList ?? residents,
+    listings: ops.listings ?? availableApartments,
+    payments: ops.payments ?? seedPayments,
+    invoiceMap: ops.invoiceMap ?? invoicesByResident,
+    ticketMap: ops.ticketMap ?? ticketsByResident,
+    invoiceExtensions: ops.invoiceExtensions ?? {},
+    paidIds: ops.paidIds ?? [],
+    bankSettings: ops.bankSettings ?? defaultBankSettings,
+  }
+}
+
+async function loadCloudRowViaApi(): Promise<{ accounts: AccountRecord[]; ops: PortalOps } | null> {
+  try {
+    const res = await fetch('/api/portal-sync', { cache: 'no-store' })
+    if (res.status === 503) return null
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      configured?: boolean
+      accounts?: AccountRecord[]
+      ops?: unknown
+    }
+    if (!data.configured) return null
+    syncMode = 'cloud'
+    return {
+      accounts: data.accounts ?? [],
+      ops: normalizeCloudOps(data.ops),
+    }
+  } catch {
+    return null
+  }
+}
+
+async function loadCloudRowDirect(): Promise<{ accounts: AccountRecord[]; ops: PortalOps } | null> {
   if (!supabase) return null
   const { data, error } = await supabase
     .from('portal_sync')
@@ -112,33 +156,50 @@ async function loadCloudRow(): Promise<{ accounts: AccountRecord[]; ops: PortalO
     .eq('id', SYNC_ROW_ID)
     .maybeSingle()
   if (error || !data) return null
+  syncMode = 'cloud'
   return {
     accounts: (data.accounts as AccountRecord[]) ?? [],
-    ops: (data.ops as PortalOps) ?? createDefaultOps(),
+    ops: normalizeCloudOps(data.ops),
   }
 }
 
+async function loadCloudRow(): Promise<{ accounts: AccountRecord[]; ops: PortalOps } | null> {
+  const viaApi = await loadCloudRowViaApi()
+  if (viaApi) return viaApi
+  return loadCloudRowDirect()
+}
+
+async function saveCloudRowViaApi(accounts: AccountRecord[], ops: PortalOps) {
+  const res = await fetch('/api/portal-sync', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accounts, ops }),
+  })
+  if (res.ok) {
+    syncMode = 'cloud'
+    return true
+  }
+  return false
+}
+
 async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps) {
-  if (!supabase) return
   suppressRemoteUntil = Date.now() + 2500
+
+  if (await saveCloudRowViaApi(accounts, ops)) return
+
+  if (!supabase) return
   await supabase.from('portal_sync').upsert({
     id: SYNC_ROW_ID,
     accounts,
     ops,
     updated_at: new Date().toISOString(),
   })
+  syncMode = 'cloud'
 }
 
 async function doBootstrap(): Promise<BootstrapData> {
   const localAccounts = readLocalAccounts()
   const localOps = readLocalOps() ?? createDefaultOps()
-
-  if (!isSupabaseConfigured()) {
-    return {
-      accounts: localAccounts ?? [],
-      ops: localOps,
-    }
-  }
 
   const cloud = await loadCloudRow()
   const cloudHasAccounts = cloud ? hasAccountsData(cloud.accounts) : false
@@ -156,18 +217,36 @@ async function doBootstrap(): Promise<BootstrapData> {
     ops = localOps
   }
 
-  if (!cloudHasAccounts && !cloudHasOps && (localHasAccounts || localHasOps)) {
-    await saveCloudRow(accounts, ops)
-  } else if (cloud && (!cloudHasAccounts || !cloudHasOps) && (localHasAccounts || localHasOps)) {
-    await saveCloudRow(
-      cloudHasAccounts ? cloud.accounts : accounts,
-      cloudHasOps ? cloud.ops : ops,
-    )
+  if (syncMode === 'cloud') {
+    if (!cloudHasAccounts && !cloudHasOps && (localHasAccounts || localHasOps)) {
+      await saveCloudRow(accounts, ops)
+    } else if (cloud && (!cloudHasAccounts || !cloudHasOps) && (localHasAccounts || localHasOps)) {
+      await saveCloudRow(
+        cloudHasAccounts ? cloud.accounts : accounts,
+        cloudHasOps ? cloud.ops : ops,
+      )
+    }
+    startPolling()
+    startRealtimeSync()
   }
 
-  startRealtimeSync()
-
   return { accounts, ops }
+}
+
+function applyRemoteRow(row: { accounts: AccountRecord[]; ops: PortalOps }) {
+  accountsListener?.(row.accounts)
+  opsListener?.(row.ops)
+}
+
+function startPolling() {
+  if (pollTimer) return
+  pollTimer = setInterval(() => {
+    if (typeof document !== 'undefined' && document.hidden) return
+    if (Date.now() < suppressRemoteUntil) return
+    void loadCloudRow().then((row) => {
+      if (row) applyRemoteRow(row)
+    })
+  }, 12000)
 }
 
 function startRealtimeSync() {
@@ -182,9 +261,7 @@ function startRealtimeSync() {
       () => {
         if (Date.now() < suppressRemoteUntil) return
         void loadCloudRow().then((row) => {
-          if (!row) return
-          accountsListener?.(row.accounts)
-          opsListener?.(row.ops)
+          if (row) applyRemoteRow(row)
         })
       },
     )
@@ -213,7 +290,6 @@ export function onCloudOps(listener: OpsListener) {
 }
 
 async function flushCloudSave() {
-  if (!supabase) return
   const current = await loadCloudRow()
   const accounts = pendingAccounts ?? current?.accounts ?? []
   const ops = pendingOps ?? current?.ops ?? createDefaultOps()
@@ -223,7 +299,6 @@ async function flushCloudSave() {
 }
 
 function scheduleCloudSave() {
-  if (!isSupabaseConfigured()) return
   if (flushTimer) clearTimeout(flushTimer)
   flushTimer = setTimeout(() => {
     flushTimer = null
@@ -251,4 +326,8 @@ export function writeLocalOps(ops: PortalOps) {
   } catch {
     /* quota */
   }
+}
+
+export function isCloudSyncConfigured() {
+  return isSupabaseConfigured() || syncMode === 'cloud'
 }
