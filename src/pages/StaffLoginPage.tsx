@@ -1,6 +1,5 @@
 import { FormEvent, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { staffAccounts } from '../data'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
@@ -11,7 +10,7 @@ export default function StaffLoginPage() {
   const { tr } = useLang()
   const { toast, showToast } = useData()
   const navigate = useNavigate()
-  const [phone, setPhone] = useState(staffAccounts[0]?.phone ?? '')
+  const [phone, setPhone] = useState('')
   const [pin, setPin] = useState('')
 
   if (session?.role === 'admin') {
@@ -50,9 +49,6 @@ export default function StaffLoginPage() {
           <LanguageSwitch />
         </div>
         <form onSubmit={onSubmit}>
-          <span className="demo-chip" style={{ marginBottom: '0.75rem', display: 'inline-block' }}>
-            {tr('staffOnly')}
-          </span>
           <h1>{tr('staffLogin')}</h1>
           <p className="lead">{tr('staffPinLead')}</p>
           <div className="field">
@@ -80,9 +76,6 @@ export default function StaffLoginPage() {
           <button className="btn btn-primary btn-block" type="submit">
             {tr('signIn')}
           </button>
-          <span className="demo-chip" style={{ marginTop: '0.75rem', display: 'inline-block' }}>
-            {tr('demoStaffCreds')}
-          </span>
           <p className="hint" style={{ marginTop: '0.75rem' }}>
             <Link to="/login">{tr('residentPortalLink')}</Link>
           </p>

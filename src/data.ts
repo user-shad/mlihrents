@@ -179,109 +179,86 @@ export interface AvailableApartment {
 /** Empty seed — add units from Admin → Available */
 export const availableApartments: AvailableApartment[] = []
 
-/** Sample residents (also in /templates/residents-sample.csv) */
-export const sampleResidents: Resident[] = [
-  {
-    id: 'r-sara',
-    name: 'Sara Al-Hassan',
-    phone: '0545882666',
-    pin: '7423',
-    building: 'Palm Residence',
-    buildingNumber: 'B12',
-    apartment: '804',
-    floor: 8,
-    parking: 'P2-117',
-    leaseEnd: '31 Dec 2026',
-    rentAmount: 8500,
-    currency: 'AED',
-    rentDueDay: 5,
-    rentSchedule: 'monthly',
-    contractTotal: 102000,
-    amountPaid: 17000,
-    email: 'sara@email.com',
-    moveIn: '1 Jan 2025',
-    occupants: 2,
-    status: 'active',
-  },
-  {
-    id: 'r-omar',
-    name: 'Omar Nasser',
-    phone: '0558821044',
-    pin: '5510',
-    building: 'Palm Residence',
-    buildingNumber: 'B12',
-    apartment: '312',
-    floor: 3,
-    parking: 'P1-044',
-    leaseEnd: '15 Mar 2027',
-    rentAmount: 51000,
+/** Build an empty apartment slot for admin to fill in later. */
+export function buildEmptyApartment(code: string): Resident {
+  const normalized = code.trim().toUpperCase()
+  return {
+    id: `apt-${normalized.toLowerCase()}`,
+    name: '',
+    phone: '',
+    pin: '',
+    building: '',
+    buildingNumber: '',
+    apartment: normalized,
+    floor: 0,
+    parking: '',
+    leaseEnd: '',
+    rentAmount: 0,
     currency: 'AED',
     rentDueDay: 1,
-    rentSchedule: 'semi_annual',
-    contractTotal: 102000,
-    amountPaid: 34000,
-    email: 'omar@email.com',
-    moveIn: '15 Mar 2024',
-    occupants: 3,
-    status: 'arrears',
-  },
-]
+    rentSchedule: 'monthly',
+    contractTotal: 0,
+    amountPaid: 0,
+    status: 'active',
+  }
+}
 
-/** Alias — sample resident Sara */
-export const demoResident = sampleResidents[0]
+/** Fixed apartment inventory — A1 through A12, empty until admin fills them in. */
+export const apartmentUnits: Resident[] = Array.from({ length: 12 }, (_, i) =>
+  buildEmptyApartment(`A${i + 1}`),
+)
 
-/** Seed residents for the website (sample users) */
-export const residents: Resident[] = [...sampleResidents]
+export const demoResident = apartmentUnits[0]
+
+/** Seed apartment records for admin operations */
+export const residents: Resident[] = [...apartmentUnits]
+
+export function apartmentSortKey(apartment: string) {
+  const match = apartment.trim().match(/^A(\d+)$/i)
+  return match ? Number(match[1]) : 999
+}
+
+export function unitCodeLabel(r: Resident) {
+  const apt = r.apartment?.trim()
+  const bld = r.buildingNumber?.trim()
+  if (bld && apt) return `${bld}-${apt}`
+  return apt || bld || '—'
+}
+
+export function apartmentDisplayTitle(r: Resident, lang: 'en' | 'ar' = 'en') {
+  if (r.name.trim()) return r.name.trim()
+  const apt = r.apartment?.trim()
+  if (!apt) return lang === 'ar' ? 'شقة شاغرة' : 'Vacant apartment'
+  return lang === 'ar' ? `شقة ${apt}` : `Apartment ${apt}`
+}
 
 /**
- * Bootstrap staff login so you can open Admin and create your own data.
- * Phone `0500000000` · PIN `1234`
+ * Bootstrap staff logins.
+ * Admin 1: `0500000000` · PIN `1234`
+ * Admin 2: `0501111111` · PIN `5678`
  */
 export const staffAccounts = [
   { phone: '0500000000', pin: '1234', name: 'Building Admin' },
+  { phone: '0501111111', pin: '5678', name: 'Operations Manager' },
 ]
 
-export const invoices: Invoice[] = [
-  { id: 'INV-0726', period: 'July 2026', amount: 8500, dueDate: '5 Jul 2026', status: 'due' },
-  { id: 'INV-0626', period: 'June 2026', amount: 8500, dueDate: '5 Jun 2026', status: 'paid' },
-  { id: 'INV-0526', period: 'May 2026', amount: 8500, dueDate: '5 May 2026', status: 'paid' },
-]
+export const invoices: Invoice[] = []
 
-export const invoicesByResident: Record<string, Invoice[]> = {
-  'r-sara': invoices,
-  'r-omar': [
-    { id: 'INV-0726-O', period: 'July 2026', amount: 51000, dueDate: '1 Jul 2026', status: 'overdue' },
-    { id: 'INV-0126-O', period: 'Jan 2026', amount: 51000, dueDate: '1 Jan 2026', status: 'paid' },
-  ],
-}
+export const invoicesByResident: Record<string, Invoice[]> = {}
 
-export const initialTickets: Ticket[] = [
-  {
-    id: 'TK-184',
-    title: 'AC not cooling in bedroom',
-    category: 'HVAC',
-    status: 'in_progress',
-    created: '16 Jul',
-    note: 'Technician scheduled for tomorrow 10:00–12:00',
-  },
-]
+export const initialTickets: Ticket[] = []
 
-export const ticketsByResident: Record<string, Ticket[]> = {
-  'r-sara': initialTickets,
-  'r-omar': [],
-}
+export const ticketsByResident: Record<string, Ticket[]> = {}
 
 export const announcements: Announcement[] = []
 
 export const adminStats = {
-  units: 0,
+  units: 12,
   occupied: 0,
   arrears: 0,
   openTickets: 0,
   chatQueue: 0,
   accountBalance: 0,
-  accountName: 'MLIHrents Merchant',
-  accountBank: 'Your bank · ****0000',
 }
 
 export const seedPayments: PaymentRecord[] = []
@@ -575,8 +552,8 @@ export function aiReply(
   if (/rent|pay|invoice|due|إيجار|الايجار|ادفع|فاتورة|مستحق/.test(q)) {
     return {
       text: ar
-        ? 'يمكنك مراجعة فواتيرك والدفع من تبويب الدفع — يدعم Apple Pay والبطاقة والتحويل البنكي.'
-        : 'You can review invoices and pay from the Pay tab — Apple Pay, card, and bank transfer are supported.',
+        ? 'يمكنك مراجعة فواتيرك والدفع عبر التحويل البنكي إلى حساب المبنى — أرفق إثبات التحويل بعد الدفع.'
+        : 'You can review invoices and pay by bank transfer to the building account — attach your transfer proof after paying.',
     }
   }
 

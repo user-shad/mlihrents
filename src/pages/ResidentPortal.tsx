@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  adminStats,
   buildPaymentDueAnnouncements,
   buildPaymentRef,
   formatDueDateFromDay,
@@ -10,6 +9,7 @@ import {
   remainingBalance,
   rentScheduleLabel,
   serviceDirectory,
+  unitCodeLabel,
 } from '../data'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
@@ -38,20 +38,12 @@ export default function ResidentPortal() {
     setTicketCategory,
     ticketNote,
     setTicketNote,
-    payMethod,
-    setPayMethod,
-    cardName,
-    setCardName,
-    cardNumber,
-    setCardNumber,
-    cardExpiry,
-    setCardExpiry,
-    cardCvc,
-    setCardCvc,
     bankProof,
     setBankProofFromFile,
     clearBankProof,
     paying,
+    bankSettings,
+    bankConfigured,
     invoiceHasPendingPayment,
     toast,
     chatInput,
@@ -286,7 +278,7 @@ export default function ResidentPortal() {
             </header>
             {paidIds.length > 0 && !checkoutInvoice && (
               <div className="success-flash">
-                {tr('paymentSettled')} {adminStats.accountName}. {tr('receiptSaved')}
+                {tr('paymentSubmittedReview')}. {tr('receiptSaved')}
               </div>
             )}
 
@@ -316,144 +308,66 @@ export default function ResidentPortal() {
                 </div>
 
                 <p className="meta" style={{ marginTop: 0 }}>
-                  {tr('payingFrom')} {residentName} · {liveResident.buildingNumber}-
-                  {liveResident.apartment}
-                  <br />
-                  {tr('destination')}: <strong>{adminStats.accountName}</strong> (
-                  {adminStats.accountBank})
+                  {tr('payingFrom')} {residentName || tr('tenant')} · {unitCodeLabel(liveResident)}
                 </p>
 
-                <h3
-                  className="section-label"
-                  style={{ borderTop: 'none', paddingTop: 0, marginTop: '0.5rem' }}
-                >
-                  {tr('paymentMethod')}
-                </h3>
-                <div className="pay-methods" role="radiogroup" aria-label="Payment method">
-                  <button
-                    type="button"
-                    className={`pay-method ${payMethod === 'apple_pay' ? 'active' : ''}`}
-                    onClick={() => setPayMethod('apple_pay')}
-                    aria-pressed={payMethod === 'apple_pay'}
-                  >
-                    <span className="pay-method-icon" aria-hidden>
-                      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
-                        <path d="M17.05 12.65c-.02-2.18 1.78-3.22 1.86-3.27-1.02-1.48-2.6-1.68-3.16-1.7-1.34-.14-2.62.79-3.3.79-.69 0-1.76-.77-2.9-.75-1.49.02-2.87.87-3.63 2.21-1.56 2.7-.4 6.7 1.12 8.9.74 1.08 1.62 2.28 2.77 2.24 1.12-.05 1.54-.72 2.89-.72 1.34 0 1.72.72 2.9.7 1.2-.02 1.96-1.09 2.69-2.18.85-1.24 1.2-2.44 1.22-2.5-.03-.01-2.33-.89-2.36-3.72zM14.7 5.9c.61-.74 1.02-1.77.91-2.8-.88.04-1.95.59-2.58 1.33-.56.65-1.06 1.7-.93 2.7 1 .08 2-.51 2.6-1.23z" />
-                      </svg>
-                    </span>
-                    <span>
-                      <strong>{tr('applePay')}</strong>
-                      <span className="meta">{tr('applePayMeta')}</span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`pay-method ${payMethod === 'card' ? 'active' : ''}`}
-                    onClick={() => setPayMethod('card')}
-                    aria-pressed={payMethod === 'card'}
-                  >
-                    <span className="pay-method-icon" aria-hidden>
-                      <svg
-                        viewBox="0 0 24 24"
-                        width="22"
-                        height="22"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <rect x="2" y="5" width="20" height="14" rx="2" />
-                        <path d="M2 10h20" />
-                      </svg>
-                    </span>
-                    <span>
-                      <strong>{tr('cardPay')}</strong>
-                      <span className="meta">{tr('cardPayMeta')}</span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`pay-method ${payMethod === 'bank' ? 'active' : ''}`}
-                    onClick={() => setPayMethod('bank')}
-                    aria-pressed={payMethod === 'bank'}
-                  >
-                    <span className="pay-method-icon" aria-hidden>
-                      <svg
-                        viewBox="0 0 24 24"
-                        width="22"
-                        height="22"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path d="M3 10l9-6 9 6" />
-                        <path d="M5 10v8h14v-8" />
-                        <path d="M3 18h18" />
-                      </svg>
-                    </span>
-                    <span>
-                      <strong>{tr('bankPay')}</strong>
-                      <span className="meta">{tr('bankPayMeta')}</span>
-                    </span>
-                  </button>
-                </div>
-
-                <form onSubmit={completePayment}>
-                  {payMethod === 'card' && (
-                    <div className="card-fields">
-                      <div className="form-row">
-                        <label htmlFor="cardName">{tr('nameOnCard')}</label>
-                        <input
-                          id="cardName"
-                          value={cardName}
-                          onChange={(e) => setCardName(e.target.value)}
-                        />
-                      </div>
-                      <div className="form-row">
-                        <label htmlFor="cardNumber">{tr('cardNumber')}</label>
-                        <input
-                          id="cardNumber"
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value)}
-                          inputMode="numeric"
-                        />
-                      </div>
-                      <div className="card-row">
-                        <div className="form-row">
-                          <label htmlFor="cardExpiry">{tr('expiry')}</label>
-                          <input
-                            id="cardExpiry"
-                            value={cardExpiry}
-                            onChange={(e) => setCardExpiry(e.target.value)}
-                          />
-                        </div>
-                        <div className="form-row">
-                          <label htmlFor="cardCvc">{tr('cvc')}</label>
-                          <input
-                            id="cardCvc"
-                            value={cardCvc}
-                            onChange={(e) => setCardCvc(e.target.value)}
-                            inputMode="numeric"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {payMethod === 'apple_pay' && (
-                    <p className="hint" style={{ marginBottom: '1rem' }}>
-                      {tr('appleHint')}
-                    </p>
-                  )}
-
-                  {payMethod === 'bank' && (
+                {!bankConfigured ? (
+                  <div className="bank-link-box" style={{ marginBottom: '1rem' }}>
+                    <strong>{tr('bankNotConfiguredResident')}</strong>
+                    <span className="meta">{tr('bankNotConfiguredResidentHelp')}</span>
+                  </div>
+                ) : (
+                  <>
+                    <h3
+                      className="section-label"
+                      style={{ borderTop: 'none', paddingTop: 0, marginTop: '0.5rem' }}
+                    >
+                      {tr('bankTransferDetails')}
+                    </h3>
                     <div className="bank-transfer-block">
+                      <div className="bank-link-box">
+                        <span className="meta">{tr('accountHolder')}</span>
+                        <strong>{bankSettings.accountName}</strong>
+                      </div>
+                      <div className="bank-link-box">
+                        <span className="meta">{tr('bankName')}</span>
+                        <strong>{bankSettings.bankName}</strong>
+                      </div>
+                      <div className="bank-link-box">
+                        <span className="meta">{tr('iban')}</span>
+                        <code>{bankSettings.iban}</code>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          style={{ marginTop: '0.35rem', justifySelf: 'start' }}
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(bankSettings.iban)
+                            showToast(tr('ibanCopied'))
+                          }}
+                        >
+                          {tr('ibanCopy')}
+                        </button>
+                      </div>
+                      {bankSettings.accountNumber && (
+                        <div className="bank-link-box">
+                          <span className="meta">{tr('accountNumber')}</span>
+                          <code>{bankSettings.accountNumber}</code>
+                        </div>
+                      )}
+                      {bankSettings.swift && (
+                        <div className="bank-link-box">
+                          <span className="meta">{tr('swift')}</span>
+                          <code>{bankSettings.swift}</code>
+                        </div>
+                      )}
+                      <div className="bank-link-box">
+                        <span className="meta">{tr('transferAmount')}</span>
+                        <strong>{formatMoney(checkoutInvoice.amount)}</strong>
+                      </div>
                       <div className="bank-link-box">
                         <strong>{tr('paymentRefLabel')}</strong>
                         <code>
-                          {buildPaymentRef(
-                            `${liveResident.buildingNumber}-${liveResident.apartment}`,
-                            checkoutInvoice.id,
-                          )}
+                          {buildPaymentRef(unitCodeLabel(liveResident), checkoutInvoice.id)}
                         </code>
                         <span className="meta">{tr('paymentRefHint')}</span>
                         <button
@@ -462,25 +376,15 @@ export default function ResidentPortal() {
                           style={{ marginTop: '0.35rem', justifySelf: 'start' }}
                           onClick={() => {
                             const ref = buildPaymentRef(
-                              `${liveResident.buildingNumber}-${liveResident.apartment}`,
+                              unitCodeLabel(liveResident),
                               checkoutInvoice.id,
                             )
                             void navigator.clipboard?.writeText(ref)
-                            showToast(tr('paymentRefCopy'))
+                            showToast(tr('paymentRefCopied'))
                           }}
                         >
                           {tr('paymentRefCopy')}
                         </button>
-                      </div>
-
-                      <div className="bank-link-box">
-                        <strong>{tr('paymentLink')}</strong>
-                        <code>pay.mlihrents.app/l/{checkoutInvoice.id.toLowerCase()}</code>
-                        <span className="meta">
-                          {lang === 'ar'
-                            ? `حوّل بالضبط ${checkoutInvoice.amount.toLocaleString()} درهم إلى ${adminStats.accountBank}`
-                            : `Transfer exactly AED ${checkoutInvoice.amount.toLocaleString()} to ${adminStats.accountBank}`}
-                        </span>
                       </div>
 
                       <p className="hint" style={{ margin: '0 0 0.75rem' }}>
@@ -534,20 +438,18 @@ export default function ResidentPortal() {
                         )}
                       </div>
                     </div>
-                  )}
+                  </>
+                )}
 
+                <form onSubmit={completePayment}>
                   <button
                     className="btn btn-accent btn-block"
                     type="submit"
-                    disabled={paying || (payMethod === 'bank' && !bankProof)}
+                    disabled={paying || !bankConfigured || !bankProof}
                   >
                     {paying
                       ? tr('processing')
-                      : payMethod === 'apple_pay'
-                        ? `${tr('payWithApple')} · ${formatMoney(checkoutInvoice.amount)}`
-                        : payMethod === 'card'
-                          ? `${tr('payByCard')} · ${formatMoney(checkoutInvoice.amount)}`
-                          : `${tr('payViaBank')} · ${formatMoney(checkoutInvoice.amount)}`}
+                      : `${tr('submitTransferProof')} · ${formatMoney(checkoutInvoice.amount)}`}
                   </button>
                 </form>
               </section>

@@ -25,7 +25,7 @@ export default function LandingPage() {
             {tr('signIn')}
           </Link>
           <Link className="btn btn-accent" to="/login">
-            {tr('openDemo')}
+            {tr('signIn')}
           </Link>
         </div>
       </header>
@@ -39,7 +39,7 @@ export default function LandingPage() {
           <p>{tr('heroSub')}</p>
           <div className="hero-cta">
             <Link className="btn btn-accent" to="/login">
-              {tr('tryResident')}
+              {tr('signIn')}
             </Link>
             <a
               className="btn btn-ghost"

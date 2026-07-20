@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import {
   adminStats,
   amountsMatch,
+  apartmentDisplayTitle,
+  apartmentSortKey,
   arrearsList,
   AvailableApartment,
   formatMoney,
@@ -12,12 +14,14 @@ import {
   RentSchedule,
   serviceDirectory,
   suggestInstallment,
+  unitCodeLabel,
 } from '../data'
 import { statusLabel } from '../i18n'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
+import { bankSummary, isBankConfigured } from '../config/paymentSettings'
 
 type Tab = 'info' | 'payments' | 'available' | 'chat'
 
@@ -74,13 +78,14 @@ export default function AdminPortal() {
     sendChat,
     saveRentPlan,
     saveResidentLoginPin,
-    registerNewResident,
     updateResidentInfo,
     resetHumanMode,
     availableListings,
     addAvailableListing,
     updateAvailableListing,
     removeAvailableListing,
+    bankSettings,
+    saveBankSettings,
   } = useData()
 
   const [tab, setTab] = useState<Tab>('info')
@@ -100,14 +105,14 @@ export default function AdminPortal() {
   const [editStatus, setEditStatus] = useState<'active' | 'arrears' | 'notice'>(
     selectedResident.status ?? 'active',
   )
-  const [regName, setRegName] = useState('')
-  const [regPhone, setRegPhone] = useState('')
-  const [regPin, setRegPin] = useState('')
-  const [regBuilding, setRegBuilding] = useState('B12')
-  const [regApt, setRegApt] = useState('')
   const [editingListingId, setEditingListingId] = useState<string | null>(null)
   const [listingForm, setListingForm] = useState(emptyListingForm)
   const [verifyDrafts, setVerifyDrafts] = useState<Record<string, string>>({})
+  const [bankDraft, setBankDraft] = useState(bankSettings)
+
+  useEffect(() => {
+    setBankDraft(bankSettings)
+  }, [bankSettings])
 
   useEffect(() => {
     setVerifyDrafts((prev) => {
@@ -196,14 +201,20 @@ export default function AdminPortal() {
 
   function renderResidentPicker(showFinancialMeta: boolean) {
     if (residentList.length === 0) {
-      return <p className="meta">{tr('noResidentsYet')}</p>
+      return <p className="meta">{tr('noApartmentsYet')}</p>
     }
+
+    const sorted = [...residentList].sort(
+      (a, b) => apartmentSortKey(a.apartment) - apartmentSortKey(b.apartment),
+    )
 
     return (
       <div className="list">
-        {residentList.map((r) => {
-          const unit = `${r.buildingNumber}-${r.apartment}`
+        {sorted.map((r) => {
+          const unit = unitCodeLabel(r)
           const active = r.id === selectedResidentId
+          const title = apartmentDisplayTitle(r, lang)
+          const vacant = !r.name.trim()
           return (
             <button
               key={r.id}
@@ -212,9 +223,10 @@ export default function AdminPortal() {
               onClick={() => setSelectedResidentId(r.id)}
             >
               <span>
-                <strong>{r.name}</strong>
+                <strong>{title}</strong>
                 <span className="meta">
-                  {unit} · {r.phone}
+                  {unit}
+                  {!vacant && r.phone ? ` · ${r.phone}` : vacant ? ` · ${tr('vacantUnit')}` : ''}
                   {showFinancialMeta && (
                     <>
                       <br />
@@ -340,9 +352,9 @@ export default function AdminPortal() {
 
             <div className="admin-split" style={{ marginTop: '1rem' }}>
               <section className="panel resident-directory">
-                <h2>{tr('residents')}</h2>
+                <h2>{tr('apartments')}</h2>
                 <p className="meta" style={{ marginTop: 0, marginBottom: '0.85rem' }}>
-                  {tr('selectResident')}
+                  {tr('selectApartment')}
                 </p>
                 {renderResidentPicker(false)}
               </section>
@@ -350,10 +362,13 @@ export default function AdminPortal() {
               <section className="panel resident-file">
                 <div className="file-head">
                   <div>
-                    <h2 style={{ marginBottom: '0.25rem' }}>{selectedResident.name}</h2>
+                    <h2 style={{ marginBottom: '0.25rem' }}>
+                      {apartmentDisplayTitle(selectedResident, lang)}
+                    </h2>
                     <p className="meta" style={{ margin: 0 }}>
-                      {selectedResident.building} · {selectedResident.buildingNumber}-
-                      {selectedResident.apartment} · {tr('floor')} {selectedResident.floor}
+                      {unitCodeLabel(selectedResident)}
+                      {selectedResident.building ? ` · ${selectedResident.building}` : ''}
+                      {selectedResident.floor ? ` · ${tr('floor')} ${selectedResident.floor}` : ''}
                     </p>
                   </div>
                   <button
@@ -364,8 +379,8 @@ export default function AdminPortal() {
                       setTab('chat')
                       showToast(
                         lang === 'ar'
-                          ? `تم فتح محادثة الدعم لـ ${selectedResident.name}`
-                          : `Opened support thread for ${selectedResident.name}`,
+                          ? `تم فتح محادثة الدعم لـ ${apartmentDisplayTitle(selectedResident, lang)}`
+                          : `Opened support thread for ${apartmentDisplayTitle(selectedResident, lang)}`,
                       )
                     }}
                   >
@@ -373,9 +388,9 @@ export default function AdminPortal() {
                   </button>
                 </div>
 
-                <h3 className="section-label">{tr('editResident')}</h3>
+                <h3 className="section-label">{tr('editApartmentInfo')}</h3>
                 <p className="meta" style={{ marginTop: 0 }}>
-                  {tr('editResidentHelp')}
+                  {tr('editApartmentHelp')}
                 </p>
                 <div className="rent-plan-editor">
                   <div className="form-row">
@@ -422,6 +437,7 @@ export default function AdminPortal() {
                       id="editApartment"
                       value={editApartment}
                       onChange={(e) => setEditApartment(e.target.value)}
+                      readOnly={selectedResident.id.startsWith('apt-')}
                     />
                   </div>
                   <div className="form-row">
@@ -506,7 +522,7 @@ export default function AdminPortal() {
                     })
                   }
                 >
-                  {tr('saveResidentInfo')}
+                  {tr('saveApartmentInfo')}
                 </button>
 
                 <h3 className="section-label">{tr('setLoginPin')}</h3>
@@ -542,82 +558,6 @@ export default function AdminPortal() {
                   onClick={() => saveResidentLoginPin(phoneDraft, pinDraft)}
                 >
                   {tr('saveLoginPin')}
-                </button>
-
-                <h3 className="section-label">{tr('registerResident')}</h3>
-                <p className="meta" style={{ marginTop: 0 }}>
-                  {tr('registerResidentHelp')}
-                </p>
-                <p className="meta">{tr('sampleResidentsNote')}</p>
-                <a
-                  className="btn btn-ghost btn-sm"
-                  href="/templates/residents-sample.csv"
-                  download="mlihrents-residents-sample.csv"
-                  style={{ marginBottom: '0.75rem', display: 'inline-flex', textDecoration: 'none' }}
-                >
-                  {tr('downloadResidentTemplate')}
-                </a>
-                <div className="rent-plan-editor">
-                  <div className="form-row">
-                    <label htmlFor="regName">{tr('fullName')}</label>
-                    <input id="regName" value={regName} onChange={(e) => setRegName(e.target.value)} />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="regPhone">{tr('mobileNumber')}</label>
-                    <input
-                      id="regPhone"
-                      value={regPhone}
-                      onChange={(e) => setRegPhone(e.target.value)}
-                      inputMode="tel"
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="regPin">{tr('loginPin')}</label>
-                    <input
-                      id="regPin"
-                      value={regPin}
-                      onChange={(e) => setRegPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                      inputMode="numeric"
-                      maxLength={4}
-                      placeholder="1234"
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="regBuilding">{tr('building')}</label>
-                    <input
-                      id="regBuilding"
-                      value={regBuilding}
-                      onChange={(e) => setRegBuilding(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="regApt">{tr('apartment')}</label>
-                    <input id="regApt" value={regApt} onChange={(e) => setRegApt(e.target.value)} />
-                  </div>
-                </div>
-                <button
-                  className="btn btn-accent btn-sm"
-                  type="button"
-                  style={{ marginTop: '0.75rem' }}
-                  onClick={() => {
-                    if (!regName.trim() || !regPhone.trim() || !regPin.trim()) {
-                      showToast(tr('phoneRequired'))
-                      return
-                    }
-                    registerNewResident({
-                      name: regName.trim(),
-                      phone: regPhone.trim(),
-                      pin: regPin,
-                      buildingNumber: regBuilding.trim() || 'B12',
-                      apartment: regApt.trim() || '000',
-                    })
-                    setRegName('')
-                    setRegPhone('')
-                    setRegPin('')
-                    setRegApt('')
-                  }}
-                >
-                  {tr('registerSave')}
                 </button>
 
                 <h3 className="section-label">{tr('maintenanceTickets')}</h3>
@@ -743,16 +683,76 @@ export default function AdminPortal() {
             <section className="panel" style={{ marginTop: '1rem' }}>
               <div className="file-head">
                 <div>
-                  <h2 style={{ marginBottom: '0.25rem' }}>{tr('merchantAccount')}</h2>
+                  <h2 style={{ marginBottom: '0.25rem' }}>{tr('bankAccountSettings')}</h2>
                   <p className="meta" style={{ margin: 0 }}>
-                    {adminStats.accountName} · {adminStats.accountBank}
+                    {isBankConfigured(bankSettings)
+                      ? bankSummary(bankSettings)
+                      : tr('bankNotConfiguredAdmin')}
                   </p>
                 </div>
-                <span className="badge badge-paid">{tr('liveLedger')}</span>
+                {isBankConfigured(bankSettings) && (
+                  <span className="badge badge-paid">{tr('bankConfigured')}</span>
+                )}
               </div>
+              <p className="meta" style={{ marginTop: '0.75rem' }}>
+                {tr('bankSettingsHelp')}
+              </p>
+              <div className="rent-plan-editor" style={{ marginTop: '0.75rem' }}>
+                <div className="form-row">
+                  <label htmlFor="bankAccountName">{tr('accountHolder')}</label>
+                  <input
+                    id="bankAccountName"
+                    value={bankDraft.accountName}
+                    onChange={(e) => setBankDraft((d) => ({ ...d, accountName: e.target.value }))}
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="bankName">{tr('bankName')}</label>
+                  <input
+                    id="bankName"
+                    value={bankDraft.bankName}
+                    onChange={(e) => setBankDraft((d) => ({ ...d, bankName: e.target.value }))}
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="bankIban">{tr('iban')}</label>
+                  <input
+                    id="bankIban"
+                    value={bankDraft.iban}
+                    onChange={(e) => setBankDraft((d) => ({ ...d, iban: e.target.value }))}
+                    placeholder="AE00 0000 0000 0000 0000 000"
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="bankAccountNumber">{tr('accountNumber')}</label>
+                  <input
+                    id="bankAccountNumber"
+                    value={bankDraft.accountNumber}
+                    onChange={(e) => setBankDraft((d) => ({ ...d, accountNumber: e.target.value }))}
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="bankSwift">{tr('swift')}</label>
+                  <input
+                    id="bankSwift"
+                    value={bankDraft.swift}
+                    onChange={(e) => setBankDraft((d) => ({ ...d, swift: e.target.value }))}
+                    placeholder="EBILAEAD"
+                  />
+                </div>
+              </div>
+              <button
+                className="btn btn-primary btn-sm"
+                type="button"
+                style={{ marginTop: '0.75rem' }}
+                onClick={() => saveBankSettings(bankDraft)}
+              >
+                {tr('saveBankSettings')}
+              </button>
+
               <p
                 style={{
-                  margin: '0.75rem 0 1rem',
+                  margin: '1.25rem 0 0.75rem',
                   fontFamily: 'var(--font-display)',
                   fontSize: '1.5rem',
                   fontWeight: 700,
@@ -913,9 +913,9 @@ export default function AdminPortal() {
 
             <div className="admin-split" style={{ marginTop: '1rem' }}>
               <section className="panel resident-directory">
-                <h2>{tr('residents')}</h2>
+                <h2>{tr('apartments')}</h2>
                 <p className="meta" style={{ marginTop: 0, marginBottom: '0.85rem' }}>
-                  {tr('selectResident')}
+                  {tr('selectApartment')}
                 </p>
                 {renderResidentPicker(true)}
                 <div style={{ marginTop: '1rem' }}>
@@ -947,10 +947,13 @@ export default function AdminPortal() {
               <section className="panel resident-file">
                 <div className="file-head">
                   <div>
-                    <h2 style={{ marginBottom: '0.25rem' }}>{selectedResident.name}</h2>
+                    <h2 style={{ marginBottom: '0.25rem' }}>
+                      {apartmentDisplayTitle(selectedResident, lang)}
+                    </h2>
                     <p className="meta" style={{ margin: 0 }}>
-                      {selectedResident.building} · {selectedResident.buildingNumber}-
-                      {selectedResident.apartment} · {tr('floor')} {selectedResident.floor}
+                      {unitCodeLabel(selectedResident)}
+                      {selectedResident.building ? ` · ${selectedResident.building}` : ''}
+                      {selectedResident.floor ? ` · ${tr('floor')} ${selectedResident.floor}` : ''}
                     </p>
                   </div>
                 </div>
@@ -1388,8 +1391,8 @@ export default function AdminPortal() {
                 <h1>{tr('supportInbox')}</h1>
                 <p>
                   {lang === 'ar'
-                    ? `عرض ${selectedResident.name} · ${selectedResident.buildingNumber}-${selectedResident.apartment} — السياق الكامل متاح.`
-                    : `Viewing ${selectedResident.name} · ${selectedResident.buildingNumber}-${selectedResident.apartment} — full resident context available.`}
+                    ? `عرض ${apartmentDisplayTitle(selectedResident, lang)} · ${unitCodeLabel(selectedResident)} — السياق الكامل متاح.`
+                    : `Viewing ${apartmentDisplayTitle(selectedResident, lang)} · ${unitCodeLabel(selectedResident)} — full apartment context available.`}
                 </p>
               </div>
               <button className="btn btn-ghost" type="button" onClick={() => setTab('info')}>
@@ -1399,18 +1402,16 @@ export default function AdminPortal() {
             <div className="panel" style={{ marginBottom: '1rem', padding: '0.9rem 1.1rem' }}>
               <div className="profile-grid">
                 <div className="profile-item">
-                  <span className="k">{tr('resident')}</span>
-                  <span className="v">{selectedResident.name}</span>
+                  <span className="k">{tr('tenant')}</span>
+                  <span className="v">{selectedResident.name.trim() || tr('vacantUnit')}</span>
                 </div>
                 <div className="profile-item">
                   <span className="k">{tr('phone')}</span>
-                  <span className="v">{selectedResident.phone}</span>
+                  <span className="v">{selectedResident.phone || '—'}</span>
                 </div>
                 <div className="profile-item">
                   <span className="k">{tr('unit')}</span>
-                  <span className="v">
-                    {selectedResident.buildingNumber}-{selectedResident.apartment}
-                  </span>
+                  <span className="v">{unitCodeLabel(selectedResident)}</span>
                 </div>
                 <div className="profile-item">
                   <span className="k">{tr('openTickets')}</span>
@@ -1433,7 +1434,7 @@ export default function AdminPortal() {
                   <span>
                     {humanMode
                       ? tr('liveChat')
-                      : `${tr('linkedTo')} ${selectedResident.buildingNumber}-${selectedResident.apartment}`}
+                      : `${tr('linkedTo')} ${unitCodeLabel(selectedResident)}`}
                   </span>
                 </div>
               </div>

@@ -19,13 +19,12 @@ import {
   Invoice,
   invoicesByResident,
   nowLabel,
-  PaymentMethod,
   PaymentRecord,
-  paymentMethodLabel,
   amountsMatch,
   buildPaymentRef,
   RentSchedule,
   Resident,
+  apartmentUnits,
   residents,
   seedPayments,
   suggestInstallment,
@@ -35,8 +34,13 @@ import {
 } from '../data'
 import { useAuth } from './AuthContext'
 import { useLang } from './LangContext'
+import {
+  BankAccountSettings,
+  emptyBankSettings,
+  isBankConfigured,
+} from '../config/paymentSettings'
 
-const OPS_KEY = 'mlihrents_ops_v2'
+const OPS_KEY = 'mlihrents_ops_v4'
 
 interface PersistedOps {
   residentList: Resident[]
@@ -46,6 +50,12 @@ interface PersistedOps {
   ticketMap: Record<string, Ticket[]>
   invoiceExtensions: Record<string, number>
   paidIds: string[]
+  bankSettings: BankAccountSettings
+}
+
+function ensureSeedApartments(list: Resident[]): Resident[] {
+  const byId = new Map(list.map((r) => [r.id, r]))
+  return apartmentUnits.map((seed) => byId.get(seed.id) ?? seed)
 }
 
 function readPersistedOps(): PersistedOps | null {
@@ -86,16 +96,6 @@ interface DataContextValue {
   ticketNote: string
   setTicketNote: (v: string) => void
   checkoutInvoiceId: string | null
-  payMethod: PaymentMethod
-  setPayMethod: (m: PaymentMethod) => void
-  cardName: string
-  setCardName: (v: string) => void
-  cardNumber: string
-  setCardNumber: (v: string) => void
-  cardExpiry: string
-  setCardExpiry: (v: string) => void
-  cardCvc: string
-  setCardCvc: (v: string) => void
   bankProof: { name: string; dataUrl: string } | null
   setBankProofFromFile: (file: File | null) => void
   clearBankProof: () => void
@@ -155,6 +155,9 @@ interface DataContextValue {
   addAvailableListing: (input: Omit<AvailableApartment, 'id'>) => void
   updateAvailableListing: (id: string, input: Partial<AvailableApartment>) => void
   removeAvailableListing: (id: string) => void
+  bankSettings: BankAccountSettings
+  bankConfigured: boolean
+  saveBankSettings: (settings: BankAccountSettings) => void
 }
 
 const DataContext = createContext<DataContextValue | null>(null)
@@ -165,12 +168,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const persisted = useMemo(() => readPersistedOps(), [])
 
   const [selectedResidentId, setSelectedResidentId] = useState(() => {
-    const list = persisted?.residentList ?? residents
+    const list = ensureSeedApartments(persisted?.residentList ?? residents)
     return list[0]?.id ?? ''
   })
-  const [residentList, setResidentList] = useState<Resident[]>(persisted?.residentList ?? residents)
+  const [residentList, setResidentList] = useState<Resident[]>(() =>
+    ensureSeedApartments(persisted?.residentList ?? residents),
+  )
   const [listings, setListings] = useState<AvailableApartment[]>(
     persisted?.listings ?? availableApartments,
+  )
+  const [bankSettings, setBankSettings] = useState<BankAccountSettings>(
+    persisted?.bankSettings ?? emptyBankSettings,
   )
   const [invoiceMap, setInvoiceMap] = useState<Record<string, Invoice[]>>(
     persisted?.invoiceMap ?? invoicesByResident,
@@ -192,11 +200,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     persisted?.invoiceExtensions ?? {},
   )
   const [checkoutInvoiceId, setCheckoutInvoiceId] = useState<string | null>(null)
-  const [payMethod, setPayMethod] = useState<PaymentMethod>('apple_pay')
-  const [cardName, setCardName] = useState('')
-  const [cardNumber, setCardNumber] = useState('4242 4242 4242 4242')
-  const [cardExpiry, setCardExpiry] = useState('12 / 28')
-  const [cardCvc, setCardCvc] = useState('123')
   const [bankProof, setBankProof] = useState<{ name: string; dataUrl: string } | null>(null)
   const [paying, setPaying] = useState(false)
   const [payments, setPayments] = useState<PaymentRecord[]>(persisted?.payments ?? seedPayments)
@@ -224,9 +227,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ticketMap,
         invoiceExtensions,
         paidIds,
+        bankSettings,
       }),
     )
-  }, [residentList, listings, payments, invoiceMap, ticketMap, invoiceExtensions, paidIds])
+  }, [residentList, listings, payments, invoiceMap, ticketMap, invoiceExtensions, paidIds, bankSettings])
 
   function showToast(msg: string) {
     setToast(msg)
@@ -455,7 +459,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           : r,
       ),
     )
-    showToast(tr('residentUpdated'))
+    showToast(tr('apartmentUpdated'))
   }
 
   function openCheckout(id: string) {
@@ -468,7 +472,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return
     }
     setCheckoutInvoiceId(id)
-    setPayMethod('apple_pay')
     setBankProof(null)
   }
 
@@ -516,9 +519,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     )
   }
 
+  function saveBankSettings(settings: BankAccountSettings) {
+    setBankSettings({
+      accountName: settings.accountName.trim(),
+      bankName: settings.bankName.trim(),
+      iban: settings.iban.replace(/\s/g, '').toUpperCase(),
+      accountNumber: settings.accountNumber.trim(),
+      swift: settings.swift.trim().toUpperCase(),
+    })
+    showToast(tr('bankSettingsSaved'))
+  }
+
   function completePayment(e: FormEvent) {
     e.preventDefault()
     if (!checkoutInvoice || !liveResident.id) return
+    if (!isBankConfigured(bankSettings)) {
+      showToast(tr('bankNotConfiguredResident'))
+      return
+    }
     if (invoiceHasPendingPayment(checkoutInvoice.id)) {
       showToast(
         lang === 'ar'
@@ -527,7 +545,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       )
       return
     }
-    if (payMethod === 'bank' && !bankProof) {
+    if (!bankProof) {
       showToast(
         lang === 'ar'
           ? 'أرفق لقطة شاشة للتحويل البنكي للمتابعة'
@@ -539,7 +557,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     window.setTimeout(() => {
       const unit = `${liveResident.buildingNumber}-${liveResident.apartment}`
       const paymentRef = buildPaymentRef(unit, checkoutInvoice.id)
-      const isBank = payMethod === 'bank'
       const record: PaymentRecord = {
         id: `PAY-${Date.now().toString().slice(-6)}`,
         invoiceId: checkoutInvoice.id,
@@ -547,44 +564,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
         residentName: liveResident.name,
         unit,
         amount: checkoutInvoice.amount,
-        method: payMethod,
-        status: isBank ? 'pending_review' : 'settled',
+        method: 'bank',
+        status: 'pending_review',
         paidAt: `${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · ${nowLabel()}`,
-        destination: adminStats.accountName,
-        paymentRef: isBank ? paymentRef : undefined,
-        ...(isBank && bankProof ? { transferProof: bankProof } : {}),
-        ...(!isBank ? { confirmedAmount: checkoutInvoice.amount } : {}),
+        destination: bankSettings.accountName,
+        paymentRef,
+        transferProof: bankProof,
       }
       setPayments((prev) => [record, ...prev])
-
-      if (!isBank) {
-        setPaidIds((prev) => [...prev, checkoutInvoice.id])
-        setInvoiceMap((prev) => ({
-          ...prev,
-          [liveResident.id]: (prev[liveResident.id] ?? []).map((inv) =>
-            inv.id === checkoutInvoice.id ? { ...inv, status: 'paid' as const } : inv,
-          ),
-        }))
-        setResidentList((prev) =>
-          prev.map((r) =>
-            r.id === liveResident.id
-              ? { ...r, amountPaid: Math.min(r.contractTotal, r.amountPaid + checkoutInvoice.amount) }
-              : r,
-          ),
-        )
-      }
 
       setPaying(false)
       setCheckoutInvoiceId(null)
       setBankProof(null)
       showToast(
-        isBank
-          ? lang === 'ar'
-            ? `تم إرسال الإثبات للمراجعة. استخدم المرجع ${paymentRef} في التحويل`
-            : `Proof submitted for review. Use reference ${paymentRef} on the transfer`
-          : lang === 'ar'
-            ? `تم الدفع عبر ${paymentMethodLabel(payMethod)} ← أُضيف لحساب الإدارة`
-            : `Paid via ${paymentMethodLabel(payMethod)} → credited to admin merchant account`,
+        lang === 'ar'
+          ? `تم إرسال الإثبات للمراجعة. استخدم المرجع ${paymentRef} في التحويل`
+          : `Proof submitted for review. Use reference ${paymentRef} on the transfer`,
       )
     }, 900)
   }
@@ -822,16 +817,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ticketNote,
         setTicketNote,
         checkoutInvoiceId,
-        payMethod,
-        setPayMethod,
-        cardName,
-        setCardName,
-        cardNumber,
-        setCardNumber,
-        cardExpiry,
-        setCardExpiry,
-        cardCvc,
-        setCardCvc,
         bankProof,
         setBankProofFromFile,
         clearBankProof,
@@ -871,6 +856,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         addAvailableListing,
         updateAvailableListing,
         removeAvailableListing,
+        bankSettings,
+        bankConfigured: isBankConfigured(bankSettings),
+        saveBankSettings,
       }}
     >
       {children}

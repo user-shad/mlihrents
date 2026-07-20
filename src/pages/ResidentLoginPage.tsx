@@ -10,7 +10,7 @@ export default function ResidentLoginPage() {
   const { tr } = useLang()
   const { toast, showToast } = useData()
   const navigate = useNavigate()
-  const [phone, setPhone] = useState('0545882666')
+  const [phone, setPhone] = useState('')
   const [pin, setPin] = useState('')
 
   if (session?.role === 'resident') {
@@ -77,7 +77,6 @@ export default function ResidentLoginPage() {
             {tr('signIn')}
           </button>
           <p className="hint">{tr('pinLoginHint')}</p>
-          <span className="demo-chip">{tr('demoResidentCreds')}</span>
           <p className="hint" style={{ marginTop: '0.75rem' }}>
             <Link to="/staff">{tr('staffPortalLink')}</Link>
           </p>
