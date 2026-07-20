@@ -237,7 +237,9 @@ interface DataContextValue {
   bankConfigured: boolean
   saveBankSettings: (settings: BankAccountSettings) => void
   serviceDirectory: ServiceContact[]
-  addServiceContact: (input: Omit<ServiceContact, 'id' | 'keywords' | 'hours'> & { keywords?: string[] }) => void
+  addServiceContact: (
+    input: Omit<ServiceContact, 'id' | 'keywords' | 'hours' | 'notes'> & { keywords?: string[] },
+  ) => void
   updateServiceContact: (
     id: string,
     input: Partial<Omit<ServiceContact, 'id'>>,
@@ -728,8 +730,8 @@ export function DataProvider({
     showToast(tr('bankSettingsSaved'))
   }
 
-  function keywordsFromContact(role: string, name: string, category: string, notes: string) {
-    const raw = `${role} ${name} ${category} ${notes}`.toLowerCase()
+  function keywordsFromContact(role: string, name: string, category: string) {
+    const raw = `${role} ${name} ${category}`.toLowerCase()
     const parts = raw
       .split(/[^a-z0-9\u0600-\u06ff]+/i)
       .map((p) => p.trim())
@@ -738,7 +740,7 @@ export function DataProvider({
   }
 
   function addServiceContact(
-    input: Omit<ServiceContact, 'id' | 'keywords' | 'hours'> & { keywords?: string[] },
+    input: Omit<ServiceContact, 'id' | 'keywords' | 'hours' | 'notes'> & { keywords?: string[] },
   ) {
     const role = input.role.trim()
     const name = input.name.trim()
@@ -748,7 +750,7 @@ export function DataProvider({
       return
     }
     const category = input.category.trim() || role
-    const notes = input.notes.trim()
+    const whatsapp = (input.whatsapp ?? '').trim() || phone
     setServiceDirectory((prev) => [
       ...prev,
       {
@@ -757,11 +759,12 @@ export function DataProvider({
         name: name || role,
         phone,
         category,
-        notes,
+        notes: '',
         hours: '',
+        whatsapp,
         keywords: input.keywords?.length
           ? input.keywords
-          : keywordsFromContact(role, name || role, category, notes),
+          : keywordsFromContact(role, name || role, category),
       },
     ])
     showToast(tr('serviceContactSaved'))
@@ -778,14 +781,14 @@ export function DataProvider({
           name: input.name?.trim() ?? c.name,
           phone: input.phone?.trim() ?? c.phone,
           category: input.category?.trim() ?? c.category,
-          notes: input.notes?.trim() ?? c.notes,
+          whatsapp: (input.whatsapp ?? c.whatsapp ?? '').trim() || (input.phone?.trim() ?? c.phone),
           hours: input.hours ?? c.hours,
+          notes: '',
         }
         return {
           ...next,
           keywords:
-            input.keywords ??
-            keywordsFromContact(next.role, next.name, next.category, next.notes),
+            input.keywords ?? keywordsFromContact(next.role, next.name, next.category),
         }
       }),
     )

@@ -16,6 +16,7 @@ import {
   RentSchedule,
   suggestInstallment,
   unitCodeLabel,
+  whatsappChatUrl,
 } from '../data'
 import { statusLabel } from '../i18n'
 import { useAuth } from '../context/AuthContext'
@@ -125,7 +126,7 @@ export default function AdminPortal() {
     name: '',
     phone: '',
     category: '',
-    notes: '',
+    whatsapp: '',
   }
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
   const [serviceForm, setServiceForm] = useState(emptyServiceForm)
@@ -434,19 +435,27 @@ export default function AdminPortal() {
                 {tr('serviceDirectoryLead')}
               </p>
               <div className="list">
-                {serviceDirectory.map((c) => (
+                {serviceDirectory.map((c) => {
+                  const waNumber = c.whatsapp?.trim() || c.phone
+                  const waUrl = whatsappChatUrl(waNumber)
+                  return (
                   <div className="list-row" key={c.id} style={{ alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
                       <strong>
                         {c.role} · {c.name}
                       </strong>
-                      <div className="meta">
-                        {c.category}
-                        {c.notes ? ` · ${c.notes}` : ''}
+                      <div className="meta">{c.category}</div>
+                      <div className="meta" style={{ marginTop: '0.25rem' }}>
+                        <a href={`tel:${c.phone.replace(/\s/g, '')}`}>{c.phone}</a>
+                        {waUrl && (
+                          <>
+                            {' · '}
+                            <a href={waUrl} target="_blank" rel="noreferrer">
+                              {tr('whatsappChat')}
+                            </a>
+                          </>
+                        )}
                       </div>
-                      <a className="meta" href={`tel:${c.phone.replace(/\s/g, '')}`}>
-                        {c.phone}
-                      </a>
                     </div>
                     <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                       <button
@@ -459,7 +468,7 @@ export default function AdminPortal() {
                             name: c.name,
                             phone: c.phone,
                             category: c.category,
-                            notes: c.notes,
+                            whatsapp: c.whatsapp?.trim() || c.phone,
                           })
                         }}
                       >
@@ -481,7 +490,8 @@ export default function AdminPortal() {
                       </button>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
                 {serviceDirectory.length === 0 && (
                   <p className="meta">{tr('serviceContactEmpty')}</p>
                 )}
@@ -528,13 +538,18 @@ export default function AdminPortal() {
                   />
                 </div>
                 <div className="form-row">
-                  <label htmlFor="svcNotes">{tr('serviceNotes')}</label>
+                  <label htmlFor="svcWhatsapp">{tr('serviceWhatsapp')}</label>
                   <input
-                    id="svcNotes"
-                    value={serviceForm.notes}
-                    onChange={(e) => setServiceForm((f) => ({ ...f, notes: e.target.value }))}
+                    id="svcWhatsapp"
+                    value={serviceForm.whatsapp}
+                    onChange={(e) => setServiceForm((f) => ({ ...f, whatsapp: e.target.value }))}
+                    inputMode="tel"
+                    placeholder="+971 50 000 0000"
                   />
                 </div>
+                <p className="meta" style={{ margin: 0 }}>
+                  {tr('serviceWhatsappHelp')}
+                </p>
               </div>
               <button
                 className="btn btn-primary btn-sm"

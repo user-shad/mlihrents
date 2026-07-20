@@ -9,6 +9,7 @@ import {
   remainingBalance,
   rentScheduleLabel,
   unitCodeLabel,
+  whatsappChatUrl,
 } from '../data'
 import { siteLegal } from '../legal/siteLegal'
 import { useAuth } from '../context/AuthContext'
@@ -825,19 +826,33 @@ export default function ResidentPortal() {
                 {tr('serviceNumbersLead')}
               </p>
               <div className="list">
-                {serviceDirectory.map((c) => (
+                {serviceDirectory.map((c) => {
+                  const waNumber = c.whatsapp?.trim() || c.phone
+                  const waUrl = whatsappChatUrl(waNumber)
+                  return (
                   <div className="list-row" key={c.id}>
                     <div>
                       <strong>{c.role}</strong>
-                      <div className="meta">
-                        {c.name}
-                      </div>
+                      <div className="meta">{c.name}</div>
                     </div>
-                    <a className="btn btn-primary btn-sm" href={`tel:${c.phone.replace(/\s/g, '')}`}>
-                      {c.phone}
-                    </a>
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      {waUrl && (
+                        <a
+                          className="btn btn-primary btn-sm"
+                          href={waUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {tr('whatsappChat')}
+                        </a>
+                      )}
+                      <a className="btn btn-ghost btn-sm" href={`tel:${c.phone.replace(/\s/g, '')}`}>
+                        {c.phone}
+                      </a>
+                    </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </section>
           </>

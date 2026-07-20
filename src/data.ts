@@ -68,6 +68,14 @@ export function normalizePhone(phone: string) {
   return digits
 }
 
+/** Open WhatsApp chat for a UAE/local phone number. */
+export function whatsappChatUrl(phone: string) {
+  let digits = phone.replace(/\D/g, '')
+  if (!digits) return ''
+  if (digits.startsWith('0')) digits = `971${digits.slice(1)}`
+  return `https://wa.me/${digits}`
+}
+
 export function isValidPin(pin: string) {
   return /^\d{4}$/.test(pin)
 }
@@ -544,7 +552,10 @@ export interface ServiceContact {
   category: string
   keywords: string[]
   hours: string
-  notes: string
+  /** @deprecated kept for older synced data */
+  notes?: string
+  /** WhatsApp number; if empty, phone is used for wa.me links */
+  whatsapp?: string
 }
 
 export interface AvailableApartment {
@@ -727,7 +738,7 @@ export const defaultServiceDirectory: ServiceContact[] = [
       'مكيّف',
     ],
     hours: '8 AM – 8 PM',
-    notes: 'Building-approved AC contractor',
+    whatsapp: '+971 50 000 0001',
   },
   {
     id: 'c-plumb',
@@ -751,7 +762,7 @@ export const defaultServiceDirectory: ServiceContact[] = [
       'مجاري',
     ],
     hours: '7 AM – 9 PM',
-    notes: 'For leaks and blocked drains',
+    whatsapp: '+971 50 000 0002',
   },
   {
     id: 'c-elec',
@@ -772,7 +783,7 @@ export const defaultServiceDirectory: ServiceContact[] = [
       'فيش',
     ],
     hours: '8 AM – 6 PM',
-    notes: 'For power and lighting issues',
+    whatsapp: '+971 50 000 0003',
   },
   {
     id: 'c-security',
@@ -793,7 +804,7 @@ export const defaultServiceDirectory: ServiceContact[] = [
       'بوابة',
     ],
     hours: '24 / 7',
-    notes: 'Lobby desk — lockouts, access, emergencies',
+    whatsapp: '+971 50 000 0004',
   },
   {
     id: 'c-manager',
@@ -803,7 +814,7 @@ export const defaultServiceDirectory: ServiceContact[] = [
     category: 'Management',
     keywords: ['manager', 'lease', 'complaint', 'management', 'مدير', 'عقد', 'شكوى'],
     hours: '9 AM – 6 PM · Sun–Thu',
-    notes: 'Lease, complaints, and escalations',
+    whatsapp: '+971 50 000 0005',
   },
 ]
 
