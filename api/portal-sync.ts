@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { get, put } from '@vercel/blob'
 
 const SYNC_ID = 'main'
-const BLOB_PATH = 'mlihrents/portal-sync.json'
+const BLOB_PATH = 'mlaihrent/portal-sync.json'
 
 type SyncPayload = {
   accounts: unknown

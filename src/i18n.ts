@@ -4,7 +4,7 @@ type Dict = Record<string, string>
 
 const en: Dict = {
   signIn: 'Sign in',
-  heroTitle: 'MLIHrents',
+  heroTitle: 'MLIHrent',
   heroSub:
     'Professional property management for Buildings A–D. Residents pay rent, report issues, and get support — all in one secure portal.',
   featurePay: 'Secure rent collection',
@@ -337,7 +337,7 @@ const en: Dict = {
 
 const ar: Dict = {
   signIn: 'تسجيل الدخول',
-  heroTitle: 'MLIHrents',
+  heroTitle: 'MLIHrent',
   heroSub:
     'إدارة احترافية للمباني A–D. يدفع السكان الإيجار، يبلّغون عن الأعطال، ويتواصلون مع الإدارة — في بوابة واحدة آمنة.',
   featurePay: 'تحصيل إيجار آمن',

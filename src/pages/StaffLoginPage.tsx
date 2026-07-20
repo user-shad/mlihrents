@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
 import { BrandMark, LanguageSwitch } from '../components/ui'
+import { siteLegal } from '../legal/siteLegal'
 import {
   clearSavedLogin,
   readSavedLogin,
@@ -57,7 +58,7 @@ export default function StaffLoginPage() {
         >
           <Link className="brand" to="/" style={{ textDecoration: 'none' }}>
             <BrandMark />
-            MLIHrents
+            {siteLegal.brandName}
           </Link>
           <LanguageSwitch />
         </div>

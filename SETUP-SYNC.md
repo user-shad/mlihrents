@@ -8,7 +8,7 @@ The app needs **cloud storage** on Vercel. Without it, each browser keeps its ow
 2. Go to **Storage** tab → **Create Database** → **Blob**
 3. Name it (e.g. `mlihrents-sync`) → **Create** → **Connect** to your project
 4. **Deployments** → latest deploy → **⋯** → **Redeploy**
-5. Open **www.mlihrents.com/staff** → sidebar should say **Cloud sync active**
+5. Open **www.mlaihrent.com/staff** → sidebar should say **Cloud sync active**
 
 No API keys to copy — Vercel adds `BLOB_READ_WRITE_TOKEN` automatically.
 

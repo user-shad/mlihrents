@@ -22,6 +22,7 @@ import { statusLabel } from '../i18n'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
+import { siteLegal } from '../legal/siteLegal'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
 import { StaffPaymentAssistant } from '../components/StaffPaymentAssistant'
 import { bankSummary, isBankConfigured } from '../config/paymentSettings'
@@ -285,7 +286,7 @@ export default function AdminPortal() {
       <aside className="sidebar">
         <div className="brand" style={{ color: '#f7faf8' }}>
           <BrandMark />
-          MLIHrents
+          {siteLegal.brandName}
         </div>
 
         <LanguageSwitch />

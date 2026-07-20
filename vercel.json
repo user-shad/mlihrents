@@ -3,13 +3,25 @@
     {
       "source": "/:path*",
       "has": [{ "type": "host", "value": "mlihrents.vercel.app" }],
-      "destination": "https://www.mlihrents.com/:path*",
+      "destination": "https://www.mlaihrent.com/:path*",
       "permanent": true
     },
     {
       "source": "/:path*",
       "has": [{ "type": "host", "value": "mlihrents.com" }],
-      "destination": "https://www.mlihrents.com/:path*",
+      "destination": "https://www.mlaihrent.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.mlihrents.com" }],
+      "destination": "https://www.mlaihrent.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "mlaihrent.com" }],
+      "destination": "https://www.mlaihrent.com/:path*",
       "permanent": true
     }
   ],

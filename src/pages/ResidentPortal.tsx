@@ -92,7 +92,7 @@ export default function ResidentPortal() {
       <aside className="sidebar">
         <div className="brand" style={{ color: '#f7faf8' }}>
           <BrandMark />
-          MLIHrents
+          {siteLegal.brandName}
         </div>
 
         <LanguageSwitch />

@@ -15,7 +15,7 @@ export default function LandingPage() {
       <header className="topnav">
         <Link className="brand" to="/">
           <BrandMark />
-          MLIHrents
+          {siteLegal.brandName}
         </Link>
         <div className="nav-actions">
           <a className="nav-text-link" href="#available">
@@ -35,7 +35,7 @@ export default function LandingPage() {
         <div className="hero-visual" aria-hidden />
         <div className="hero-content">
           <h1 className="hero-brand">
-            MLIH<span>rents</span>
+            MLIH<span>rent</span>
           </h1>
           <p>{tr('heroSub')}</p>
           <div className="hero-cta">

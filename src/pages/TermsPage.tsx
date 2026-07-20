@@ -33,7 +33,7 @@ export default function TermsPage() {
       <p>
         {ar
           ? 'توفر مليهرنتس أدوات رقمية لإدارة علاقات السكان والإيجار والصيانة والتواصل. المنصة ليست مكتباً عقارياً مرخّصاً للوساطة إلا إذا حصلت الشركة على الترخيص اللازم في الإمارة المعنية (مثل دائرة الأراضي والأملاك / مؤسسة التنظيم العقاري في دبي). عرض الشقق المتاحة هو لأغراض إعلامية وقد يتطلب استكمال التعاقد خارج المنصة وفق الأنظمة المحلية.'
-          : 'MLIHrents provides digital tools for resident relations, rent, maintenance, and communication. The platform is not a licensed real-estate brokerage unless the company holds the required emirate licence (e.g. Dubai Land Department / RERA where applicable). Available apartment listings are informational and contracting may need to be completed in line with local regulations.'}
+          : 'MLIHrent provides digital tools for resident relations, rent, maintenance, and communication. The platform is not a licensed real-estate brokerage unless the company holds the required emirate licence (e.g. Dubai Land Department / RERA where applicable). Available apartment listings are informational and contracting may need to be completed in line with local regulations.'}
       </p>
 
       <h2>{ar ? '3. الحسابات وكلمات المرور' : '3. Accounts and passwords'}</h2>

@@ -1,6 +1,6 @@
 # Supabase setup (sync phone + laptop)
 
-MLIHrents stores building data in **Supabase** so admin changes on one device appear on all others.
+MLIHrent stores building data in **Supabase** so admin changes on one device appear on all others.
 
 ## 1. Create a free Supabase project
 

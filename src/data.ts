@@ -1063,5 +1063,5 @@ export function welcomeMessage(lang: 'en' | 'ar', firstName: string, apartment: 
   const apt = apartment || '—'
   return lang === 'ar'
     ? `مرحباً ${name} — أنا مليح، مساعد مليهرنتس لشقة ${apt}. اسأل عن الإيجار أو الصيانة أو الزوار، أو قل «أريد التحدث لشخص».`
-    : `Hi ${name} — I’m MLIH, your MLIHrents assistant for Apt ${apt}. Ask about rent, repairs, visitors, or say “talk to a person”.`
+    : `Hi ${name} — I’m MLIH, your MLIHrent assistant for Apt ${apt}. Ask about rent, repairs, visitors, or say “talk to a person”.`
 }

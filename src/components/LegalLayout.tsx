@@ -18,7 +18,7 @@ export default function LegalLayout({
       <header className="topnav">
         <Link className="brand" to="/">
           <BrandMark />
-          MLIHrents
+          {siteLegal.brandName}
         </Link>
         <div className="nav-actions">
           <LanguageSwitch />

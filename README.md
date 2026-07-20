@@ -1,4 +1,4 @@
-# MLIHrents
+# MLIHrent
 
 Residential portal for rent, maintenance, AI support, and building operations.
 
@@ -23,15 +23,15 @@ Fastest free option:
 
 ## Custom domain (live)
 
-Production site: **[https://www.mlihrents.com](https://www.mlihrents.com)**
+Production site: **[https://www.mlaihrent.com](https://www.mlaihrent.com)**
 
 | Who | URL |
 |-----|-----|
-| Public / listings | `https://www.mlihrents.com/` |
-| Residents | `https://www.mlihrents.com/login` |
-| Staff | `https://www.mlihrents.com/staff` |
+| Public / listings | `https://www.mlaihrent.com/` |
+| Residents | `https://www.mlaihrent.com/login` |
+| Staff | `https://www.mlaihrent.com/staff` |
 
-`vercel.json` redirects `mlihrents.com` (non-www) and `mlihrents.vercel.app` to `www.mlihrents.com`.
+`vercel.json` redirects old domains and `mlaihrent.com` (non-www) to `www.mlaihrent.com`.
 
 **After domain connect:** change default staff passwords in **Admin → sidebar**, add tenants under **Info**, and set your trade licence in `src/legal/siteLegal.ts`.
 
