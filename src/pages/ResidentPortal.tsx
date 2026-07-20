@@ -542,9 +542,9 @@ export default function ResidentPortal() {
                 <section className="panel" style={{ marginTop: '1rem' }}>
                   <h2>{tr('paymentHistory')}</h2>
                   <div className="list">
-                    {payments
-                      .filter((p) => p.residentId === liveResident.id)
-                      .map((p) => (
+                {payments
+                  .filter((p) => p.residentId === liveResident.id && p.status !== 'deleted')
+                  .map((p) => (
                         <div className="list-row" key={p.id}>
                           <div>
                             <strong>{formatMoney(p.confirmedAmount ?? p.amount)}</strong>
@@ -560,7 +560,7 @@ export default function ResidentPortal() {
                                 </>
                               ) : null}
                             </div>
-                            {p.transferProof && (
+                            {p.transferProof?.dataUrl && (
                               <a
                                 className="proof-thumb"
                                 href={p.transferProof.dataUrl}
@@ -575,7 +575,9 @@ export default function ResidentPortal() {
                           <Badge lang={lang} status={p.status === 'settled' ? 'paid' : p.status} />
                         </div>
                       ))}
-                    {payments.filter((p) => p.residentId === liveResident.id).length === 0 && (
+                    {payments.filter(
+                      (p) => p.residentId === liveResident.id && p.status !== 'deleted',
+                    ).length === 0 && (
                       <p className="meta">{tr('noPaymentsYet')}</p>
                     )}
                   </div>

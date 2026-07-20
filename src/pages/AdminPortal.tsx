@@ -1200,7 +1200,7 @@ export default function AdminPortal() {
               </p>
               <div className="list">
                 {payments
-                  .filter((p) => p.status !== 'pending_review')
+                  .filter((p) => p.status !== 'pending_review' && p.status !== 'deleted')
                   .map((p) => (
                   <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
@@ -1236,7 +1236,8 @@ export default function AdminPortal() {
                     <Badge lang={lang} status={p.status === 'settled' ? 'paid' : p.status} />
                   </div>
                 ))}
-                {payments.filter((p) => p.status !== 'pending_review').length === 0 && (
+                {payments.filter((p) => p.status !== 'pending_review' && p.status !== 'deleted')
+                  .length === 0 && (
                   <p className="meta">{tr('noPaymentsYet')}</p>
                 )}
               </div>

@@ -119,7 +119,7 @@ export interface ChatMessage {
 
 export type PaymentMethod = 'card' | 'apple_pay' | 'bank'
 
-export type PaymentStatus = 'pending_review' | 'settled' | 'rejected' | 'partial'
+export type PaymentStatus = 'pending_review' | 'settled' | 'rejected' | 'partial' | 'deleted'
 
 export interface PaymentRecord {
   id: string
@@ -225,7 +225,11 @@ export function lookupPaymentRef(
 ): PaymentLookupResult {
   const key = normalizeRef(ref)
   const allPaymentsForRef = payments
-    .filter((p) => normalizeRef(p.paymentRef ?? '') === key || normalizeRef(p.invoiceId) === key)
+    .filter(
+      (p) =>
+        p.status !== 'deleted' &&
+        (normalizeRef(p.paymentRef ?? '') === key || normalizeRef(p.invoiceId) === key),
+    )
     .sort((a, b) => b.id.localeCompare(a.id))
 
   let invoice: Invoice | undefined
@@ -246,7 +250,7 @@ export function lookupPaymentRef(
 
   let match: PaymentLookupMatch
   if (payment) {
-    match = payment.status
+    match = payment.status as PaymentLookupMatch
   } else if (invoice) {
     match = paidIds.includes(invoice.id) ? 'invoice_paid' : 'invoice_unpaid'
   } else {

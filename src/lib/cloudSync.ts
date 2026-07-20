@@ -512,10 +512,14 @@ function mergePaymentLists(
   for (const p of local ?? []) {
     const existing = map.get(p.id)
     if (!existing) {
-      map.set(p.id, p)
+      // Don't resurrect payments the other side soft-deleted; only keep in-flight pending
+      if (p.status === 'pending_review') map.set(p.id, p)
       continue
     }
-    // Prefer version that still has a screenshot, or pending over stale settled
+    if (existing.status === 'deleted' || p.status === 'deleted') {
+      map.set(p.id, existing.status === 'deleted' ? existing : p)
+      continue
+    }
     const preferLocal =
       (p.transferProof?.dataUrl && !existing.transferProof?.dataUrl) ||
       (p.status === 'pending_review' && existing.status !== 'pending_review')

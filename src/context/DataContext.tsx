@@ -476,7 +476,9 @@ export function DataProvider({
 
   const adminResidentTickets = ticketMap[selectedResidentId] ?? []
 
-  const adminResidentPayments = payments.filter((p) => p.residentId === selectedResidentId)
+  const adminResidentPayments = payments.filter(
+    (p) => p.residentId === selectedResidentId && p.status !== 'deleted',
+  )
 
   useEffect(() => {
     setDueDayDraft(String(selectedResident.rentDueDay))
@@ -1026,14 +1028,29 @@ export function DataProvider({
 
   function deletePayment(paymentId: string) {
     const payment = payments.find((p) => p.id === paymentId)
-    if (!payment) return
+    if (!payment || payment.status === 'deleted') return
 
     const credited =
       payment.status === 'settled' || payment.status === 'partial'
         ? payment.confirmedAmount ?? payment.amount
         : 0
 
-    setPayments((prev) => prev.filter((p) => p.id !== paymentId))
+    // Soft-delete so other devices (resident) drop it on sync instead of resurrecting
+    setPayments((prev) =>
+      prev.map((p) =>
+        p.id === paymentId
+          ? {
+              ...p,
+              status: 'deleted' as const,
+              reviewNote: lang === 'ar' ? 'حُذف بواسطة الإدارة' : 'Deleted by admin',
+              reviewedAt: `${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · ${nowLabel()}`,
+              transferProof: p.transferProof
+                ? { name: p.transferProof.name, dataUrl: '' }
+                : undefined,
+            }
+          : p,
+      ),
+    )
 
     if (credited > 0) {
       setResidentList((prev) =>
