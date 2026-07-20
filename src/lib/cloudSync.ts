@@ -95,12 +95,16 @@ export async function fetchSyncHealth(): Promise<SyncStatus['backends'] | null> 
     }>(res)
     if (!data?.backends) return null
     lastBackendHealth = data.backends
-    if (!data.configured) {
+    if (data.configured) {
+      syncMode = 'cloud'
+      lastSyncError = null
+    } else {
       const active = Object.entries(data.backends)
         .filter(([, v]) => v)
         .map(([k]) => k)
       if (active.length === 0) {
-        lastSyncError = 'Blob created but not linked — open store → Projects → Connect mlihrents → Redeploy'
+        lastSyncError =
+          'Blob created but not linked — open store → Projects → Connect mlihrents → Redeploy'
       }
     }
     return data.backends

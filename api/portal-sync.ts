@@ -141,22 +141,39 @@ async function saveToPostgres(payload: SyncPayload) {
 }
 
 async function loadFromBlob(): Promise<SyncPayload | null> {
-  try {
-    const result = await get(BLOB_PATH, { access: 'private', useCache: false })
-    if (!result || result.statusCode === 404 || !result.stream) return null
-    const text = await new Response(result.stream).text()
-    return JSON.parse(text) as SyncPayload
-  } catch {
-    return null
+  // Store may be public or private — try both
+  for (const access of ['public', 'private'] as const) {
+    try {
+      const result = await get(BLOB_PATH, { access, useCache: false })
+      if (!result || result.statusCode === 404 || !result.stream) continue
+      const text = await new Response(result.stream).text()
+      if (!text) continue
+      return JSON.parse(text) as SyncPayload
+    } catch {
+      /* try next access mode */
+    }
   }
+  return null
 }
 
 async function saveToBlob(payload: SyncPayload) {
-  await put(BLOB_PATH, JSON.stringify(payload), {
-    access: 'private',
-    allowOverwrite: true,
-    contentType: 'application/json',
-  })
+  const body = JSON.stringify(payload)
+  const errors: string[] = []
+  // Prefer public first — many Vercel Blob stores are created as public
+  for (const access of ['public', 'private'] as const) {
+    try {
+      await put(BLOB_PATH, body, {
+        access,
+        allowOverwrite: true,
+        contentType: 'application/json',
+        addRandomSuffix: false,
+      })
+      return
+    } catch (err) {
+      errors.push(`${access}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  throw new Error(`blob_save_failed (${errors.join('; ')})`)
 }
 
 async function loadFromSupabase(): Promise<SyncPayload | null> {
