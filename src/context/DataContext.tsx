@@ -1015,7 +1015,7 @@ export function DataProvider({
       method: 'bank',
       status: 'settled',
       paidAt,
-      destination: bankSettings.accountName || adminStats.accountName,
+      destination: bankSettings.accountName || 'Building account',
       paymentRef: buildPaymentRef(unit, invoiceId),
       confirmedAmount: invoice.amount,
       reviewedAt: paidAt,
