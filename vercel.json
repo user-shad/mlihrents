@@ -2,27 +2,32 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
+  "functions": {
+    "api/**/*.ts": {
+      "maxDuration": 15
+    }
+  },
   "redirects": [
     {
-      "source": "/:path*",
+      "source": "/:path((?!api/).*)",
       "has": [{ "type": "host", "value": "mlihrents.vercel.app" }],
       "destination": "https://www.mlaihrent.com/:path*",
       "permanent": true
     },
     {
-      "source": "/:path*",
+      "source": "/:path((?!api/).*)",
       "has": [{ "type": "host", "value": "mlihrents.com" }],
       "destination": "https://www.mlaihrent.com/:path*",
       "permanent": true
     },
     {
-      "source": "/:path*",
+      "source": "/:path((?!api/).*)",
       "has": [{ "type": "host", "value": "www.mlihrents.com" }],
       "destination": "https://www.mlaihrent.com/:path*",
       "permanent": true
     },
     {
-      "source": "/:path*",
+      "source": "/:path((?!api/).*)",
       "has": [{ "type": "host", "value": "mlaihrent.com" }],
       "destination": "https://www.mlaihrent.com/:path*",
       "permanent": true

@@ -48,6 +48,7 @@ export interface SyncStatus {
   updatedAt: string | null
   hint: string | null
   lastError: string | null
+  backends: { blob: boolean; redis: boolean; postgres: boolean; supabase: boolean } | null
 }
 
 type AccountsListener = (accounts: AccountRecord[]) => void
@@ -73,6 +74,40 @@ let realtimeStarted = false
 let syncMode: SyncMode = 'local'
 let lastSyncError: string | null = null
 let lastCloudUpdatedAt: string | null = null
+let lastBackendHealth: SyncStatus['backends'] = null
+
+async function readJsonResponse<T>(res: Response): Promise<T | null> {
+  const ct = res.headers.get('content-type') ?? ''
+  if (!ct.includes('application/json')) {
+    lastSyncError = 'Sync API not deployed — wait for Vercel redeploy'
+    return null
+  }
+  return (await res.json()) as T
+}
+
+export async function fetchSyncHealth(): Promise<SyncStatus['backends'] | null> {
+  try {
+    const res = await fetch('/api/sync-health', { cache: 'no-store' })
+    if (!res.ok) return null
+    const data = await readJsonResponse<{
+      configured?: boolean
+      backends?: SyncStatus['backends']
+    }>(res)
+    if (!data?.backends) return null
+    lastBackendHealth = data.backends
+    if (!data.configured) {
+      const active = Object.entries(data.backends)
+        .filter(([, v]) => v)
+        .map(([k]) => k)
+      if (active.length === 0) {
+        lastSyncError = 'No storage connected — Vercel → Storage → Blob → Connect → Redeploy'
+      }
+    }
+    return data.backends
+  } catch {
+    return null
+  }
+}
 
 export function getSyncMode() {
   return syncMode
@@ -86,9 +121,10 @@ export function getSyncStatus(): SyncStatus {
     updatedAt: lastCloudUpdatedAt,
     hint:
       syncMode === 'local'
-        ? 'Vercel → Storage → Blob or Redis → Connect → Redeploy'
+        ? 'Vercel → Storage → Blob → Connect → Redeploy'
         : null,
     lastError: lastSyncError,
+    backends: lastBackendHealth,
   }
 }
 
@@ -222,17 +258,19 @@ function parseCloudResponse(data: {
 
 async function loadCloudRowViaApi(): Promise<CloudRow | null> {
   try {
+    void fetchSyncHealth()
     const res = await fetch('/api/portal-sync', { cache: 'no-store' })
     if (res.status === 503) {
-      const data = (await res.json()) as { hint?: string }
-      lastSyncError = data.hint ?? 'Cloud storage not connected on Vercel'
+      const data = await readJsonResponse<{ hint?: string }>(res)
+      lastSyncError = data?.hint ?? 'Cloud storage not connected on Vercel'
       return null
     }
     if (!res.ok) {
       lastSyncError = `Sync API error (${res.status})`
       return null
     }
-    const data = (await res.json()) as Parameters<typeof parseCloudResponse>[0]
+    const data = await readJsonResponse<Parameters<typeof parseCloudResponse>[0]>(res)
+    if (!data) return null
     return parseCloudResponse(data)
   } catch {
     lastSyncError = 'Could not reach sync API'
@@ -505,6 +543,7 @@ export function queueCloudOps(ops: PortalOps) {
 }
 
 export async function forceSyncNow(): Promise<SyncStatus> {
+  await fetchSyncHealth()
   const localAccounts = readLocalAccounts() ?? []
   const localOps = readLocalOps() ?? createDefaultOps()
   touchLocalSyncMeta()

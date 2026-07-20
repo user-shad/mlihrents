@@ -64,9 +64,9 @@ function isConfigured() {
 
 function configuredBackends(): StorageKind[] {
   const list: StorageKind[] = []
+  if (hasBlobStorage()) list.push('blob')
   if (hasRedis()) list.push('redis')
   if (hasPostgres()) list.push('postgres')
-  if (hasBlobStorage()) list.push('blob')
   if (getSupabase()) list.push('supabase')
   return list
 }
@@ -119,13 +119,14 @@ async function loadFromPostgres(): Promise<SyncPayload | null> {
 async function saveToPostgres(payload: SyncPayload) {
   if (!hasPostgres()) throw new Error('postgres_unavailable')
   await ensurePostgresTable()
+  const updatedAt = payload.updated_at ?? new Date().toISOString()
   await sql`
     INSERT INTO portal_sync (id, accounts, ops, updated_at)
     VALUES (
       ${SYNC_ID},
-      ${JSON.stringify(payload.accounts)}::jsonb,
-      ${JSON.stringify(payload.ops)}::jsonb,
-      ${payload.updated_at ?? new Date().toISOString()}
+      ${payload.accounts as never},
+      ${payload.ops as never},
+      ${updatedAt}
     )
     ON CONFLICT (id) DO UPDATE SET
       accounts = EXCLUDED.accounts,

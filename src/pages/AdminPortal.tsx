@@ -26,7 +26,7 @@ import { siteLegal } from '../legal/siteLegal'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
 import { StaffPaymentAssistant } from '../components/StaffPaymentAssistant'
 import { bankSummary, isBankConfigured } from '../config/paymentSettings'
-import { forceSyncNow, getSyncMode, getSyncStatus } from '../lib/cloudSync'
+import { fetchSyncHealth, forceSyncNow, getSyncMode, getSyncStatus } from '../lib/cloudSync'
 
 type Tab = 'info' | 'payments' | 'available' | 'chat'
 
@@ -98,6 +98,7 @@ export default function AdminPortal() {
   const [cloudSyncActive, setCloudSyncActive] = useState(() => getSyncMode() === 'cloud')
   const [syncHint, setSyncHint] = useState<string | null>(() => getSyncStatus().hint)
   const [syncError, setSyncError] = useState<string | null>(() => getSyncStatus().lastError)
+  const [syncBackends, setSyncBackends] = useState(() => getSyncStatus().backends)
   const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
@@ -106,9 +107,12 @@ export default function AdminPortal() {
       setCloudSyncActive(status.mode === 'cloud')
       setSyncHint(status.hint)
       setSyncError(status.lastError)
+      setSyncBackends(status.backends)
     }
-    refresh()
-    const id = window.setInterval(refresh, 5000)
+    void fetchSyncHealth().then(() => refresh())
+    const id = window.setInterval(() => {
+      void fetchSyncHealth().then(() => refresh())
+    }, 10000)
     return () => window.clearInterval(id)
   }, [])
 
@@ -119,6 +123,7 @@ export default function AdminPortal() {
       setCloudSyncActive(status.mode === 'cloud')
       setSyncHint(status.hint)
       setSyncError(status.lastError)
+      setSyncBackends(status.backends)
     } finally {
       setSyncing(false)
     }
@@ -362,6 +367,19 @@ export default function AdminPortal() {
           {!cloudSyncActive && syncError && (
             <p className="meta" style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#c44' }}>
               {syncError}
+            </p>
+          )}
+          {!cloudSyncActive && syncBackends && (
+            <p className="meta" style={{ margin: '0.35rem 0 0', fontSize: '0.72rem' }}>
+              {tr('syncBackendStatus')}:{' '}
+              {[
+                syncBackends.blob && 'Blob',
+                syncBackends.redis && 'Redis',
+                syncBackends.postgres && 'Postgres',
+                syncBackends.supabase && 'Supabase',
+              ]
+                .filter(Boolean)
+                .join(', ') || tr('syncBackendNone')}
             </p>
           )}
           <button
