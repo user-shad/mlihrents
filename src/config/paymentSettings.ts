@@ -8,6 +8,8 @@ export interface BankAccountSettings {
   bankAddress: string
 }
 
+type StoredBankSettings = BankAccountSettings & { adminSaved?: boolean }
+
 export const BANK_SETTINGS_KEY = 'mlihrents_bank_settings'
 
 /** Pre-configured building account — shown on the live site for all users. */
@@ -51,31 +53,29 @@ export function bankSummary(settings: BankAccountSettings) {
   return `${normalized.bankName} · IBAN ···${last4}`
 }
 
-export function readBankSettings(fallback?: BankAccountSettings | null): BankAccountSettings {
+/** Use site defaults unless an admin explicitly saved custom details. */
+export function readBankSettings(): BankAccountSettings {
   try {
     const raw = localStorage.getItem(BANK_SETTINGS_KEY)
     if (raw) {
-      const parsed = JSON.parse(raw) as BankAccountSettings
-      if (parsed && typeof parsed === 'object') {
-        const normalized = normalizeBankSettings({
-          ...emptyBankSettings,
-          ...parsed,
-        })
-        if (isBankConfigured(normalized)) return normalized
+      const parsed = JSON.parse(raw) as StoredBankSettings
+      if (parsed?.adminSaved && isBankConfigured(parsed)) {
+        return normalizeBankSettings(parsed)
       }
     }
   } catch {
     /* ignore */
-  }
-  if (fallback && isBankConfigured(fallback)) {
-    return normalizeBankSettings({ ...emptyBankSettings, ...fallback })
   }
   return { ...defaultBankSettings }
 }
 
 export function writeBankSettings(settings: BankAccountSettings): boolean {
   try {
-    localStorage.setItem(BANK_SETTINGS_KEY, JSON.stringify(normalizeBankSettings(settings)))
+    const payload: StoredBankSettings = {
+      ...normalizeBankSettings(settings),
+      adminSaved: true,
+    }
+    localStorage.setItem(BANK_SETTINGS_KEY, JSON.stringify(payload))
     return true
   } catch {
     return false

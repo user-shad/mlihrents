@@ -179,9 +179,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [listings, setListings] = useState<AvailableApartment[]>(
     persisted?.listings ?? availableApartments,
   )
-  const [bankSettings, setBankSettings] = useState<BankAccountSettings>(() =>
-    readBankSettings(persisted?.bankSettings ?? null),
-  )
+  const [bankSettings, setBankSettings] = useState<BankAccountSettings>(() => readBankSettings())
   const [invoiceMap, setInvoiceMap] = useState<Record<string, Invoice[]>>(
     persisted?.invoiceMap ?? invoicesByResident,
   )
