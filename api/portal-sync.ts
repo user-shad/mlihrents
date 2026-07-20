@@ -355,7 +355,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       accounts: payload?.accounts ?? [],
       ops: payload?.ops ?? {},
       updated_at: payload?.updated_at ?? null,
-      blob_debug: lastBlobDebug,
     })
     return
   }
@@ -375,7 +374,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         storage,
         ok: true,
         updated_at: payload.updated_at,
-        blob_debug: lastBlobDebug,
       })
       return
     } catch (err) {
@@ -384,7 +382,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         configured: true,
         ok: false,
         error: message,
-        blob_debug: lastBlobDebug,
       })
       return
     }
