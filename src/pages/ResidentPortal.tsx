@@ -843,7 +843,7 @@ export default function ResidentPortal() {
                     <div>
                       <strong>{c.role}</strong>
                       <div className="meta">
-                        {c.name} · {c.hours}
+                        {c.name}
                       </div>
                     </div>
                     <a className="btn btn-primary btn-sm" href={`tel:${c.phone.replace(/\s/g, '')}`}>

@@ -418,7 +418,7 @@ export default function AdminPortal() {
                         {c.role} · {c.name}
                       </strong>
                       <div className="meta">
-                        {c.category} · {c.hours} · {c.notes}
+                        {c.category} · {c.notes}
                       </div>
                     </div>
                     <a className="btn btn-ghost btn-sm" href={`tel:${c.phone.replace(/\s/g, '')}`}>

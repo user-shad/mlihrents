@@ -995,8 +995,8 @@ export function aiReply(
   ) {
     return {
       text: ar
-        ? `لمشاكل ${contact.category} في وحدتك، اتصل مباشرة بـ${contact.role} المعتمد:\n\n${contact.name}\n${contact.phone}\nالساعات: ${contact.hours}\n\nيمكنني أيضاً فتح تذكرة صيانة. قل «أنشئ تذكرة» إن رغبت.`
-        : `For ${contact.category.toLowerCase()} issues in your unit, call our approved ${contact.role.toLowerCase()} directly:\n\n${contact.name}\n${contact.phone}\nHours: ${contact.hours}\n\nI can also open a maintenance ticket. Say “create ticket” if you want that.`,
+        ? `لمشاكل ${contact.category} في وحدتك، اتصل مباشرة بـ${contact.role} المعتمد:\n\n${contact.name}\n${contact.phone}\n\nيمكنني أيضاً فتح تذكرة صيانة. قل «أنشئ تذكرة» إن رغبت.`
+        : `For ${contact.category.toLowerCase()} issues in your unit, call our approved ${contact.role.toLowerCase()} directly:\n\n${contact.name}\n${contact.phone}\n\nI can also open a maintenance ticket. Say “create ticket” if you want that.`,
       contact,
     }
   }
