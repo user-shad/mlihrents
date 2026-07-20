@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-import { get, put } from '@vercel/blob'
+import { get, list, put } from '@vercel/blob'
 import { sql } from '@vercel/postgres'
 import { Redis } from '@upstash/redis'
 
 const SYNC_ID = 'main'
-const BLOB_PATH = 'mlaihrent/portal-sync.json'
+const BLOB_PATH = 'portal-sync.json'
 const REDIS_KEY = 'portal-sync'
 
 export const config = {
@@ -141,17 +141,42 @@ async function saveToPostgres(payload: SyncPayload) {
 }
 
 async function loadFromBlob(): Promise<SyncPayload | null> {
-  // Store may be public or private — try both
   for (const access of ['public', 'private'] as const) {
     try {
       const result = await get(BLOB_PATH, { access, useCache: false })
-      if (!result || result.statusCode === 404 || !result.stream) continue
-      const text = await new Response(result.stream).text()
-      if (!text) continue
-      return JSON.parse(text) as SyncPayload
+      if (result?.stream) {
+        const text = await new Response(result.stream).text()
+        if (text) return JSON.parse(text) as SyncPayload
+      }
     } catch {
-      /* try next access mode */
+      /* try list / next mode */
     }
+  }
+
+  try {
+    const { blobs } = await list({ prefix: 'portal-sync', limit: 20 })
+    const match =
+      blobs.find((b) => b.pathname === BLOB_PATH || b.pathname.endsWith('/portal-sync.json')) ??
+      blobs.find((b) => b.pathname.includes('portal-sync'))
+    if (!match) return null
+    for (const access of ['public', 'private'] as const) {
+      try {
+        const result = await get(match.url, { access, useCache: false })
+        if (result?.stream) {
+          const text = await new Response(result.stream).text()
+          if (text) return JSON.parse(text) as SyncPayload
+        }
+      } catch {
+        try {
+          const res = await fetch(match.url, { cache: 'no-store' })
+          if (res.ok) return (await res.json()) as SyncPayload
+        } catch {
+          /* continue */
+        }
+      }
+    }
+  } catch {
+    return null
   }
   return null
 }
@@ -159,7 +184,6 @@ async function loadFromBlob(): Promise<SyncPayload | null> {
 async function saveToBlob(payload: SyncPayload) {
   const body = JSON.stringify(payload)
   const errors: string[] = []
-  // Prefer public first — many Vercel Blob stores are created as public
   for (const access of ['public', 'private'] as const) {
     try {
       await put(BLOB_PATH, body, {
