@@ -154,6 +154,9 @@ export default function AdminPortal() {
 
   const occupiedUnits = residentList.filter((r) => r.name.trim() || r.phone.trim()).length
   const totalUnits = residentList.length
+  const totalFromResidents = residentList.reduce((sum, r) => sum + (Number(r.amountPaid) || 0), 0)
+  const totalOutstanding = residentList.reduce((sum, r) => sum + remainingBalance(r), 0)
+  const totalContractValue = residentList.reduce((sum, r) => sum + (Number(r.contractTotal) || 0), 0)
 
   useEffect(() => {
     setPinDraft(selectedResident.pin)
@@ -763,6 +766,20 @@ export default function AdminPortal() {
                 <p>{tr('adminPaymentsLead')}</p>
               </div>
             </header>
+            <div className="grid-3" style={{ marginBottom: '1rem' }}>
+              <section className="panel stat">
+                <span className="value">{formatMoney(totalFromResidents).replace('AED ', '')}</span>
+                <span className="label">{tr('totalFromResidents')}</span>
+              </section>
+              <section className="panel stat">
+                <span className="value">{formatMoney(totalOutstanding).replace('AED ', '')}</span>
+                <span className="label">{tr('totalOutstanding')}</span>
+              </section>
+              <section className="panel stat">
+                <span className="value">{formatMoney(totalContractValue).replace('AED ', '')}</span>
+                <span className="label">{tr('totalContractValue')}</span>
+              </section>
+            </div>
             <StaffPaymentAssistant />
             <div className="grid-3">
               <section className="panel stat">
