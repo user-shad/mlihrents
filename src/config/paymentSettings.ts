@@ -31,6 +31,9 @@ export const emptyBankSettings: BankAccountSettings = {
   bankAddress: '',
 }
 
+/** Required to edit building bank account details in admin. */
+export const BANK_EDIT_PASSWORD = '1989'
+
 export function normalizeBankSettings(settings: BankAccountSettings): BankAccountSettings {
   return {
     accountName: settings.accountName.trim(),

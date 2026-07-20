@@ -25,7 +25,7 @@ import { useData } from '../context/DataContext'
 import { siteLegal } from '../legal/siteLegal'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
 import { StaffPaymentAssistant } from '../components/StaffPaymentAssistant'
-import { bankSummary, isBankConfigured } from '../config/paymentSettings'
+import { bankSummary, BANK_EDIT_PASSWORD, isBankConfigured } from '../config/paymentSettings'
 import { fetchSyncHealth, getSyncMode, getSyncStatus } from '../lib/cloudSync'
 
 type Tab = 'info' | 'payments' | 'available' | 'chat'
@@ -137,10 +137,21 @@ export default function AdminPortal() {
   const [listingForm, setListingForm] = useState(emptyListingForm)
   const [verifyDrafts, setVerifyDrafts] = useState<Record<string, string>>({})
   const [bankDraft, setBankDraft] = useState(bankSettings)
+  const [bankEditUnlocked, setBankEditUnlocked] = useState(false)
+  const [bankUnlockDraft, setBankUnlockDraft] = useState('')
+  const [bankUnlockError, setBankUnlockError] = useState<string | null>(null)
 
   useEffect(() => {
     setBankDraft(bankSettings)
   }, [bankSettings])
+
+  useEffect(() => {
+    if (tab !== 'payments') {
+      setBankEditUnlocked(false)
+      setBankUnlockDraft('')
+      setBankUnlockError(null)
+    }
+  }, [tab])
 
   useEffect(() => {
     setVerifyDrafts((prev) => {
@@ -809,67 +820,144 @@ export default function AdminPortal() {
               <p className="meta" style={{ marginTop: '0.75rem' }}>
                 {tr('bankSettingsHelp')}
               </p>
-              <p className="meta">{tr('bankSettingsRequired')}</p>
-              <div className="rent-plan-editor" style={{ marginTop: '0.75rem' }}>
-                <div className="form-row">
-                  <label htmlFor="bankAccountName">{tr('accountHolder')}</label>
-                  <input
-                    id="bankAccountName"
-                    value={bankDraft.accountName}
-                    onChange={(e) => setBankDraft((d) => ({ ...d, accountName: e.target.value }))}
-                  />
+
+              {!bankEditUnlocked ? (
+                <div style={{ marginTop: '0.75rem' }}>
+                  <p className="meta">{tr('bankEditLockedHelp')}</p>
+                  <div className="rent-plan-editor" style={{ marginTop: '0.5rem', maxWidth: 280 }}>
+                    <div className="form-row">
+                      <label htmlFor="bankUnlockPassword">{tr('bankEditPassword')}</label>
+                      <input
+                        id="bankUnlockPassword"
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={bankUnlockDraft}
+                        onChange={(e) => {
+                          setBankUnlockDraft(e.target.value)
+                          setBankUnlockError(null)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter') return
+                          if (bankUnlockDraft === BANK_EDIT_PASSWORD) {
+                            setBankEditUnlocked(true)
+                            setBankUnlockDraft('')
+                            setBankUnlockError(null)
+                            setBankDraft(bankSettings)
+                          } else {
+                            setBankUnlockError(tr('bankEditPasswordWrong'))
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                  {bankUnlockError && (
+                    <p className="meta" style={{ color: '#c44', marginTop: '0.35rem' }}>
+                      {bankUnlockError}
+                    </p>
+                  )}
+                  <button
+                    className="btn btn-primary btn-sm"
+                    type="button"
+                    style={{ marginTop: '0.75rem' }}
+                    onClick={() => {
+                      if (bankUnlockDraft === BANK_EDIT_PASSWORD) {
+                        setBankEditUnlocked(true)
+                        setBankUnlockDraft('')
+                        setBankUnlockError(null)
+                        setBankDraft(bankSettings)
+                      } else {
+                        setBankUnlockError(tr('bankEditPasswordWrong'))
+                      }
+                    }}
+                  >
+                    {tr('unlockBankEdit')}
+                  </button>
                 </div>
-                <div className="form-row">
-                  <label htmlFor="bankName">{tr('bankName')}</label>
-                  <input
-                    id="bankName"
-                    value={bankDraft.bankName}
-                    onChange={(e) => setBankDraft((d) => ({ ...d, bankName: e.target.value }))}
-                  />
-                </div>
-                <div className="form-row">
-                  <label htmlFor="bankIban">{tr('iban')}</label>
-                  <input
-                    id="bankIban"
-                    value={bankDraft.iban}
-                    onChange={(e) => setBankDraft((d) => ({ ...d, iban: e.target.value }))}
-                    placeholder="AE00 0000 0000 0000 0000 000"
-                  />
-                </div>
-                <div className="form-row">
-                  <label htmlFor="bankAccountNumber">{tr('accountNumber')}</label>
-                  <input
-                    id="bankAccountNumber"
-                    value={bankDraft.accountNumber}
-                    onChange={(e) => setBankDraft((d) => ({ ...d, accountNumber: e.target.value }))}
-                  />
-                </div>
-                <div className="form-row">
-                  <label htmlFor="bankSwift">{tr('swift')}</label>
-                  <input
-                    id="bankSwift"
-                    value={bankDraft.swift}
-                    onChange={(e) => setBankDraft((d) => ({ ...d, swift: e.target.value }))}
-                    placeholder="WIOBAEADXXX"
-                  />
-                </div>
-                <div className="form-row">
-                  <label htmlFor="bankAddress">{tr('bankAddress')}</label>
-                  <input
-                    id="bankAddress"
-                    value={bankDraft.bankAddress}
-                    onChange={(e) => setBankDraft((d) => ({ ...d, bankAddress: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <button
-                className="btn btn-primary btn-sm"
-                type="button"
-                style={{ marginTop: '0.75rem' }}
-                onClick={() => saveBankSettings(bankDraft)}
-              >
-                {tr('saveBankSettings')}
-              </button>
+              ) : (
+                <>
+                  <p className="meta">{tr('bankSettingsRequired')}</p>
+                  <div className="rent-plan-editor" style={{ marginTop: '0.75rem' }}>
+                    <div className="form-row">
+                      <label htmlFor="bankAccountName">{tr('accountHolder')}</label>
+                      <input
+                        id="bankAccountName"
+                        value={bankDraft.accountName}
+                        onChange={(e) => setBankDraft((d) => ({ ...d, accountName: e.target.value }))}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label htmlFor="bankName">{tr('bankName')}</label>
+                      <input
+                        id="bankName"
+                        value={bankDraft.bankName}
+                        onChange={(e) => setBankDraft((d) => ({ ...d, bankName: e.target.value }))}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label htmlFor="bankIban">{tr('iban')}</label>
+                      <input
+                        id="bankIban"
+                        value={bankDraft.iban}
+                        onChange={(e) => setBankDraft((d) => ({ ...d, iban: e.target.value }))}
+                        placeholder="AE00 0000 0000 0000 0000 000"
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label htmlFor="bankAccountNumber">{tr('accountNumber')}</label>
+                      <input
+                        id="bankAccountNumber"
+                        value={bankDraft.accountNumber}
+                        onChange={(e) =>
+                          setBankDraft((d) => ({ ...d, accountNumber: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label htmlFor="bankSwift">{tr('swift')}</label>
+                      <input
+                        id="bankSwift"
+                        value={bankDraft.swift}
+                        onChange={(e) => setBankDraft((d) => ({ ...d, swift: e.target.value }))}
+                        placeholder="WIOBAEADXXX"
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label htmlFor="bankAddress">{tr('bankAddress')}</label>
+                      <input
+                        id="bankAddress"
+                        value={bankDraft.bankAddress}
+                        onChange={(e) => setBankDraft((d) => ({ ...d, bankAddress: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    type="button"
+                    style={{ marginTop: '0.75rem' }}
+                    onClick={() => {
+                      saveBankSettings(bankDraft)
+                      setBankEditUnlocked(false)
+                      setBankUnlockDraft('')
+                    }}
+                  >
+                    {tr('saveBankSettings')}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    type="button"
+                    style={{ marginTop: '0.5rem', marginInlineStart: '0.5rem' }}
+                    onClick={() => {
+                      setBankEditUnlocked(false)
+                      setBankUnlockDraft('')
+                      setBankUnlockError(null)
+                      setBankDraft(bankSettings)
+                    }}
+                  >
+                    {tr('cancelBankEdit')}
+                  </button>
+                </>
+              )}
 
               <p
                 style={{
