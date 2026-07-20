@@ -3,6 +3,7 @@ import {
   isValidPin,
   normalizePhone,
   residents,
+  sampleA1TestTenant,
   staffAccounts,
 } from '../data'
 
@@ -104,6 +105,20 @@ function ensureSeedResidents(list: AccountRecord[]): AccountRecord[] {
       })
     }
   }
+  // Always keep A1 test login available
+  const a1Phone = normalizePhone(sampleA1TestTenant.phone)
+  const a1Idx = next.findIndex(
+    (a) => a.role === 'resident' && a.residentId === sampleA1TestTenant.id,
+  )
+  const a1Account: AccountRecord = {
+    phone: a1Phone,
+    pin: sampleA1TestTenant.pin,
+    role: 'resident',
+    name: sampleA1TestTenant.name,
+    residentId: sampleA1TestTenant.id,
+  }
+  if (a1Idx >= 0) next[a1Idx] = a1Account
+  else next.push(a1Account)
   return next
 }
 

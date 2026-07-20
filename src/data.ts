@@ -204,9 +204,43 @@ export function buildEmptyApartment(code: string): Resident {
 }
 
 /** Fixed apartment inventory — A1 through A12, empty until admin fills them in. */
-export const apartmentUnits: Resident[] = Array.from({ length: 12 }, (_, i) =>
-  buildEmptyApartment(`A${i + 1}`),
-)
+export const sampleA1TestTenant: Resident = {
+  id: 'apt-a1',
+  name: 'Test Tenant A1',
+  phone: '0501234567',
+  pin: '1111',
+  building: 'MLIH Building',
+  buildingNumber: 'A',
+  apartment: 'A1',
+  floor: 1,
+  parking: 'P-A1',
+  leaseEnd: '31 Dec 2026',
+  rentAmount: 10,
+  currency: 'AED',
+  rentDueDay: 20,
+  rentSchedule: 'monthly',
+  contractTotal: 10,
+  amountPaid: 0,
+  email: 'a1-test@mlihrents.ae',
+  moveIn: '1 Jul 2026',
+  occupants: 1,
+  status: 'active',
+}
+
+export const testInvoiceA1: Invoice = {
+  id: 'INV-TEST-A1',
+  period: 'Test payment · A1',
+  amount: 10,
+  dueDate: '20 Jul 2026',
+  dueDateIso: '2026-07-20',
+  status: 'due',
+}
+
+export const apartmentUnits: Resident[] = Array.from({ length: 12 }, (_, i) => {
+  const code = `A${i + 1}`
+  if (code === 'A1') return { ...sampleA1TestTenant }
+  return buildEmptyApartment(code)
+})
 
 export const demoResident = apartmentUnits[0]
 
@@ -244,7 +278,9 @@ export const staffAccounts = [
 
 export const invoices: Invoice[] = []
 
-export const invoicesByResident: Record<string, Invoice[]> = {}
+export const invoicesByResident: Record<string, Invoice[]> = {
+  'apt-a1': [testInvoiceA1],
+}
 
 export const initialTickets: Ticket[] = []
 

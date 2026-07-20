@@ -26,6 +26,8 @@ import {
   Resident,
   apartmentUnits,
   residents,
+  sampleA1TestTenant,
+  testInvoiceA1,
   seedPayments,
   suggestInstallment,
   Ticket,
@@ -57,7 +59,25 @@ interface PersistedOps {
 
 function ensureSeedApartments(list: Resident[]): Resident[] {
   const byId = new Map(list.map((r) => [r.id, r]))
-  return apartmentUnits.map((seed) => byId.get(seed.id) ?? seed)
+  return apartmentUnits.map((seed) => {
+    if (seed.id === sampleA1TestTenant.id) return { ...sampleA1TestTenant }
+    return byId.get(seed.id) ?? seed
+  })
+}
+
+function ensureSeedInvoices(map: Record<string, Invoice[]>): Record<string, Invoice[]> {
+  const next = { ...map }
+  const existing = next[sampleA1TestTenant.id] ?? []
+  const paid = existing.find((i) => i.id === testInvoiceA1.id)?.status === 'paid'
+  const hasTest = existing.some((i) => i.id === testInvoiceA1.id)
+  if (!hasTest) {
+    next[sampleA1TestTenant.id] = [testInvoiceA1, ...existing]
+  } else if (!paid) {
+    next[sampleA1TestTenant.id] = existing.map((i) =>
+      i.id === testInvoiceA1.id ? { ...testInvoiceA1, status: i.status } : i,
+    )
+  }
+  return next
 }
 
 function readPersistedOps(): PersistedOps | null {
@@ -180,8 +200,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     persisted?.listings ?? availableApartments,
   )
   const [bankSettings, setBankSettings] = useState<BankAccountSettings>(() => readBankSettings())
-  const [invoiceMap, setInvoiceMap] = useState<Record<string, Invoice[]>>(
-    persisted?.invoiceMap ?? invoicesByResident,
+  const [invoiceMap, setInvoiceMap] = useState<Record<string, Invoice[]>>(() =>
+    ensureSeedInvoices(persisted?.invoiceMap ?? invoicesByResident),
   )
   const [ticketMap, setTicketMap] = useState<Record<string, Ticket[]>>(
     persisted?.ticketMap ?? ticketsByResident,
