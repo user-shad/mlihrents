@@ -251,6 +251,7 @@ function parseCloudResponse(data: {
   accounts?: AccountRecord[]
   ops?: unknown
   updated_at?: string | null
+  storage?: string | null
   hint?: string
   error?: string
 }): CloudRow | null {
@@ -261,6 +262,15 @@ function parseCloudResponse(data: {
   syncMode = 'cloud'
   lastSyncError = null
   lastCloudUpdatedAt = data.updated_at ?? null
+
+  // API says configured but returned nothing usable (failed blob read) — keep local data
+  const opsObj = data.ops && typeof data.ops === 'object' ? (data.ops as Record<string, unknown>) : null
+  const opsEmpty = !opsObj || Object.keys(opsObj).length === 0
+  const accountsEmpty = !Array.isArray(data.accounts) || data.accounts.length === 0
+  if (opsEmpty && accountsEmpty && !data.updated_at && !data.storage) {
+    return null
+  }
+
   return {
     accounts: data.accounts ?? [],
     ops: normalizeCloudOps(data.ops),

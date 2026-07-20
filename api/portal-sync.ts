@@ -8,6 +8,15 @@ const SYNC_ID = 'main'
 const BLOB_PATH = 'portal-sync.json'
 const REDIS_KEY = 'portal-sync'
 
+/** Public store URL from BLOB_STORE_ID (store_Xxx → https://xxx.public.blob.vercel-storage.com/…). */
+function publicBlobObjectUrl(pathname: string) {
+  const raw = process.env.BLOB_STORE_ID
+  if (!raw) return null
+  const id = raw.replace(/^store_/i, '').toLowerCase()
+  if (!id) return null
+  return `https://${id}.public.blob.vercel-storage.com/${pathname.replace(/^\//, '')}`
+}
+
 export const config = {
   api: {
     bodyParser: {
@@ -144,6 +153,24 @@ let lastBlobDebug: string | null = null
 
 async function loadFromBlob(): Promise<SyncPayload | null> {
   const debug: string[] = []
+
+  // 1) Direct public URL — most reliable for public Blob stores from serverless
+  const publicUrl = publicBlobObjectUrl(BLOB_PATH)
+  if (publicUrl) {
+    try {
+      const res = await fetch(publicUrl, { cache: 'no-store' })
+      debug.push(`public_url:${res.status}`)
+      if (res.ok) {
+        const data = (await res.json()) as SyncPayload
+        lastBlobDebug = debug.join('|')
+        return data
+      }
+    } catch (err) {
+      debug.push(`public_url_err:${err instanceof Error ? err.message : String(err)}`)
+    }
+  } else {
+    debug.push('public_url:no_store_id')
+  }
 
   try {
     const meta = await head(BLOB_PATH)
@@ -355,6 +382,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       accounts: payload?.accounts ?? [],
       ops: payload?.ops ?? {},
       updated_at: payload?.updated_at ?? null,
+      blob_debug: lastBlobDebug,
     })
     return
   }
