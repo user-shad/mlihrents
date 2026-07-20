@@ -35,7 +35,8 @@ function getSupabase() {
 }
 
 function hasBlobStorage() {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN)
+  // Classic token, or newer Vercel Blob OIDC link (BLOB_STORE_ID)
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID)
 }
 
 function hasRedis() {

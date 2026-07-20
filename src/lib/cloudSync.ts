@@ -100,7 +100,7 @@ export async function fetchSyncHealth(): Promise<SyncStatus['backends'] | null> 
         .filter(([, v]) => v)
         .map(([k]) => k)
       if (active.length === 0) {
-        lastSyncError = 'No storage connected — Vercel → Storage → Blob → Connect → Redeploy'
+        lastSyncError = 'Blob created but not linked — open store → Projects → Connect mlihrents → Redeploy'
       }
     }
     return data.backends
@@ -121,7 +121,7 @@ export function getSyncStatus(): SyncStatus {
     updatedAt: lastCloudUpdatedAt,
     hint:
       syncMode === 'local'
-        ? 'Vercel → Storage → Blob → Connect → Redeploy'
+        ? 'Blob store → Projects tab → Connect mlihrents → Redeploy'
         : null,
     lastError: lastSyncError,
     backends: lastBackendHealth,
@@ -434,20 +434,33 @@ function applyRemoteRow(row: CloudRow) {
   }
 }
 
+function pullRemoteIfNewer() {
+  if (Date.now() < suppressRemoteUntil) return
+  void loadCloudRow().then((row) => {
+    if (!row) return
+    const remoteTime = cloudTimestamp(row)
+    const localTime = localTimestamp()
+    if (remoteTime >= localTime || remoteTime > 0) {
+      applyRemoteRow(row)
+    }
+  })
+}
+
 function startPolling() {
   if (pollTimer) return
   pollTimer = setInterval(() => {
     if (typeof document !== 'undefined' && document.hidden) return
-    if (Date.now() < suppressRemoteUntil) return
-    void loadCloudRow().then((row) => {
-      if (!row) return
-      const remoteTime = cloudTimestamp(row)
-      const localTime = localTimestamp()
-      if (remoteTime >= localTime || remoteTime > 0) {
-        applyRemoteRow(row)
-      }
+    pullRemoteIfNewer()
+  }, 4000)
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && syncMode === 'cloud') pullRemoteIfNewer()
     })
-  }, 8000)
+    window.addEventListener('focus', () => {
+      if (syncMode === 'cloud') pullRemoteIfNewer()
+    })
+  }
 }
 
 function startConfigPolling() {
