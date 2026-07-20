@@ -1,6 +1,15 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { get, put } from '@vercel/blob'
 
 const SYNC_ID = 'main'
+const BLOB_PATH = 'mlihrents/portal-sync.json'
+
+type SyncPayload = {
+  accounts: unknown
+  ops: unknown
+  updated_at?: string
+}
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
@@ -12,67 +21,109 @@ function getSupabase() {
   return createClient(url, key)
 }
 
-export default async function handler(
-  request: {
-    method?: string
-    body?: { accounts?: unknown; ops?: unknown }
-  },
-  response: {
-    setHeader: (name: string, value: string) => void
-    status: (code: number) => { json: (body: unknown) => void }
-  },
-) {
-  response.setHeader('Cache-Control', 'no-store')
+function hasBlobStorage() {
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN)
+}
 
-  if (request.method === 'GET' && !getSupabase()) {
-    response.status(503).json({ configured: false })
+async function loadFromBlob(): Promise<SyncPayload | null> {
+  try {
+    const result = await get(BLOB_PATH, { access: 'private', useCache: false })
+    if (!result || result.statusCode === 404 || !result.stream) return null
+    const text = await new Response(result.stream).text()
+    return JSON.parse(text) as SyncPayload
+  } catch {
+    return null
+  }
+}
+
+async function saveToBlob(payload: SyncPayload) {
+  await put(BLOB_PATH, JSON.stringify(payload), {
+    access: 'private',
+    allowOverwrite: true,
+    contentType: 'application/json',
+  })
+}
+
+function isConfigured() {
+  return Boolean(getSupabase() || hasBlobStorage())
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Cache-Control', 'no-store')
+
+  if (!isConfigured()) {
+    res.status(503).json({ configured: false })
     return
   }
 
-  const supabase = getSupabase()
-  if (!supabase) {
-    response.status(503).json({ configured: false })
-    return
-  }
+  if (req.method === 'GET') {
+    const supabase = getSupabase()
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('portal_sync')
+        .select('accounts, ops, updated_at')
+        .eq('id', SYNC_ID)
+        .maybeSingle()
 
-  if (request.method === 'GET') {
-    const { data, error } = await supabase
-      .from('portal_sync')
-      .select('accounts, ops, updated_at')
-      .eq('id', SYNC_ID)
-      .maybeSingle()
+      if (!error) {
+        res.status(200).json({
+          configured: true,
+          storage: 'supabase',
+          accounts: data?.accounts ?? [],
+          ops: data?.ops ?? {},
+          updated_at: data?.updated_at ?? null,
+        })
+        return
+      }
+    }
 
-    if (error) {
-      response.status(500).json({ configured: true, error: error.message })
+    if (hasBlobStorage()) {
+      const blob = await loadFromBlob()
+      res.status(200).json({
+        configured: true,
+        storage: 'blob',
+        accounts: blob?.accounts ?? [],
+        ops: blob?.ops ?? {},
+        updated_at: blob?.updated_at ?? null,
+      })
       return
     }
 
-    response.status(200).json({
-      configured: true,
-      accounts: data?.accounts ?? [],
-      ops: data?.ops ?? {},
-      updated_at: data?.updated_at ?? null,
-    })
+    res.status(503).json({ configured: false })
     return
   }
 
-  if (request.method === 'PUT' || request.method === 'POST') {
-    const body = request.body ?? {}
-    const { error } = await supabase.from('portal_sync').upsert({
-      id: SYNC_ID,
+  if (req.method === 'PUT' || req.method === 'POST') {
+    const body = (req.body ?? {}) as SyncPayload
+    const payload: SyncPayload = {
       accounts: body.accounts ?? [],
       ops: body.ops ?? {},
       updated_at: new Date().toISOString(),
-    })
+    }
 
-    if (error) {
-      response.status(500).json({ configured: true, error: error.message })
+    const supabase = getSupabase()
+    if (supabase) {
+      const { error } = await supabase.from('portal_sync').upsert({
+        id: SYNC_ID,
+        accounts: payload.accounts,
+        ops: payload.ops,
+        updated_at: payload.updated_at,
+      })
+      if (!error) {
+        res.status(200).json({ configured: true, storage: 'supabase', ok: true })
+        return
+      }
+    }
+
+    if (hasBlobStorage()) {
+      await saveToBlob(payload)
+      res.status(200).json({ configured: true, storage: 'blob', ok: true })
       return
     }
 
-    response.status(200).json({ configured: true, ok: true })
+    res.status(503).json({ configured: false })
     return
   }
 
-  response.status(405).json({ error: 'method_not_allowed' })
+  res.status(405).json({ error: 'method_not_allowed' })
 }
