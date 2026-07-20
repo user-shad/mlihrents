@@ -8,13 +8,25 @@ const SYNC_ID = 'main'
 const BLOB_PATH = 'portal-sync.json'
 const REDIS_KEY = 'portal-sync'
 
-/** Public store URL from BLOB_STORE_ID (store_Xxx → https://xxx.public.blob.vercel-storage.com/…). */
-function publicBlobObjectUrl(pathname: string) {
+/**
+ * Public Blob base URL for this project.
+ * Vercel serverless fetch via head()/OIDC was unreliable; direct public GET works.
+ */
+function blobPublicBase() {
+  if (process.env.BLOB_PUBLIC_BASE_URL) {
+    return process.env.BLOB_PUBLIC_BASE_URL.replace(/\/$/, '')
+  }
   const raw = process.env.BLOB_STORE_ID
-  if (!raw) return null
-  const id = raw.replace(/^store_/i, '').toLowerCase()
-  if (!id) return null
-  return `https://${id}.public.blob.vercel-storage.com/${pathname.replace(/^\//, '')}`
+  if (raw) {
+    const id = raw.replace(/^store_/i, '').toLowerCase()
+    if (id) return `https://${id}.public.blob.vercel-storage.com`
+  }
+  // Known store for mlihrents (public Blob)
+  return 'https://nqmasagwcp7ak6i0.public.blob.vercel-storage.com'
+}
+
+function publicBlobObjectUrl(pathname: string) {
+  return `${blobPublicBase()}/${pathname.replace(/^\//, '')}`
 }
 
 export const config = {
@@ -44,7 +56,6 @@ function getSupabase() {
 }
 
 function hasBlobStorage() {
-  // Classic token, or newer Vercel Blob OIDC link (BLOB_STORE_ID)
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID)
 }
 
@@ -151,76 +162,68 @@ async function saveToPostgres(payload: SyncPayload) {
 
 let lastBlobDebug: string | null = null
 
-async function loadFromBlob(): Promise<SyncPayload | null> {
-  const debug: string[] = []
-
-  // 1) Direct public URL — most reliable for public Blob stores from serverless
-  const publicUrl = publicBlobObjectUrl(BLOB_PATH)
-  if (publicUrl) {
-    try {
-      const res = await fetch(publicUrl, { cache: 'no-store' })
-      debug.push(`public_url:${res.status}`)
-      if (res.ok) {
-        const data = (await res.json()) as SyncPayload
-        lastBlobDebug = debug.join('|')
-        return data
-      }
-    } catch (err) {
-      debug.push(`public_url_err:${err instanceof Error ? err.message : String(err)}`)
-    }
-  } else {
-    debug.push('public_url:no_store_id')
+async function fetchJsonPayload(url: string, label: string): Promise<SyncPayload | null> {
+  try {
+    const res = await fetch(url, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    })
+    lastBlobDebug = `${label}:${res.status}:${url}`
+    if (!res.ok) return null
+    const text = await res.text()
+    if (!text) return null
+    return JSON.parse(text) as SyncPayload
+  } catch (err) {
+    lastBlobDebug = `${label}_err:${err instanceof Error ? err.message : String(err)}:${url}`
+    return null
   }
+}
+
+async function loadFromBlob(): Promise<SyncPayload | null> {
+  const publicUrl = publicBlobObjectUrl(BLOB_PATH)
+  const fromPublic = await fetchJsonPayload(publicUrl, 'public')
+  if (fromPublic) return fromPublic
 
   try {
     const meta = await head(BLOB_PATH)
-    debug.push(`head:${meta.pathname}:${meta.url}`)
-    const res = await fetch(meta.url, { cache: 'no-store' })
-    debug.push(`head_fetch:${res.status}`)
-    if (res.ok) {
-      lastBlobDebug = debug.join('|')
-      return (await res.json()) as SyncPayload
-    }
+    const fromHead = await fetchJsonPayload(meta.url, 'head')
+    if (fromHead) return fromHead
   } catch (err) {
-    debug.push(`head_err:${err instanceof Error ? err.message : String(err)}`)
+    lastBlobDebug = `head_err:${err instanceof Error ? err.message : String(err)}`
   }
 
   for (const access of ['public', 'private'] as const) {
     try {
       const result = await get(BLOB_PATH, { access, useCache: false })
-      debug.push(`get_${access}:${result?.statusCode ?? 'null'}`)
       if (result?.stream) {
         const text = await new Response(result.stream).text()
         if (text) {
-          lastBlobDebug = debug.join('|')
+          lastBlobDebug = `get_${access}:ok`
           return JSON.parse(text) as SyncPayload
         }
       }
+      lastBlobDebug = `get_${access}:${result?.statusCode ?? 'empty'}`
     } catch (err) {
-      debug.push(`get_${access}_err:${err instanceof Error ? err.message : String(err)}`)
+      lastBlobDebug = `get_${access}_err:${err instanceof Error ? err.message : String(err)}`
     }
   }
 
   try {
     const { blobs } = await list({ limit: 100 })
-    debug.push(`list:${blobs.length}:${blobs.map((b) => b.pathname).join(',')}`)
     const match =
       blobs.find((b) => b.pathname === BLOB_PATH) ??
       blobs.find((b) => b.pathname.endsWith('portal-sync.json')) ??
       blobs.find((b) => b.pathname.includes('portal-sync'))
     if (match) {
-      const res = await fetch(match.url, { cache: 'no-store' })
-      debug.push(`list_fetch:${res.status}`)
-      if (res.ok) {
-        lastBlobDebug = debug.join('|')
-        return (await res.json()) as SyncPayload
-      }
+      const fromList = await fetchJsonPayload(match.url, 'list')
+      if (fromList) return fromList
+    } else {
+      lastBlobDebug = `list:0`
     }
   } catch (err) {
-    debug.push(`list_err:${err instanceof Error ? err.message : String(err)}`)
+    lastBlobDebug = `list_err:${err instanceof Error ? err.message : String(err)}`
   }
 
-  lastBlobDebug = debug.join('|')
   return null
 }
 
@@ -235,15 +238,12 @@ async function saveToBlob(payload: SyncPayload) {
         contentType: 'application/json',
         addRandomSuffix: false,
       })
-      lastBlobDebug = `saved:${access}:${blob.pathname}:${blob.url}`
-      // Confirm public URL is readable when applicable
-      try {
-        const check = await fetch(blob.url, { cache: 'no-store' })
-        if (!check.ok) {
-          lastBlobDebug += `|unreadable:${check.status}`
-        }
-      } catch {
-        /* ignore verify errors */
+      lastBlobDebug = `saved:${access}:${blob.url}`
+      // Verify readable via public URL
+      const check = await fetchJsonPayload(publicBlobObjectUrl(BLOB_PATH), 'verify')
+      if (!check) {
+        // also try the returned URL
+        await fetchJsonPayload(blob.url, 'verify_put_url')
       }
       return
     } catch (err) {
@@ -311,20 +311,6 @@ async function saveTo(kind: StorageKind, payload: SyncPayload) {
   }
 }
 
-function payloadHasData(payload: SyncPayload | null) {
-  if (!payload) return false
-  const accounts = payload.accounts
-  const ops = payload.ops
-  const hasAccounts = Array.isArray(accounts) && accounts.length > 0
-  const hasOps =
-    ops &&
-    typeof ops === 'object' &&
-    (Object.keys(ops as object).length > 0 ||
-      (Array.isArray((ops as { residentList?: unknown[] }).residentList) &&
-        (ops as { residentList: unknown[] }).residentList.length > 0))
-  return hasAccounts || hasOps
-}
-
 async function loadBest(): Promise<{ payload: SyncPayload | null; storage: StorageKind | null }> {
   const backends = configuredBackends()
   let best: SyncPayload | null = null
@@ -336,13 +322,13 @@ async function loadBest(): Promise<{ payload: SyncPayload | null; storage: Stora
       const payload = await loadFrom(kind)
       if (!payload) continue
       const time = payload.updated_at ? Date.parse(payload.updated_at) : 0
-      if (!best || time >= bestTime || (time === bestTime && payloadHasData(payload))) {
+      if (!best || time >= bestTime) {
         best = payload
         bestStorage = kind
         bestTime = time
       }
     } catch {
-      /* try next backend */
+      /* try next */
     }
   }
 
@@ -382,6 +368,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       accounts: payload?.accounts ?? [],
       ops: payload?.ops ?? {},
       updated_at: payload?.updated_at ?? null,
+      blob_url: publicBlobObjectUrl(BLOB_PATH),
+      blob_debug: lastBlobDebug,
     })
     return
   }
@@ -401,6 +389,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         storage,
         ok: true,
         updated_at: payload.updated_at,
+        blob_debug: lastBlobDebug,
       })
       return
     } catch (err) {
@@ -409,6 +398,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         configured: true,
         ok: false,
         error: message,
+        blob_debug: lastBlobDebug,
       })
       return
     }

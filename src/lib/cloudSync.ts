@@ -24,6 +24,9 @@ export const OPS_KEY = 'mlihrents_ops_v5'
 const LEGACY_OPS_KEYS = ['mlihrents_ops_v4']
 const SYNC_ROW_ID = 'main'
 const LOCAL_SYNC_META_KEY = 'mlihrents_sync_meta'
+/** Direct public Blob URL — used when /api/portal-sync GET fails to read storage */
+const PUBLIC_SYNC_BLOB_URL =
+  'https://nqmasagwcp7ak6i0.public.blob.vercel-storage.com/portal-sync.json'
 
 export type SyncMode = 'cloud' | 'local'
 
@@ -278,6 +281,28 @@ function parseCloudResponse(data: {
   }
 }
 
+async function loadCloudRowViaPublicBlob(): Promise<CloudRow | null> {
+  try {
+    const res = await fetch(PUBLIC_SYNC_BLOB_URL, { cache: 'no-store' })
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      accounts?: AccountRecord[]
+      ops?: unknown
+      updated_at?: string | null
+    }
+    syncMode = 'cloud'
+    lastSyncError = null
+    lastCloudUpdatedAt = data.updated_at ?? null
+    return {
+      accounts: data.accounts ?? [],
+      ops: normalizeCloudOps(data.ops),
+      updated_at: data.updated_at ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
 async function loadCloudRowViaApi(): Promise<CloudRow | null> {
   try {
     void fetchSyncHealth()
@@ -285,18 +310,28 @@ async function loadCloudRowViaApi(): Promise<CloudRow | null> {
     if (res.status === 503) {
       const data = await readJsonResponse<{ hint?: string }>(res)
       lastSyncError = data?.hint ?? 'Cloud storage not connected on Vercel'
+      // Still try public blob — storage may be linked even if API reports 503
+      const viaBlob = await loadCloudRowViaPublicBlob()
+      if (viaBlob) return viaBlob
       return null
     }
     if (!res.ok) {
       lastSyncError = `Sync API error (${res.status})`
+      const viaBlob = await loadCloudRowViaPublicBlob()
+      if (viaBlob) return viaBlob
       return null
     }
     const data = await readJsonResponse<Parameters<typeof parseCloudResponse>[0]>(res)
-    if (!data) return null
-    return parseCloudResponse(data)
+    if (!data) {
+      return loadCloudRowViaPublicBlob()
+    }
+    const parsed = parseCloudResponse(data)
+    if (parsed) return parsed
+    // API configured but empty body — read blob directly
+    return loadCloudRowViaPublicBlob()
   } catch {
     lastSyncError = 'Could not reach sync API'
-    return null
+    return loadCloudRowViaPublicBlob()
   }
 }
 
