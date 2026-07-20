@@ -418,14 +418,23 @@ export default function ResidentPortal() {
                       </p>
 
                       <div className="transfer-proof">
-                        <label className="transfer-proof-label" htmlFor="bankProof">
-                          {tr('transferProofLabel')}
-                        </label>
+                        <span className="transfer-proof-label">{tr('transferProofLabel')}</span>
                         <p className="meta" style={{ margin: '0 0 0.65rem' }}>
                           {tr('transferProofHint')}
                         </p>
                         <input
-                          id="bankProof"
+                          id="bankProofGallery"
+                          type="file"
+                          accept="image/*"
+                          className="transfer-proof-input"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] ?? null
+                            setBankProofFromFile(file)
+                            e.target.value = ''
+                          }}
+                        />
+                        <input
+                          id="bankProofCamera"
                           type="file"
                           accept="image/*"
                           capture="environment"
@@ -443,8 +452,11 @@ export default function ResidentPortal() {
                               <strong>{tr('transferProofAttached')}</strong>
                               <span className="meta">{bankProof.name}</span>
                               <div className="transfer-proof-actions">
-                                <label htmlFor="bankProof" className="btn btn-ghost btn-sm">
-                                  {tr('transferProofChange')}
+                                <label htmlFor="bankProofGallery" className="btn btn-ghost btn-sm">
+                                  {tr('transferProofFromRoll')}
+                                </label>
+                                <label htmlFor="bankProofCamera" className="btn btn-ghost btn-sm">
+                                  {tr('transferProofTakePhoto')}
                                 </label>
                                 <button
                                   className="btn btn-ghost btn-sm"
@@ -457,10 +469,16 @@ export default function ResidentPortal() {
                             </div>
                           </div>
                         ) : (
-                          <label htmlFor="bankProof" className="transfer-proof-drop">
-                            <span>{tr('transferProofChoose')}</span>
-                            <span className="meta">PNG, JPG, HEIC · max 8 MB</span>
-                          </label>
+                          <div className="transfer-proof-options">
+                            <label htmlFor="bankProofGallery" className="transfer-proof-drop">
+                              <span>{tr('transferProofFromRoll')}</span>
+                              <span className="meta">PNG, JPG, HEIC · max 8 MB</span>
+                            </label>
+                            <label htmlFor="bankProofCamera" className="transfer-proof-drop">
+                              <span>{tr('transferProofTakePhoto')}</span>
+                              <span className="meta">{tr('transferProofCameraHint')}</span>
+                            </label>
+                          </div>
                         )}
                       </div>
                     </div>

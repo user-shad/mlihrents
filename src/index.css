@@ -1408,6 +1408,17 @@ img {
   background: rgba(228, 238, 240, 0.9);
 }
 
+.transfer-proof-options {
+  display: grid;
+  gap: 0.65rem;
+}
+
+@media (min-width: 520px) {
+  .transfer-proof-options {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .transfer-proof-preview {
   display: grid;
   grid-template-columns: 88px 1fr;
