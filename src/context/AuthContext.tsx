@@ -6,6 +6,11 @@ import {
   staffAccounts,
   StaffTier,
 } from '../data'
+import {
+  onCloudAccounts,
+  queueCloudAccounts,
+  writeLocalAccounts,
+} from '../lib/cloudSync'
 
 export type SessionRole = 'resident' | 'admin'
 
@@ -43,7 +48,6 @@ interface AuthContextValue {
 }
 
 const SESSION_KEY = 'mlihrents_session'
-const ACCOUNTS_KEY = 'mlihrents_accounts_v3'
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
@@ -123,21 +127,9 @@ function ensureSeedResidents(list: AccountRecord[]): AccountRecord[] {
   return next
 }
 
-function readAccounts(): AccountRecord[] {
-  try {
-    const raw = localStorage.getItem(ACCOUNTS_KEY)
-    if (raw) {
-      const parsed = stripLegacyTestAccounts(JSON.parse(raw) as AccountRecord[])
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return ensureSeedResidents(ensureBootstrapStaff(parsed))
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  const seeded = seedAccounts()
-  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(seeded))
-  return seeded
+function prepareAccounts(raw: AccountRecord[]): AccountRecord[] {
+  const base = raw.length > 0 ? raw : seedAccounts()
+  return ensureSeedResidents(ensureBootstrapStaff(base))
 }
 
 function enrichSession(session: Session, accounts: AccountRecord[]): Session {
@@ -160,14 +152,22 @@ function readStoredSession(accounts: AccountRecord[]): Session | null {
   return null
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [accounts, setAccounts] = useState<AccountRecord[]>(() => readAccounts())
+export function AuthProvider({
+  children,
+  initialAccounts,
+}: {
+  children: ReactNode
+  initialAccounts: AccountRecord[]
+}) {
+  const [accounts, setAccounts] = useState<AccountRecord[]>(() => prepareAccounts(initialAccounts))
   const [session, setSession] = useState<Session | null>(() =>
-    readStoredSession(readAccounts()),
+    readStoredSession(prepareAccounts(initialAccounts)),
   )
 
   useEffect(() => {
-    setAccounts((prev) => ensureSeedResidents(ensureBootstrapStaff(prev)))
+    return onCloudAccounts((remote) => {
+      setAccounts(prepareAccounts(remote))
+    })
   }, [])
 
   useEffect(() => {
@@ -179,7 +179,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [session])
 
   useEffect(() => {
-    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts))
+    writeLocalAccounts(accounts)
+    queueCloudAccounts(accounts)
   }, [accounts])
 
   function loginResident(phone: string, pin: string): string | null {
@@ -208,7 +209,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )
     if (!account) return 'staffNotFound'
     if (account.pin !== pin) return 'wrongPin'
-    // Persist bootstrap staff if it was missing from state
     setAccounts((prev) => ensureBootstrapStaff(prev))
     setSession({
       role: 'admin',

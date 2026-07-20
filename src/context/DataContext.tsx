@@ -16,12 +16,10 @@ import {
   resolveStaffOcrTargets,
   extractBankReference,
   applyDueDayToInvoices,
-  availableApartments,
   AvailableApartment,
   blankResident,
   ChatMessage,
   Invoice,
-  invoicesByResident,
   nowLabel,
   PaymentRecord,
   amountsMatch,
@@ -30,11 +28,8 @@ import {
   Resident,
   apartmentUnits,
   buildEmptyApartment,
-  residents,
-  seedPayments,
   suggestInstallment,
   Ticket,
-  ticketsByResident,
   welcomeMessage,
 } from '../data'
 import { useAuth } from './AuthContext'
@@ -50,9 +45,13 @@ import {
   formatScreenshotAnalysis,
   recognizeTransferProof,
 } from '../lib/transferProofOcr'
+import {
+  onCloudOps,
+  queueCloudOps,
+  type PortalOps,
+  writeLocalOps,
+} from '../lib/cloudSync'
 
-const OPS_KEY = 'mlihrents_ops_v5'
-const LEGACY_OPS_KEYS = ['mlihrents_ops_v4']
 const LEGACY_A1_TEST_ID = 'apt-a1'
 const LEGACY_A1_TEST_INVOICE = 'INV-TEST-A1'
 
@@ -67,7 +66,7 @@ function isLegacyTestTenantA1(resident: Resident): boolean {
 }
 
 /** Remove demo A1 tenant data saved in older builds. */
-function stripLegacyTestData(parsed: PersistedOps): PersistedOps {
+function stripLegacyTestData(parsed: PortalOps): PortalOps {
   const residentList = parsed.residentList ?? []
   const hasTestResident = residentList.some(isLegacyTestTenantA1)
   const hasTestInvoice = (parsed.invoiceMap?.[LEGACY_A1_TEST_ID] ?? []).some(
@@ -106,17 +105,6 @@ function stripLegacyTestData(parsed: PersistedOps): PersistedOps {
   return { ...parsed, residentList: nextResidents, invoiceMap, payments, paidIds }
 }
 
-interface PersistedOps {
-  residentList: Resident[]
-  listings: AvailableApartment[]
-  payments: PaymentRecord[]
-  invoiceMap: Record<string, Invoice[]>
-  ticketMap: Record<string, Ticket[]>
-  invoiceExtensions: Record<string, number>
-  paidIds: string[]
-  bankSettings: BankAccountSettings
-}
-
 function ensureSeedApartments(list: Resident[]): Resident[] {
   const byId = new Map(list.map((r) => [r.id, r]))
   return apartmentUnits.map((seed) => {
@@ -137,31 +125,13 @@ function ensureSeedInvoices(map: Record<string, Invoice[]>): Record<string, Invo
   return { ...map }
 }
 
-function normalizePersistedOps(parsed: PersistedOps): PersistedOps {
+function normalizePersistedOps(parsed: PortalOps): PortalOps {
   const cleaned = stripLegacyTestData(parsed)
   return {
     ...cleaned,
     residentList: ensureSeedApartments(cleaned.residentList ?? []),
     invoiceMap: ensureSeedInvoices(cleaned.invoiceMap ?? {}),
   }
-}
-
-function readPersistedOps(): PersistedOps | null {
-  try {
-    let raw = localStorage.getItem(OPS_KEY)
-    if (!raw) {
-      for (const legacyKey of LEGACY_OPS_KEYS) {
-        raw = localStorage.getItem(legacyKey)
-        if (raw) break
-      }
-    }
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as PersistedOps
-    if (parsed && typeof parsed === 'object') return normalizePersistedOps(parsed)
-  } catch {
-    /* ignore */
-  }
-  return null
 }
 
 interface DataContextValue {
@@ -262,28 +232,25 @@ interface DataContextValue {
 
 const DataContext = createContext<DataContextValue | null>(null)
 
-export function DataProvider({ children }: { children: ReactNode }) {
+export function DataProvider({
+  children,
+  initialOps,
+}: {
+  children: ReactNode
+  initialOps: PortalOps
+}) {
   const { lang, tr } = useLang()
   const { session, setResidentPin, registerResidentAccount } = useAuth()
-  const persisted = useMemo(() => readPersistedOps(), [])
+  const bootOps = useMemo(() => normalizePersistedOps(initialOps), [initialOps])
 
-  const [selectedResidentId, setSelectedResidentId] = useState(() => {
-    const list = ensureSeedApartments(persisted?.residentList ?? residents)
-    return list[0]?.id ?? ''
-  })
-  const [residentList, setResidentList] = useState<Resident[]>(() =>
-    ensureSeedApartments(persisted?.residentList ?? residents),
+  const [selectedResidentId, setSelectedResidentId] = useState(() => bootOps.residentList[0]?.id ?? '')
+  const [residentList, setResidentList] = useState<Resident[]>(() => bootOps.residentList)
+  const [listings, setListings] = useState<AvailableApartment[]>(() => bootOps.listings)
+  const [bankSettings, setBankSettings] = useState<BankAccountSettings>(() =>
+    isBankConfigured(bootOps.bankSettings) ? bootOps.bankSettings : readBankSettings(),
   )
-  const [listings, setListings] = useState<AvailableApartment[]>(
-    persisted?.listings ?? availableApartments,
-  )
-  const [bankSettings, setBankSettings] = useState<BankAccountSettings>(() => readBankSettings())
-  const [invoiceMap, setInvoiceMap] = useState<Record<string, Invoice[]>>(() =>
-    ensureSeedInvoices(persisted?.invoiceMap ?? invoicesByResident),
-  )
-  const [ticketMap, setTicketMap] = useState<Record<string, Ticket[]>>(
-    persisted?.ticketMap ?? ticketsByResident,
-  )
+  const [invoiceMap, setInvoiceMap] = useState<Record<string, Invoice[]>>(() => bootOps.invoiceMap)
+  const [ticketMap, setTicketMap] = useState<Record<string, Ticket[]>>(() => bootOps.ticketMap)
   const [dueDayDraft, setDueDayDraft] = useState(String(blankResident.rentDueDay))
   const [scheduleDraft, setScheduleDraft] = useState<RentSchedule>(blankResident.rentSchedule)
   const [contractDraft, setContractDraft] = useState(String(blankResident.contractTotal))
@@ -292,15 +259,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [ticketTitle, setTicketTitle] = useState('')
   const [ticketCategory, setTicketCategory] = useState('Plumbing')
   const [ticketNote, setTicketNote] = useState('')
-  const [paidIds, setPaidIds] = useState<string[]>(persisted?.paidIds ?? [])
+  const [paidIds, setPaidIds] = useState<string[]>(() => bootOps.paidIds)
   /** Extra days granted past the original due date, keyed by invoice id */
   const [invoiceExtensions, setInvoiceExtensions] = useState<Record<string, number>>(
-    persisted?.invoiceExtensions ?? {},
+    () => bootOps.invoiceExtensions,
   )
   const [checkoutInvoiceId, setCheckoutInvoiceId] = useState<string | null>(null)
   const [bankProof, setBankProof] = useState<{ name: string; dataUrl: string } | null>(null)
   const [paying, setPaying] = useState(false)
-  const [payments, setPayments] = useState<PaymentRecord[]>(persisted?.payments ?? seedPayments)
+  const [payments, setPayments] = useState<PaymentRecord[]>(() => bootOps.payments)
   const [toast, setToast] = useState<string | null>(null)
   const [humanMode, setHumanMode] = useState(false)
   const [chatInput, setChatInput] = useState('')
@@ -326,33 +293,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [staffAnalyzing, setStaffAnalyzing] = useState(false)
 
   useEffect(() => {
-    setResidentList((prev) => {
-      const next = ensureSeedApartments(prev)
-      if (next.length === prev.length && next.every((unit, index) => unit.id === prev[index]?.id)) {
-        return prev
+    return onCloudOps((remote) => {
+      const next = normalizePersistedOps(remote)
+      setResidentList(next.residentList)
+      setListings(next.listings)
+      setPayments(next.payments)
+      setInvoiceMap(next.invoiceMap)
+      setTicketMap(next.ticketMap)
+      setInvoiceExtensions(next.invoiceExtensions)
+      setPaidIds(next.paidIds)
+      if (isBankConfigured(next.bankSettings)) {
+        setBankSettings(next.bankSettings)
       }
-      return next
     })
   }, [])
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        OPS_KEY,
-        JSON.stringify({
-          residentList,
-          listings,
-          payments,
-          invoiceMap,
-          ticketMap,
-          invoiceExtensions,
-          paidIds,
-          bankSettings,
-        }),
-      )
-    } catch {
-      /* ops blob may exceed quota — bank settings use a separate key */
+    const ops: PortalOps = {
+      residentList,
+      listings,
+      payments,
+      invoiceMap,
+      ticketMap,
+      invoiceExtensions,
+      paidIds,
+      bankSettings,
     }
+    writeLocalOps(ops)
+    queueCloudOps(ops)
   }, [residentList, listings, payments, invoiceMap, ticketMap, invoiceExtensions, paidIds, bankSettings])
 
   function showToast(msg: string) {

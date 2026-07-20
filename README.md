@@ -37,7 +37,7 @@ Production site: **[https://www.mlihrents.com](https://www.mlihrents.com)**
 
 `vercel.json` is already in the project so React Router routes (`/login`, `/admin`, etc.) work on refresh.
 
-**Note:** Data is still stored in each visitor’s browser for now. A shared database can come after the site is live.
+**Note:** With Supabase configured (see [SETUP-SUPABASE.md](./SETUP-SUPABASE.md)), data syncs across all devices. Without it, data stays in each browser only.
 
 ## Production build
 
