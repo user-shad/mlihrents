@@ -195,8 +195,8 @@ function hasOpsData(ops: PortalOps) {
   return (
     ops.residentList.some((r) => r.name.trim() || r.phone.trim()) ||
     ops.payments.length > 0 ||
-    ops.listings.some((l) => l.highlight?.trim() || l.apartment?.trim()) ||
-    Object.keys(ops.invoiceMap).length > 0 ||
+    ops.listings.some((l) => l.highlight?.trim()) ||
+    Object.values(ops.invoiceMap).some((list) => list.length > 0) ||
     isBankConfiguredOps(ops)
   )
 }
@@ -334,6 +334,18 @@ async function saveCloudRowViaApi(accounts: AccountRecord[], ops: PortalOps) {
 async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps) {
   suppressRemoteUntil = Date.now() + 3000
 
+  // Never wipe real cloud data with an empty/default payload
+  const existing = await loadCloudRowViaApi()
+  if (
+    existing &&
+    (hasOpsData(existing.ops) || hasAccountsData(existing.accounts)) &&
+    !hasOpsData(ops) &&
+    !hasAccountsData(accounts)
+  ) {
+    lastSyncError = 'Skipped empty upload to protect cloud data'
+    return
+  }
+
   if (await saveCloudRowViaApi(accounts, ops)) return
 
   if (!supabase) return
@@ -428,6 +440,14 @@ async function doBootstrap(): Promise<BootstrapData> {
 }
 
 function applyRemoteRow(row: CloudRow) {
+  const localOps = readLocalOps()
+  const localAccounts = readLocalAccounts()
+  const remoteEmpty = !hasOpsData(row.ops) && !hasAccountsData(row.accounts)
+  const localHas =
+    (localOps ? hasOpsData(localOps) : false) ||
+    (localAccounts ? hasAccountsData(localAccounts) : false)
+  if (remoteEmpty && localHas) return
+
   suppressCloudPush++
   try {
     accountsListener?.(row.accounts)

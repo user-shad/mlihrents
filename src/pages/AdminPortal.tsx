@@ -150,7 +150,7 @@ export default function AdminPortal() {
     })
   }, [pendingPayments])
 
-  const occupiedUnits = residentList.filter((r) => r.name.trim()).length
+  const occupiedUnits = residentList.filter((r) => r.name.trim() || r.phone.trim()).length
   const totalUnits = residentList.length
 
   useEffect(() => {
@@ -255,7 +255,7 @@ export default function AdminPortal() {
                 const unit = unitCodeLabel(r)
                 const active = r.id === selectedResidentId
                 const title = apartmentDisplayTitle(r, lang)
-                const vacant = !r.name.trim()
+                const vacant = !(r.name.trim() || r.phone.trim())
                 return (
                   <button
                     key={r.id}
