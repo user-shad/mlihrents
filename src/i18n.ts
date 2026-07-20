@@ -191,7 +191,9 @@ const en: Dict = {
   deletePayment: 'Delete payment',
   deletePaymentConfirm: 'Delete this payment? If it was approved, the paid amount will be reversed.',
   amountMismatch: 'Does not match invoice',
-  noPendingPayments: 'No transfer screenshots waiting for review',
+  noPendingPayments:
+    'No screenshots waiting. After a resident pays and uploads proof, it appears here until you approve or reject.',
+  incomingPaymentsLead: 'Approved, partial, and rejected payments (history).',
   underReview: 'Under review',
   viewProof: 'View proof',
   processing: 'Processing…',
@@ -572,7 +574,9 @@ const ar: Dict = {
   deletePayment: 'حذف الدفعة',
   deletePaymentConfirm: 'حذف هذه الدفعة؟ إذا كانت معتمدة سيتم عكس المبلغ المدفوع.',
   amountMismatch: 'لا يطابق الفاتورة',
-  noPendingPayments: 'لا لقطات تحويل بانتظار المراجعة',
+  noPendingPayments:
+    'لا لقطات بانتظار المراجعة. بعد دفع الساكن ورفع الإثبات تظهر هنا حتى توافق أو ترفض.',
+  incomingPaymentsLead: 'المدفوعات المعتمدة والجزئية والمرفوضة (السجل).',
   underReview: 'قيد المراجعة',
   viewProof: 'عرض الإثبات',
   processing: 'جاري المعالجة…',

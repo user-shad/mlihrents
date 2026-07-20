@@ -236,16 +236,21 @@ function normalizeCloudOps(raw: unknown): PortalOps {
   }
 }
 
-/** Strip large screenshot data from cloud payload (keeps proofs local per device). */
+/** Keep pending screenshots in cloud; strip heavy proofs from settled history. */
 export function slimOpsForCloud(ops: PortalOps): PortalOps {
   return {
     ...ops,
-    payments: ops.payments.map((p) => ({
-      ...p,
-      transferProof: p.transferProof
-        ? { name: p.transferProof.name, dataUrl: '' }
-        : undefined,
-    })),
+    payments: ops.payments.map((p) => {
+      if (p.status === 'pending_review' && p.transferProof?.dataUrl) {
+        return p
+      }
+      return {
+        ...p,
+        transferProof: p.transferProof
+          ? { name: p.transferProof.name, dataUrl: '' }
+          : undefined,
+      }
+    }),
   }
 }
 
@@ -498,6 +503,35 @@ async function doBootstrap(): Promise<BootstrapData> {
   return merged
 }
 
+function mergePaymentLists(
+  remote: PortalOps['payments'],
+  local: PortalOps['payments'] | undefined,
+): PortalOps['payments'] {
+  const map = new Map<string, PortalOps['payments'][number]>()
+  for (const p of remote) map.set(p.id, p)
+  for (const p of local ?? []) {
+    const existing = map.get(p.id)
+    if (!existing) {
+      map.set(p.id, p)
+      continue
+    }
+    // Prefer version that still has a screenshot, or pending over stale settled
+    const preferLocal =
+      (p.transferProof?.dataUrl && !existing.transferProof?.dataUrl) ||
+      (p.status === 'pending_review' && existing.status !== 'pending_review')
+    if (preferLocal) map.set(p.id, p)
+  }
+  return [...map.values()].sort((a, b) => b.id.localeCompare(a.id))
+}
+
+function mergeOpsPreferringLocalProofs(remote: PortalOps, local: PortalOps | null): PortalOps {
+  if (!local) return remote
+  return {
+    ...remote,
+    payments: mergePaymentLists(remote.payments, local.payments),
+  }
+}
+
 function applyRemoteRow(row: CloudRow) {
   const localOps = readLocalOps()
   const localAccounts = readLocalAccounts()
@@ -507,10 +541,12 @@ function applyRemoteRow(row: CloudRow) {
     (localAccounts ? hasAccountsData(localAccounts) : false)
   if (remoteEmpty && localHas) return
 
+  const mergedOps = mergeOpsPreferringLocalProofs(row.ops, localOps)
+
   suppressCloudPush++
   try {
     accountsListener?.(row.accounts)
-    opsListener?.(row.ops)
+    opsListener?.(mergedOps)
     lastCloudUpdatedAt = row.updated_at
   } finally {
     suppressCloudPush--
@@ -523,7 +559,8 @@ function pullRemoteIfNewer() {
     if (!row) return
     const remoteTime = cloudTimestamp(row)
     const localTime = localTimestamp()
-    if (remoteTime >= localTime || remoteTime > 0) {
+    // Only apply when cloud is actually newer — never overwrite local with older remote
+    if (remoteTime >= localTime) {
       applyRemoteRow(row)
     }
   })

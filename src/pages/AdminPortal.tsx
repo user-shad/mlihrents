@@ -1131,6 +1131,7 @@ export default function AdminPortal() {
                 style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}
               >
                 {tr('pendingPayments')}
+                {pendingPayments.length > 0 ? ` (${pendingPayments.length})` : ''}
               </h3>
               <p className="meta" style={{ marginTop: 0 }}>
                 {tr('pendingPaymentsLead')}
@@ -1145,7 +1146,7 @@ export default function AdminPortal() {
                       <div className="meta">
                         {p.unit} · {p.paidAt}
                       </div>
-                      {p.transferProof ? (
+                      {p.transferProof?.dataUrl ? (
                         <a
                           className="proof-thumb"
                           href={p.transferProof.dataUrl}
@@ -1194,8 +1195,13 @@ export default function AdminPortal() {
               </div>
 
               <h3 className="section-label">{tr('incomingPayments')}</h3>
+              <p className="meta" style={{ marginTop: 0 }}>
+                {tr('incomingPaymentsLead')}
+              </p>
               <div className="list">
-                {payments.map((p) => (
+                {payments
+                  .filter((p) => p.status !== 'pending_review')
+                  .map((p) => (
                   <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
                       <strong>
@@ -1204,7 +1210,7 @@ export default function AdminPortal() {
                       <div className="meta">
                         {p.unit} · {paymentMethodLabel(p.method)} · {p.paidAt}
                       </div>
-                      {p.transferProof && (
+                      {p.transferProof?.dataUrl && (
                         <a
                           className="proof-thumb"
                           href={p.transferProof.dataUrl}
@@ -1230,7 +1236,9 @@ export default function AdminPortal() {
                     <Badge lang={lang} status={p.status === 'settled' ? 'paid' : p.status} />
                   </div>
                 ))}
-                {payments.length === 0 && <p className="meta">{tr('noPaymentsYet')}</p>}
+                {payments.filter((p) => p.status !== 'pending_review').length === 0 && (
+                  <p className="meta">{tr('noPaymentsYet')}</p>
+                )}
               </div>
             </section>
 

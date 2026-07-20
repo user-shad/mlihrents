@@ -743,6 +743,33 @@ export function DataProvider({
     setBankProof(null)
   }
 
+  function compressImageDataUrl(dataUrl: string, maxEdge = 1280, quality = 0.72): Promise<string> {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        const scale = Math.min(1, maxEdge / Math.max(img.width, img.height))
+        const w = Math.max(1, Math.round(img.width * scale))
+        const h = Math.max(1, Math.round(img.height * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(dataUrl)
+          return
+        }
+        ctx.drawImage(img, 0, 0, w, h)
+        try {
+          resolve(canvas.toDataURL('image/jpeg', quality))
+        } catch {
+          resolve(dataUrl)
+        }
+      }
+      img.onerror = () => resolve(dataUrl)
+      img.src = dataUrl
+    })
+  }
+
   function setBankProofFromFile(file: File | null) {
     if (!file) {
       setBankProof(null)
@@ -760,7 +787,9 @@ export function DataProvider({
     reader.onload = () => {
       const dataUrl = typeof reader.result === 'string' ? reader.result : ''
       if (!dataUrl) return
-      setBankProof({ name: file.name, dataUrl })
+      void compressImageDataUrl(dataUrl).then((compressed) => {
+        setBankProof({ name: file.name.replace(/\.\w+$/, '') + '.jpg', dataUrl: compressed })
+      })
     }
     reader.readAsDataURL(file)
   }
