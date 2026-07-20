@@ -58,6 +58,10 @@ const en: Dict = {
   setLoginPinHelp: 'Set the mobile number and 4-digit password the tenant uses to sign in.',
   saveLoginPin: 'Save login info',
   loginPinSaved: 'Login information saved for this tenant',
+  clearLoginPin: 'Clear login credentials',
+  clearLoginConfirm:
+    'Clear phone and password for this unit? The tenant will not be able to sign in until you set new credentials.',
+  loginCleared: 'Login credentials cleared',
   rememberLoginInfo: 'Save login info on this device',
   registerResident: 'Register new resident',
   registerResidentHelp: 'Admin creates the phone number and 4-digit password before the resident can sign in.',
@@ -395,6 +399,10 @@ const ar: Dict = {
   setLoginPinHelp: 'حدّد رقم الجوال وكلمة المرور المكوّنة من 4 أرقام التي يستخدمها الساكن لتسجيل الدخول.',
   saveLoginPin: 'حفظ معلومات الدخول',
   loginPinSaved: 'تم حفظ معلومات الدخول لهذا الساكن',
+  clearLoginPin: 'مسح بيانات الدخول',
+  clearLoginConfirm:
+    'مسح رقم الجوال وكلمة المرور لهذه الوحدة؟ لن يتمكن الساكن من تسجيل الدخول حتى تضع بيانات جديدة.',
+  loginCleared: 'تم مسح بيانات الدخول',
   rememberLoginInfo: 'حفظ معلومات الدخول على هذا الجهاز',
   registerResident: 'تسجيل ساكن جديد',
   registerResidentHelp: 'ينشئ المدير رقم الهاتف وكلمة المرور قبل أن يتمكن الساكن من الدخول.',

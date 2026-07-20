@@ -198,6 +198,7 @@ interface DataContextValue {
   staffAnalyzing: boolean
   saveRentPlan: () => void
   saveResidentLoginPin: (phone: string, pin: string) => void
+  clearResidentLogin: () => void
   registerNewResident: (input: {
     name: string
     phone: string
@@ -240,7 +241,7 @@ export function DataProvider({
   initialOps: PortalOps
 }) {
   const { lang, tr } = useLang()
-  const { session, setResidentPin, registerResidentAccount } = useAuth()
+  const { session, setResidentPin, clearResidentCredentials, registerResidentAccount } = useAuth()
   const bootOps = useMemo(() => normalizePersistedOps(initialOps), [initialOps])
 
   const [selectedResidentId, setSelectedResidentId] = useState(() => bootOps.residentList[0]?.id ?? '')
@@ -475,6 +476,19 @@ export function DataProvider({
       prev.map((r) => (r.id === selectedResidentId ? { ...r, phone, pin } : r)),
     )
     showToast(tr('loginPinSaved'))
+  }
+
+  function clearResidentLogin() {
+    if (session?.role !== 'admin' || session.staffTier !== 'admin') {
+      showToast(tr('residentPinAdminOnly'))
+      return
+    }
+    if (!selectedResidentId) return
+    clearResidentCredentials(selectedResidentId)
+    setResidentList((prev) =>
+      prev.map((r) => (r.id === selectedResidentId ? { ...r, phone: '', pin: '' } : r)),
+    )
+    showToast(tr('loginCleared'))
   }
 
   function registerNewResident(input: {
@@ -1048,6 +1062,7 @@ export function DataProvider({
         staffAnalyzing,
         saveRentPlan,
         saveResidentLoginPin,
+        clearResidentLogin,
         registerNewResident,
         updateResidentInfo,
         resetHumanMode,

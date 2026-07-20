@@ -38,6 +38,7 @@ interface AuthContextValue {
   loginResident: (phone: string, pin: string) => string | null
   loginAdmin: (phone: string, pin: string) => string | null
   setResidentPin: (residentId: string, phone: string, pin: string, name: string) => string | null
+  clearResidentCredentials: (residentId: string) => void
   registerResidentAccount: (input: {
     name: string
     phone: string
@@ -235,6 +236,10 @@ export function AuthProvider({
     return null
   }
 
+  function clearResidentCredentials(residentId: string) {
+    setAccounts((prev) => prev.filter((a) => !(a.role === 'resident' && a.residentId === residentId)))
+  }
+
   function registerResidentAccount(input: {
     name: string
     phone: string
@@ -256,6 +261,7 @@ export function AuthProvider({
         loginResident,
         loginAdmin,
         setResidentPin,
+        clearResidentCredentials,
         registerResidentAccount,
         logout,
       }}

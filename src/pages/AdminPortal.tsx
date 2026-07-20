@@ -83,6 +83,7 @@ export default function AdminPortal() {
     sendChat,
     saveRentPlan,
     saveResidentLoginPin,
+    clearResidentLogin,
     updateResidentInfo,
     resetHumanMode,
     availableListings,
@@ -637,6 +638,19 @@ export default function AdminPortal() {
                       onClick={() => saveResidentLoginPin(phoneDraft, pinDraft)}
                     >
                       {tr('saveLoginPin')}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      style={{ marginTop: '0.5rem', marginInlineStart: '0.5rem' }}
+                      onClick={() => {
+                        if (!window.confirm(tr('clearLoginConfirm'))) return
+                        clearResidentLogin()
+                        setPhoneDraft('')
+                        setPinDraft('')
+                      }}
+                    >
+                      {tr('clearLoginPin')}
                     </button>
                   </>
                 )}
