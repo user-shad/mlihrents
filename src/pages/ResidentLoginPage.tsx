@@ -77,7 +77,6 @@ export default function ResidentLoginPage() {
             {tr('signIn')}
           </button>
           <p className="hint">{tr('pinLoginHint')}</p>
-          <span className="demo-chip">{tr('demoResidentCreds')}</span>
           <p className="hint" style={{ marginTop: '0.75rem' }}>
             <Link to="/staff">{tr('staffPortalLink')}</Link>
           </p>

@@ -3,8 +3,8 @@ import {
   isValidPin,
   normalizePhone,
   residents,
-  sampleA1TestTenant,
   staffAccounts,
+  StaffTier,
 } from '../data'
 
 export type SessionRole = 'resident' | 'admin'
@@ -14,6 +14,7 @@ export interface Session {
   phone: string
   name: string
   residentId?: string
+  staffTier?: StaffTier
 }
 
 export interface AccountRecord {
@@ -22,6 +23,7 @@ export interface AccountRecord {
   role: SessionRole
   name: string
   residentId?: string
+  staffTier?: StaffTier
 }
 
 interface AuthContextValue {
@@ -31,6 +33,7 @@ interface AuthContextValue {
   loginResident: (phone: string, pin: string) => string | null
   loginAdmin: (phone: string, pin: string) => string | null
   setResidentPin: (residentId: string, phone: string, pin: string, name: string) => string | null
+  changeStaffPassword: (currentPin: string, newPin: string) => string | null
   registerResidentAccount: (input: {
     name: string
     phone: string
@@ -41,7 +44,7 @@ interface AuthContextValue {
 }
 
 const SESSION_KEY = 'mlihrents_session'
-const ACCOUNTS_KEY = 'mlihrents_accounts_v2'
+const ACCOUNTS_KEY = 'mlihrents_accounts_v3'
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
@@ -58,6 +61,7 @@ function seedAccounts(): AccountRecord[] {
     pin: s.pin,
     role: 'admin',
     name: s.name,
+    staffTier: s.tier,
   }))
   return [...fromResidents, ...fromStaff]
 }
@@ -70,9 +74,9 @@ function ensureBootstrapStaff(list: AccountRecord[]): AccountRecord[] {
     if (!phone) continue
     const idx = next.findIndex((a) => a.role === 'admin' && a.phone === phone)
     if (idx >= 0) {
-      next[idx] = { ...next[idx], pin: s.pin, name: s.name }
+      next[idx] = { ...next[idx], name: s.name, staffTier: s.tier }
     } else {
-      next.push({ phone, pin: s.pin, role: 'admin', name: s.name })
+      next.push({ phone, pin: s.pin, role: 'admin', name: s.name, staffTier: s.tier })
     }
   }
   return next
@@ -105,20 +109,6 @@ function ensureSeedResidents(list: AccountRecord[]): AccountRecord[] {
       })
     }
   }
-  // Always keep A1 test login available
-  const a1Phone = normalizePhone(sampleA1TestTenant.phone)
-  const a1Idx = next.findIndex(
-    (a) => a.role === 'resident' && a.residentId === sampleA1TestTenant.id,
-  )
-  const a1Account: AccountRecord = {
-    phone: a1Phone,
-    pin: sampleA1TestTenant.pin,
-    role: 'resident',
-    name: sampleA1TestTenant.name,
-    residentId: sampleA1TestTenant.id,
-  }
-  if (a1Idx >= 0) next[a1Idx] = a1Account
-  else next.push(a1Account)
   return next
 }
 
@@ -139,13 +129,19 @@ function readAccounts(): AccountRecord[] {
   return seeded
 }
 
-function readStoredSession(): Session | null {
+function enrichSession(session: Session, accounts: AccountRecord[]): Session {
+  if (session.role !== 'admin' || session.staffTier) return session
+  const account = accounts.find((a) => a.role === 'admin' && a.phone === session.phone)
+  return { ...session, staffTier: account?.staffTier ?? 'admin' }
+}
+
+function readStoredSession(accounts: AccountRecord[]): Session | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Session
     if (parsed?.role === 'resident' || parsed?.role === 'admin') {
-      return parsed
+      return enrichSession(parsed, accounts)
     }
   } catch {
     /* ignore */
@@ -154,8 +150,10 @@ function readStoredSession(): Session | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(() => readStoredSession())
   const [accounts, setAccounts] = useState<AccountRecord[]>(() => readAccounts())
+  const [session, setSession] = useState<Session | null>(() =>
+    readStoredSession(readAccounts()),
+  )
 
   useEffect(() => {
     setAccounts((prev) => ensureSeedResidents(ensureBootstrapStaff(prev)))
@@ -205,7 +203,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: 'admin',
       phone: account.phone,
       name: account.name,
+      staffTier: account.staffTier ?? 'admin',
     })
+    return null
+  }
+
+  function changeStaffPassword(currentPin: string, newPin: string): string | null {
+    if (!session || session.role !== 'admin') return 'staffNotFound'
+    if (!isValidPin(newPin)) return 'pinInvalid'
+    const account = accounts.find((a) => a.role === 'admin' && a.phone === session.phone)
+    if (!account) return 'staffNotFound'
+    if (account.pin !== currentPin) return 'wrongPin'
+    setAccounts((prev) =>
+      prev.map((a) =>
+        a.role === 'admin' && a.phone === session.phone ? { ...a, pin: newPin } : a,
+      ),
+    )
     return null
   }
 
@@ -246,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loginResident,
         loginAdmin,
         setResidentPin,
+        changeStaffPassword,
         registerResidentAccount,
         logout,
       }}

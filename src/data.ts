@@ -162,7 +162,7 @@ function normalizeRef(ref: string) {
   return ref.trim().toUpperCase()
 }
 
-/** Extract invoice reference from admin text (e.g. INV-TEST-A1). */
+/** Extract invoice reference from admin text (e.g. INV-2026-001). */
 export function extractInvoiceReference(input: string): string | null {
   const inv = input.match(/\b(INV-[A-Z0-9-]+)\b/i)
   if (inv) return inv[1]
@@ -271,8 +271,8 @@ function formatLookupReply(
   if (match === 'not_found') {
     lines.push(
       ar
-        ? '❌ لم أجد فاتورة أو دفعة بهذا الرقم. تأكد من رقم الفاتورة (مثل INV-TEST-A1) كما يظهر في وصف التحويل البنكي.'
-        : '❌ No invoice or payment found for this reference. Check the invoice number (e.g. INV-TEST-A1) as it appears in the bank transfer description.',
+        ? '❌ لم أجد فاتورة أو دفعة بهذا الرقم. تأكد من رقم الفاتورة كما يظهر في وصف التحويل البنكي.'
+        : '❌ No invoice or payment found for this reference. Check the invoice number as it appears in the bank transfer description.',
     )
     return lines.join('\n')
   }
@@ -466,7 +466,7 @@ export function staffAiReply(input: string, lang: 'en' | 'ar', ctx: StaffAiConte
           : `${i + 1}. ${refCode} · ${p.residentName} · ${formatMoney(p.amount)}`
       })
       .join('\n')
-    return `${header}\n${rows}\n\n${ar ? 'اسأل عن مرجع محدد للتفاصيل، مثل: تحقق من INV-TEST-A1' : 'Ask about a specific reference for details, e.g. “Check INV-TEST-A1”.'}`
+    return `${header}\n${rows}\n\n${ar ? 'اسأل عن مرجع محدد للتفاصيل.' : 'Ask about a specific reference for details.'}`
   }
 
   if (/how many|count|عدد|كم/.test(q) && /pending|waiting|قيد|معلق/.test(q)) {
@@ -608,54 +608,13 @@ function generateApartmentUnits(): Resident[] {
   const units: Resident[] = []
   for (const building of BUILDING_INVENTORY) {
     for (let i = 0; i < building.count; i++) {
-      const unitNumber = building.start + i
-      const code = `${building.letter}${unitNumber}`
-      if (code === 'A1') {
-        units.push({ ...sampleA1TestTenant })
-      } else {
-        units.push(buildEmptyApartment(building.letter, unitNumber))
-      }
+      units.push(buildEmptyApartment(building.letter, building.start + i))
     }
   }
   return units
 }
 
-/** Fixed unit inventory across buildings A–D. */
-export const sampleA1TestTenant: Resident = {
-  id: 'apt-a1',
-  name: 'Test Tenant A1',
-  phone: '0501234567',
-  pin: '1111',
-  building: 'Building A',
-  buildingNumber: 'A',
-  apartment: 'A1',
-  floor: 1,
-  parking: 'P-A1',
-  leaseEnd: '31 Dec 2026',
-  rentAmount: 10,
-  currency: 'AED',
-  rentDueDay: 20,
-  rentSchedule: 'monthly',
-  contractTotal: 10,
-  amountPaid: 0,
-  email: 'a1-test@mlihrents.ae',
-  moveIn: '1 Jul 2026',
-  occupants: 1,
-  status: 'active',
-}
-
-export const testInvoiceA1: Invoice = {
-  id: 'INV-TEST-A1',
-  period: 'Test payment · A1',
-  amount: 10,
-  dueDate: '20 Jul 2026',
-  dueDateIso: '2026-07-20',
-  status: 'due',
-}
-
 export const apartmentUnits: Resident[] = generateApartmentUnits()
-
-export const demoResident = sampleA1TestTenant
 
 /** Seed apartment records for admin operations */
 export const residents: Resident[] = [...apartmentUnits]
@@ -694,21 +653,28 @@ export function apartmentDisplayTitle(r: Resident, lang: 'en' | 'ar' = 'en') {
   return lang === 'ar' ? `شقة ${apt}` : `Apartment ${apt}`
 }
 
+export type StaffTier = 'admin' | 'staff'
+
+export interface StaffAccount {
+  phone: string
+  pin: string
+  name: string
+  tier: StaffTier
+}
+
 /**
- * Bootstrap staff logins.
- * Admin 1: `0500000000` · PIN `1234`
- * Admin 2: `0501111111` · PIN `5678`
+ * Bootstrap staff logins (passwords persist after first change in localStorage).
+ * Building Admin: `0500000000` · PIN `1234` — can change tenant passwords
+ * Operations Manager: `0501111111` · PIN `5678` — own password only
  */
-export const staffAccounts = [
-  { phone: '0500000000', pin: '1234', name: 'Building Admin' },
-  { phone: '0501111111', pin: '5678', name: 'Operations Manager' },
+export const staffAccounts: StaffAccount[] = [
+  { phone: '0500000000', pin: '1234', name: 'Building Admin', tier: 'admin' },
+  { phone: '0501111111', pin: '5678', name: 'Operations Manager', tier: 'staff' },
 ]
 
 export const invoices: Invoice[] = []
 
-export const invoicesByResident: Record<string, Invoice[]> = {
-  'apt-a1': [testInvoiceA1],
-}
+export const invoicesByResident: Record<string, Invoice[]> = {}
 
 export const initialTickets: Ticket[] = []
 

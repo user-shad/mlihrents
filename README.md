@@ -48,13 +48,16 @@ Residents cannot open `/admin`. Staff are redirected away from `/app`.
 
 ## Login
 
-| Who | Phone | Password |
-|-----|-------|----------|
-| Sample resident (Sara) | `0545882666` | `7423` |
-| Sample resident (Omar) | `0558821044` | `5510` |
-| Staff (bootstrap) | `0500000000` | `1234` |
+Staff bootstrap accounts (change passwords after first sign-in):
 
-Resident CSV template: `public/templates/residents-sample.csv` (also downloadable from Admin → register section).
+| Role | Phone | Password |
+|------|-------|----------|
+| Building Admin | `0500000000` | `1234` |
+| Operations Manager | `0501111111` | `5678` |
+
+Residents are created by staff in **Admin → Info** — assign phone number and 4-digit password before the tenant can sign in.
+
+Buildings **A–D** · 36 units (A0–A12, B1–B8, C1–C7, D1–D8).
 
 ## UAE domain & compliance
 

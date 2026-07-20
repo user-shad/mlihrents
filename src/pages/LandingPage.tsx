@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { formatMoney } from '../data'
+import { siteLegal } from '../legal/siteLegal'
 import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
 import { BrandMark, LanguageSwitch } from '../components/ui'
@@ -7,7 +8,7 @@ import SiteFooter from '../components/SiteFooter'
 
 export default function LandingPage() {
   const { lang, tr } = useLang()
-  const { toast, showToast, availableListings } = useData()
+  const { availableListings } = useData()
 
   return (
     <div className="app-shell landing">
@@ -21,8 +22,8 @@ export default function LandingPage() {
             {tr('availableNav')}
           </a>
           <LanguageSwitch />
-          <Link className="btn btn-ghost" to="/login">
-            {tr('signIn')}
+          <Link className="btn btn-ghost" to="/staff">
+            {tr('staffPortalLink')}
           </Link>
           <Link className="btn btn-accent" to="/login">
             {tr('signIn')}
@@ -99,13 +100,14 @@ export default function LandingPage() {
                   {formatMoney(apt.rentMonthly, apt.currency)}
                   <span>{tr('perMonth')}</span>
                 </div>
-                <button
+                <a
                   className="btn btn-primary btn-sm"
-                  type="button"
-                  onClick={() => showToast(tr('inquireToast'))}
+                  href={`mailto:${siteLegal.supportEmail}?subject=${encodeURIComponent(
+                    `Inquiry: ${apt.buildingNumber}-${apt.apartment}`,
+                  )}`}
                 >
                   {tr('inquire')}
-                </button>
+                </a>
               </div>
             </article>
           ))}
@@ -131,8 +133,6 @@ export default function LandingPage() {
       </section>
 
       <SiteFooter />
-
-      {toast && <div className="toast">{toast}</div>}
     </div>
   )
 }

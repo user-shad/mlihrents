@@ -46,7 +46,7 @@ const emptyListingForm = {
 
 export default function AdminPortal() {
   const navigate = useNavigate()
-  const { logout, accounts } = useAuth()
+  const { logout, accounts, session, changeStaffPassword } = useAuth()
   const { lang, tr } = useLang()
   const {
     residentList,
@@ -92,6 +92,10 @@ export default function AdminPortal() {
   } = useData()
 
   const [tab, setTab] = useState<Tab>('info')
+  const [staffCurrentPin, setStaffCurrentPin] = useState('')
+  const [staffNewPin, setStaffNewPin] = useState('')
+  const [staffConfirmPin, setStaffConfirmPin] = useState('')
+  const isBuildingAdmin = session?.staffTier === 'admin'
   const [pinDraft, setPinDraft] = useState(selectedResident.pin)
   const [phoneDraft, setPhoneDraft] = useState(selectedResident.phone)
   const [editName, setEditName] = useState(selectedResident.name)
@@ -311,9 +315,76 @@ export default function AdminPortal() {
         </nav>
 
         <div className="user-card">
-          <strong>{tr('buildingManager')}</strong>
-          <span>{tr('palmOps')}</span>
+          <strong>{session?.name ?? tr('buildingManager')}</strong>
+          <span>{isBuildingAdmin ? tr('staffRoleAdmin') : tr('staffRoleOps')}</span>
         </div>
+
+        <section className="panel" style={{ margin: '1rem 0', padding: '0.75rem' }}>
+          <h3 className="section-label" style={{ marginTop: 0 }}>
+            {tr('changeStaffPassword')}
+          </h3>
+          <p className="meta" style={{ marginTop: 0, fontSize: '0.85rem' }}>
+            {tr('changeStaffPasswordHelp')}
+          </p>
+          <div className="form-row">
+            <label htmlFor="staffCurrentPin">{tr('currentPassword')}</label>
+            <input
+              id="staffCurrentPin"
+              type="password"
+              value={staffCurrentPin}
+              onChange={(e) => setStaffCurrentPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              inputMode="numeric"
+              maxLength={4}
+              autoComplete="current-password"
+            />
+          </div>
+          <div className="form-row">
+            <label htmlFor="staffNewPin">{tr('newPin')}</label>
+            <input
+              id="staffNewPin"
+              type="password"
+              value={staffNewPin}
+              onChange={(e) => setStaffNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              inputMode="numeric"
+              maxLength={4}
+              autoComplete="new-password"
+            />
+          </div>
+          <div className="form-row">
+            <label htmlFor="staffConfirmPin">{tr('confirmPin')}</label>
+            <input
+              id="staffConfirmPin"
+              type="password"
+              value={staffConfirmPin}
+              onChange={(e) => setStaffConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              inputMode="numeric"
+              maxLength={4}
+              autoComplete="new-password"
+            />
+          </div>
+          <button
+            className="btn btn-primary btn-sm"
+            type="button"
+            style={{ marginTop: '0.5rem', width: '100%' }}
+            onClick={() => {
+              if (staffNewPin !== staffConfirmPin) {
+                showToast(tr('pinMismatch'))
+                return
+              }
+              const err = changeStaffPassword(staffCurrentPin, staffNewPin)
+              if (err) {
+                showToast(tr(err))
+                return
+              }
+              setStaffCurrentPin('')
+              setStaffNewPin('')
+              setStaffConfirmPin('')
+              showToast(tr('staffPasswordChanged'))
+            }}
+          >
+            {tr('saveLoginPin')}
+          </button>
+        </section>
 
         <div className="side-footer">
           <button className="btn btn-ghost btn-sm logout-btn" type="button" onClick={handleLogout}>
@@ -546,40 +617,44 @@ export default function AdminPortal() {
                   {tr('saveApartmentInfo')}
                 </button>
 
-                <h3 className="section-label">{tr('setLoginPin')}</h3>
-                <p className="meta" style={{ marginTop: 0 }}>
-                  {tr('setLoginPinHelp')}
-                </p>
-                <div className="rent-plan-editor">
-                  <div className="form-row">
-                    <label htmlFor="loginPhone">{tr('mobileNumber')}</label>
-                    <input
-                      id="loginPhone"
-                      value={phoneDraft}
-                      onChange={(e) => setPhoneDraft(e.target.value)}
-                      inputMode="tel"
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="loginPin">{tr('loginPin')}</label>
-                    <input
-                      id="loginPin"
-                      value={pinDraft}
-                      onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                      inputMode="numeric"
-                      maxLength={4}
-                      placeholder="1234"
-                    />
-                  </div>
-                </div>
-                <button
-                  className="btn btn-primary btn-sm"
-                  type="button"
-                  style={{ marginTop: '0.75rem' }}
-                  onClick={() => saveResidentLoginPin(phoneDraft, pinDraft)}
-                >
-                  {tr('saveLoginPin')}
-                </button>
+                {isBuildingAdmin && (
+                  <>
+                    <h3 className="section-label">{tr('setLoginPin')}</h3>
+                    <p className="meta" style={{ marginTop: 0 }}>
+                      {tr('setLoginPinHelp')}
+                    </p>
+                    <div className="rent-plan-editor">
+                      <div className="form-row">
+                        <label htmlFor="loginPhone">{tr('mobileNumber')}</label>
+                        <input
+                          id="loginPhone"
+                          value={phoneDraft}
+                          onChange={(e) => setPhoneDraft(e.target.value)}
+                          inputMode="tel"
+                        />
+                      </div>
+                      <div className="form-row">
+                        <label htmlFor="loginPin">{tr('loginPin')}</label>
+                        <input
+                          id="loginPin"
+                          value={pinDraft}
+                          onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                          inputMode="numeric"
+                          maxLength={4}
+                          placeholder="1234"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      type="button"
+                      style={{ marginTop: '0.75rem' }}
+                      onClick={() => saveResidentLoginPin(phoneDraft, pinDraft)}
+                    >
+                      {tr('saveLoginPin')}
+                    </button>
+                  </>
+                )}
 
                 <h3 className="section-label">{tr('maintenanceTickets')}</h3>
                 <div className="list">
@@ -645,38 +720,10 @@ export default function AdminPortal() {
                     </button>
                   </div>
                 ) : (
-                  <div className="list">
-                    <div className="list-row">
-                      <div>
-                        <strong>
-                          {lang === 'ar' ? 'لا توجد محادثة حية' : 'No live demo thread'}
-                        </strong>
-                        <div className="meta">
-                          {lang === 'ar'
-                            ? `آخر محادثة لـ ${selectedResident.name.split(' ')[0]}: تذكير إيجار · بدون تحويل`
-                            : `${selectedResident.name.split(' ')[0]}’s last AI chat: rent reminder answered · no escalation`}
-                        </div>
-                      </div>
-                      <Badge lang={lang} status="resolved" />
-                    </div>
-                  </div>
+                  <p className="meta" style={{ margin: 0 }}>
+                    {tr('noChatHistory')}
+                  </p>
                 )}
-
-                <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    type="button"
-                    onClick={() =>
-                      showToast(
-                        lang === 'ar'
-                          ? `تم تجهيز عقد ${selectedResident.name}`
-                          : `Lease PDF queued for ${selectedResident.name}`,
-                      )
-                    }
-                  >
-                    {tr('downloadLease')}
-                  </button>
-                </div>
               </section>
             </div>
           </>
@@ -1164,22 +1211,6 @@ export default function AdminPortal() {
                   {adminResidentPayments.length === 0 && (
                     <p className="meta">{tr('noPaymentsYet')}</p>
                   )}
-                </div>
-
-                <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    type="button"
-                    onClick={() =>
-                      showToast(
-                        lang === 'ar'
-                          ? `تم إرسال تذكير الإيجار إلى ${selectedResident.phone}`
-                          : `Payment reminder sent to ${selectedResident.phone}`,
-                      )
-                    }
-                  >
-                    {tr('sendReminder')}
-                  </button>
                 </div>
               </section>
             </div>

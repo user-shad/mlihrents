@@ -11,6 +11,7 @@ import {
   serviceDirectory,
   unitCodeLabel,
 } from '../data'
+import { siteLegal } from '../legal/siteLegal'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
@@ -815,14 +816,13 @@ export default function ResidentPortal() {
               <div style={{ marginTop: '1rem' }}>
                 <RentBalanceCard resident={liveResident} lang={lang} tr={tr} />
               </div>
-              <button
+              <a
                 className="btn btn-ghost"
-                type="button"
-                style={{ marginTop: '1rem' }}
-                onClick={() => showToast(tr('visitorToast'))}
+                style={{ marginTop: '1rem', display: 'inline-block', textDecoration: 'none' }}
+                href={`tel:${serviceDirectory.find((c) => c.id === 'c-security')?.phone.replace(/\s/g, '') ?? siteLegal.phone.replace(/\s/g, '')}`}
               >
                 {tr('visitorPass')}
-              </button>
+              </a>
               <button
                 className="btn btn-primary"
                 type="button"

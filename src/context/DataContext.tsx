@@ -30,8 +30,6 @@ import {
   Resident,
   apartmentUnits,
   residents,
-  sampleA1TestTenant,
-  testInvoiceA1,
   seedPayments,
   suggestInstallment,
   Ticket,
@@ -69,7 +67,6 @@ interface PersistedOps {
 function ensureSeedApartments(list: Resident[]): Resident[] {
   const byId = new Map(list.map((r) => [r.id, r]))
   return apartmentUnits.map((seed) => {
-    if (seed.id === sampleA1TestTenant.id) return { ...sampleA1TestTenant }
     const saved = byId.get(seed.id)
     if (!saved) return seed
     return {
@@ -83,27 +80,16 @@ function ensureSeedApartments(list: Resident[]): Resident[] {
   })
 }
 
+function ensureSeedInvoices(map: Record<string, Invoice[]>): Record<string, Invoice[]> {
+  return { ...map }
+}
+
 function normalizePersistedOps(parsed: PersistedOps): PersistedOps {
   return {
     ...parsed,
     residentList: ensureSeedApartments(parsed.residentList ?? []),
     invoiceMap: ensureSeedInvoices(parsed.invoiceMap ?? {}),
   }
-}
-
-function ensureSeedInvoices(map: Record<string, Invoice[]>): Record<string, Invoice[]> {
-  const next = { ...map }
-  const existing = next[sampleA1TestTenant.id] ?? []
-  const paid = existing.find((i) => i.id === testInvoiceA1.id)?.status === 'paid'
-  const hasTest = existing.some((i) => i.id === testInvoiceA1.id)
-  if (!hasTest) {
-    next[sampleA1TestTenant.id] = [testInvoiceA1, ...existing]
-  } else if (!paid) {
-    next[sampleA1TestTenant.id] = existing.map((i) =>
-      i.id === testInvoiceA1.id ? { ...testInvoiceA1, status: i.status } : i,
-    )
-  }
-  return next
 }
 
 function readPersistedOps(): PersistedOps | null {
@@ -452,6 +438,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   function saveResidentLoginPin(phone: string, pin: string) {
+    if (session?.role !== 'admin' || session.staffTier !== 'admin') {
+      showToast(tr('residentPinAdminOnly'))
+      return
+    }
     const resident = residentList.find((r) => r.id === selectedResidentId)
     if (!resident) return
     const err = setResidentPin(selectedResidentId, phone, pin, resident.name)
@@ -925,8 +915,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
             role: 'agent',
             text:
               lang === 'ar'
-                ? 'وصلتني — سأتأكد مع فريق المبنى وأحدّثك هنا. متوسط الرد أقل من 5 دقائق خلال ساعات العمل.'
-                : 'Got it — I’m checking with the building team and will update you here. Average reply time is under 5 minutes during business hours.',
+                ? 'تم تسجيل رسالتك. سيرد فريق إدارة المبنى خلال ساعات العمل.'
+                : 'Your message has been recorded. Building management will respond during office hours.',
             time: nowLabel(),
           },
         ])
