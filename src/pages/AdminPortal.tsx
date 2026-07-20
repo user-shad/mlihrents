@@ -382,7 +382,7 @@ export default function AdminPortal() {
               showToast(tr('staffPasswordChanged'))
             }}
           >
-            {tr('saveLoginPin')}
+            {tr('updateStaffPassword')}
           </button>
         </section>
 

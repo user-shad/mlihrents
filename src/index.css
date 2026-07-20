@@ -507,6 +507,24 @@ img {
   margin: 0.75rem 0 0;
 }
 
+.remember-login {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0.25rem 0 1rem;
+  font-size: 0.875rem;
+  color: var(--shade);
+  cursor: pointer;
+  user-select: none;
+}
+
+.remember-login input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--shade);
+  cursor: pointer;
+}
+
 .otp-row {
   display: flex;
   gap: 0.5rem;

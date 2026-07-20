@@ -4,14 +4,22 @@ import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
 import { BrandMark, LanguageSwitch } from '../components/ui'
+import {
+  clearSavedLogin,
+  readSavedLogin,
+  STAFF_LOGIN_SAVE_KEY,
+  writeSavedLogin,
+} from '../lib/savedLogin'
 
 export default function StaffLoginPage() {
   const { session, loginAdmin } = useAuth()
   const { tr } = useLang()
   const { toast, showToast } = useData()
   const navigate = useNavigate()
-  const [phone, setPhone] = useState('')
-  const [pin, setPin] = useState('')
+  const saved = readSavedLogin(STAFF_LOGIN_SAVE_KEY)
+  const [phone, setPhone] = useState(saved?.phone ?? '')
+  const [pin, setPin] = useState(saved?.pin ?? '')
+  const [rememberLogin, setRememberLogin] = useState(Boolean(saved))
 
   if (session?.role === 'admin') {
     return <Navigate to="/admin" replace />
@@ -26,6 +34,11 @@ export default function StaffLoginPage() {
     if (error) {
       showToast(tr(error))
       return
+    }
+    if (rememberLogin) {
+      writeSavedLogin(STAFF_LOGIN_SAVE_KEY, { phone, pin })
+    } else {
+      clearSavedLogin(STAFF_LOGIN_SAVE_KEY)
     }
     showToast(tr('staffWelcomeToast'))
     navigate('/admin')
@@ -73,6 +86,14 @@ export default function StaffLoginPage() {
               placeholder="••••"
             />
           </div>
+          <label className="remember-login">
+            <input
+              type="checkbox"
+              checked={rememberLogin}
+              onChange={(e) => setRememberLogin(e.target.checked)}
+            />
+            <span>{tr('rememberLoginInfo')}</span>
+          </label>
           <button className="btn btn-primary btn-block" type="submit">
             {tr('signIn')}
           </button>
