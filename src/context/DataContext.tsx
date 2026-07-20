@@ -939,7 +939,7 @@ export function DataProvider({
               confirmedAmount: verified,
               reviewedAt,
               reviewNote: exact
-                ? 'Verified exact amount on statement'
+                ? 'Approved after screenshot review'
                 : `Partial: expected ${payment.amount}, received ${verified}`,
             }
           : p,

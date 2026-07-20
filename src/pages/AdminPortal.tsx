@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  amountsMatch,
   apartmentBuildingLetter,
   apartmentDisplayTitle,
   apartmentSortKey,
@@ -24,7 +23,6 @@ import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
 import { siteLegal } from '../legal/siteLegal'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
-import { StaffPaymentAssistant } from '../components/StaffPaymentAssistant'
 import { bankSummary, BANK_EDIT_PASSWORD, isBankConfigured } from '../config/paymentSettings'
 import { fetchSyncHealth, getSyncMode, getSyncStatus } from '../lib/cloudSync'
 
@@ -62,9 +60,6 @@ export default function AdminPortal() {
     pendingPayments,
     confirmBankPayment,
     rejectBankPayment,
-    adminRecordPayment,
-    invoiceHasPendingPayment,
-    adminResidentInvoices,
     adminResidentTickets,
     adminResidentPayments,
     dueDayDraft,
@@ -149,7 +144,6 @@ export default function AdminPortal() {
   )
   const [editingListingId, setEditingListingId] = useState<string | null>(null)
   const [listingForm, setListingForm] = useState(emptyListingForm)
-  const [verifyDrafts, setVerifyDrafts] = useState<Record<string, string>>({})
   const [bankDraft, setBankDraft] = useState(bankSettings)
   const [bankEditUnlocked, setBankEditUnlocked] = useState(false)
   const [bankUnlockDraft, setBankUnlockDraft] = useState('')
@@ -166,16 +160,6 @@ export default function AdminPortal() {
       setBankUnlockError(null)
     }
   }, [tab])
-
-  useEffect(() => {
-    setVerifyDrafts((prev) => {
-      const next = { ...prev }
-      for (const p of pendingPayments) {
-        if (next[p.id] === undefined) next[p.id] = String(p.amount)
-      }
-      return next
-    })
-  }, [pendingPayments])
 
   const occupiedUnits = residentList.filter((r) => r.name.trim() || r.phone.trim()).length
   const totalUnits = residentList.length
@@ -913,7 +897,6 @@ export default function AdminPortal() {
                 <span className="label">{tr('totalContractValue')}</span>
               </section>
             </div>
-            <StaffPaymentAssistant />
             <div className="grid-3">
               <section className="panel stat">
                 <span className="value">{formatMoney(adminBalance).replace('AED ', '')}</span>
@@ -1101,106 +1084,58 @@ export default function AdminPortal() {
                 {tr('pendingPaymentsLead')}
               </p>
               <div className="list" style={{ marginBottom: '1.25rem' }}>
-                {pendingPayments.map((p) => {
-                  const draft = verifyDrafts[p.id] ?? String(p.amount)
-                  const verified = Number(draft)
-                  const exact = amountsMatch(verified, p.amount)
-                  return (
-                    <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
-                      <div style={{ flex: 1 }}>
-                        <strong>
-                          {formatMoney(p.amount)} · {p.residentName}
-                        </strong>
-                        <div className="meta">
-                          {p.unit} · {p.invoiceId} · {p.paidAt}
-                        </div>
-
-                        {p.paymentRef && (
-                          <div className="payment-ref-box">
-                            <span className="meta">{tr('paymentRefLabel')}</span>
-                            <code className="payment-ref-code">{p.paymentRef}</code>
-                            <span className="meta">{tr('matchRefOnStatement')}</span>
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              type="button"
-                              onClick={() => {
-                                void navigator.clipboard?.writeText(p.paymentRef ?? '')
-                                showToast(tr('paymentRefCopied'))
-                              }}
-                            >
-                              {tr('paymentRefCopy')}
-                            </button>
-                          </div>
-                        )}
-
-                        <div className="meta" style={{ marginTop: '0.45rem' }}>
-                          {tr('expectedInvoice')}: <strong>{formatMoney(p.amount)}</strong>
-                        </div>
-
-                        {p.transferProof && (
-                          <a
-                            className="proof-thumb"
-                            href={p.transferProof.dataUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <img src={p.transferProof.dataUrl} alt={p.transferProof.name} />
-                            <span>{tr('viewProof')}</span>
-                          </a>
-                        )}
-                        <div className="form-row" style={{ marginTop: '0.65rem', maxWidth: 220 }}>
-                          <label htmlFor={`verify-${p.id}`}>{tr('verifiedAmount')}</label>
-                          <input
-                            id={`verify-${p.id}`}
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={draft}
-                            onChange={(e) =>
-                              setVerifyDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))
-                            }
-                          />
-                          {!exact && Number.isFinite(verified) && verified > 0 && (
-                            <span className="meta">{tr('amountMismatch')}</span>
-                          )}
-                        </div>
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '0.4rem',
-                            marginTop: '0.5rem',
-                          }}
-                        >
-                          <button
-                            className="btn btn-primary btn-sm"
-                            type="button"
-                            disabled={!exact}
-                            onClick={() => confirmBankPayment(p.id, verified, false)}
-                          >
-                            {tr('confirmExact')}
-                          </button>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            type="button"
-                            disabled={!Number.isFinite(verified) || verified <= 0 || exact}
-                            onClick={() => confirmBankPayment(p.id, verified, true)}
-                          >
-                            {tr('confirmPartial')}
-                          </button>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            type="button"
-                            onClick={() => rejectBankPayment(p.id)}
-                          >
-                            {tr('rejectPayment')}
-                          </button>
-                        </div>
+                {pendingPayments.map((p) => (
+                  <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <strong>
+                        {formatMoney(p.amount)} · {p.residentName || p.unit}
+                      </strong>
+                      <div className="meta">
+                        {p.unit} · {p.paidAt}
                       </div>
-                      <Badge lang={lang} status="pending_review" />
+                      {p.transferProof ? (
+                        <a
+                          className="proof-thumb"
+                          href={p.transferProof.dataUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ marginTop: '0.65rem' }}
+                        >
+                          <img src={p.transferProof.dataUrl} alt={p.transferProof.name} />
+                          <span>{tr('viewProof')}</span>
+                        </a>
+                      ) : (
+                        <p className="meta" style={{ marginTop: '0.5rem' }}>
+                          {tr('noTransferProof')}
+                        </p>
+                      )}
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '0.4rem',
+                          marginTop: '0.75rem',
+                        }}
+                      >
+                        <button
+                          className="btn btn-primary btn-sm"
+                          type="button"
+                          onClick={() => confirmBankPayment(p.id, p.amount, false)}
+                        >
+                          {tr('approvePayment')}
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          onClick={() => rejectBankPayment(p.id)}
+                        >
+                          {tr('rejectPayment')}
+                        </button>
+                      </div>
                     </div>
-                  )
-                })}
+                    <Badge lang={lang} status="pending_review" />
+                  </div>
+                ))}
                 {pendingPayments.length === 0 && (
                   <p className="meta">{tr('noPendingPayments')}</p>
                 )}
@@ -1212,18 +1147,12 @@ export default function AdminPortal() {
                   <div className="list-row" key={p.id}>
                     <div>
                       <strong>
-                        +{formatMoney(p.confirmedAmount ?? p.amount)} · {p.residentName}
+                        +{formatMoney(p.confirmedAmount ?? p.amount)} · {p.residentName || p.unit}
                       </strong>
-                        <div className="meta">
-                          {p.unit} · {p.invoiceId} · {paymentMethodLabel(p.method)} · {p.paidAt}
-                        </div>
-                        {p.paymentRef && (
-                          <div className="payment-ref-box" style={{ marginTop: '0.35rem' }}>
-                            <span className="meta">{tr('paymentRefLabel')}</span>
-                            <code className="payment-ref-code">{p.paymentRef}</code>
-                          </div>
-                        )}
-                        {p.transferProof && (
+                      <div className="meta">
+                        {p.unit} · {paymentMethodLabel(p.method)} · {p.paidAt}
+                      </div>
+                      {p.transferProof && (
                         <a
                           className="proof-thumb"
                           href={p.transferProof.dataUrl}
@@ -1380,87 +1309,6 @@ export default function AdminPortal() {
                   <RentBalanceCard resident={selectedResident} lang={lang} tr={tr} />
                 </div>
 
-                {(() => {
-                  const dueInv = adminResidentInvoices.find(
-                    (inv) => inv.status === 'due' || inv.status === 'overdue',
-                  )
-                  const duePending = dueInv ? invoiceHasPendingPayment(dueInv.id) : false
-                  if (!dueInv || duePending) return null
-                  return (
-                    <button
-                      className="btn btn-accent"
-                      type="button"
-                      style={{ marginTop: '0.85rem', width: '100%' }}
-                      onClick={() => adminRecordPayment(dueInv.id)}
-                    >
-                      {tr('payNow')} · {formatMoney(dueInv.amount)}
-                    </button>
-                  )
-                })()}
-
-                <h3 className="section-label">{tr('paymentsInvoices')}</h3>
-                <div className="list">
-                  {adminResidentInvoices.map((inv) => {
-                    const linkedPay = adminResidentPayments.find((p) => p.invoiceId === inv.id)
-                    const pending = linkedPay?.status === 'pending_review'
-                    return (
-                    <div className="list-row" key={inv.id}>
-                      <div>
-                        <strong>{inv.period}</strong>
-                        <div className="meta">
-                          {inv.id} · due {inv.dueDate} · {formatMoney(inv.amount)}
-                          {(inv.extensionDays ?? 0) > 0
-                            ? ` · ${tr('extendedLabel')} +${inv.extensionDays}d`
-                            : ''}
-                        </div>
-                        {linkedPay?.paymentRef && (
-                          <div className="payment-ref-box" style={{ marginTop: '0.45rem' }}>
-                            <span className="meta">{tr('paymentRefLabel')}</span>
-                            <code className="payment-ref-code">{linkedPay.paymentRef}</code>
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              type="button"
-                              onClick={() => {
-                                void navigator.clipboard?.writeText(linkedPay.paymentRef ?? '')
-                                showToast(tr('paymentRefCopied'))
-                              }}
-                            >
-                              {tr('paymentRefCopy')}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.65rem',
-                          flexWrap: 'wrap',
-                          justifyContent: 'flex-end',
-                        }}
-                      >
-                        <Badge
-                          lang={lang}
-                          status={pending ? 'pending_review' : inv.status}
-                        />
-                        {inv.status !== 'paid' && !pending && (
-                          <button
-                            className="btn btn-primary btn-sm"
-                            type="button"
-                            onClick={() => adminRecordPayment(inv.id)}
-                          >
-                            {tr('pay')}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    )
-                  })}
-                  {adminResidentInvoices.length === 0 && (
-                    <p className="meta">{tr('noInvoices')}</p>
-                  )}
-                </div>
-
                 <h3 className="section-label">{tr('receivedAdmin')}</h3>
                 <div className="list">
                   {adminResidentPayments.map((p) => (
@@ -1468,8 +1316,7 @@ export default function AdminPortal() {
                       <div>
                         <strong>+{formatMoney(p.confirmedAmount ?? p.amount)}</strong>
                         <div className="meta">
-                          {paymentMethodLabel(p.method)}
-                          {p.paymentRef ? ` · ${p.paymentRef}` : ''} · {p.paidAt}
+                          {paymentMethodLabel(p.method)} · {p.paidAt}
                           <br />
                           {p.destination}
                           {p.reviewNote ? (

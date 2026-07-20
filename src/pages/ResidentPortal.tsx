@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   buildPaymentDueAnnouncements,
-  buildPaymentRef,
   formatDueDateFromDay,
   formatMoney,
   paymentMethodLabel,
@@ -389,28 +388,6 @@ export default function ResidentPortal() {
                       <div className="bank-link-box">
                         <span className="meta">{tr('transferAmount')}</span>
                         <strong>{formatMoney(checkoutInvoice.amount)}</strong>
-                      </div>
-                      <div className="bank-link-box">
-                        <strong>{tr('paymentRefLabel')}</strong>
-                        <code>
-                          {buildPaymentRef(unitCodeLabel(liveResident), checkoutInvoice.id)}
-                        </code>
-                        <span className="meta">{tr('paymentRefHint')}</span>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          type="button"
-                          style={{ marginTop: '0.35rem', justifySelf: 'start' }}
-                          onClick={() => {
-                            const ref = buildPaymentRef(
-                              unitCodeLabel(liveResident),
-                              checkoutInvoice.id,
-                            )
-                            void navigator.clipboard?.writeText(ref)
-                            showToast(tr('paymentRefCopied'))
-                          }}
-                        >
-                          {tr('paymentRefCopy')}
-                        </button>
                       </div>
 
                       <p className="hint" style={{ margin: '0 0 0.75rem' }}>
