@@ -409,8 +409,9 @@ export default function AdminPortal() {
             <p className="meta" style={{ margin: '0.35rem 0 0', fontSize: '0.72rem' }}>
               {tr('syncBackendStatus')}:{' '}
               {[
-                syncBackends.blob && 'Blob',
+                syncBackends.github && 'GitHub',
                 syncBackends.redis && 'Redis',
+                syncBackends.blob && 'Blob',
                 syncBackends.postgres && 'Postgres',
                 syncBackends.supabase && 'Supabase',
               ]

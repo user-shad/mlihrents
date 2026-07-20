@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 function hasBlob() {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID)
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN)
 }
 
 function hasRedis() {
@@ -28,15 +28,23 @@ function hasSupabase() {
   )
 }
 
+function hasGithub() {
+  return Boolean(
+    (process.env.GITHUB_SYNC_TOKEN || process.env.GITHUB_TOKEN || process.env.GH_TOKEN) &&
+      (process.env.GITHUB_SYNC_GIST_ID || process.env.GIST_ID),
+  )
+}
+
 export default function handler(_req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store')
   const blob = hasBlob()
   const redis = hasRedis()
   const postgres = hasPostgres()
   const supabase = hasSupabase()
+  const github = hasGithub()
   res.status(200).json({
     ok: true,
-    backends: { blob, redis, postgres, supabase },
-    configured: blob || redis || postgres || supabase,
+    backends: { blob, redis, postgres, supabase, github },
+    configured: blob || redis || postgres || supabase || github,
   })
 }

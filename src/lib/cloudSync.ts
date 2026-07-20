@@ -24,9 +24,6 @@ export const OPS_KEY = 'mlihrents_ops_v5'
 const LEGACY_OPS_KEYS = ['mlihrents_ops_v4']
 const SYNC_ROW_ID = 'main'
 const LOCAL_SYNC_META_KEY = 'mlihrents_sync_meta'
-/** Direct public Blob URL — used when /api/portal-sync GET fails to read storage */
-const PUBLIC_SYNC_BLOB_URL =
-  'https://nqmasagwcp7ak6i0.public.blob.vercel-storage.com/portal-sync.json'
 
 export type SyncMode = 'cloud' | 'local'
 
@@ -54,7 +51,13 @@ export interface SyncStatus {
   updatedAt: string | null
   hint: string | null
   lastError: string | null
-  backends: { blob: boolean; redis: boolean; postgres: boolean; supabase: boolean } | null
+  backends: {
+    blob: boolean
+    redis: boolean
+    postgres: boolean
+    supabase: boolean
+    github?: boolean
+  } | null
 }
 
 type AccountsListener = (accounts: AccountRecord[]) => void
@@ -110,7 +113,7 @@ export async function fetchSyncHealth(): Promise<SyncStatus['backends'] | null> 
         .map(([k]) => k)
       if (active.length === 0) {
         lastSyncError =
-          'Blob created but not linked — open store → Projects → Connect mlihrents → Redeploy'
+          'No cloud storage linked — set GitHub gist sync env on Vercel, or connect Redis/Blob → Redeploy'
       }
     }
     return data.backends
@@ -131,7 +134,7 @@ export function getSyncStatus(): SyncStatus {
     updatedAt: lastCloudUpdatedAt,
     hint:
       syncMode === 'local'
-        ? 'Blob store → Projects tab → Connect mlihrents → Redeploy'
+        ? 'Cloud storage missing — redeploy after linking GitHub gist / Redis / Blob'
         : null,
     lastError: lastSyncError,
     backends: lastBackendHealth,
@@ -287,30 +290,8 @@ function parseCloudResponse(data: {
 }
 
 async function loadCloudRowViaPublicBlob(): Promise<CloudRow | null> {
-  try {
-    const res = await fetch(PUBLIC_SYNC_BLOB_URL, { cache: 'no-store' })
-    if (!res.ok) return null
-    const data = (await res.json()) as {
-      accounts?: AccountRecord[]
-      ops?: unknown
-      updated_at?: string | null
-    }
-    const opsObj = data.ops && typeof data.ops === 'object' ? (data.ops as Record<string, unknown>) : null
-    const opsEmpty = !opsObj || Object.keys(opsObj).length === 0
-    const accountsEmpty = !Array.isArray(data.accounts) || data.accounts.length === 0
-    if (opsEmpty && accountsEmpty) return null
-
-    syncMode = 'cloud'
-    lastSyncError = null
-    lastCloudUpdatedAt = data.updated_at ?? null
-    return {
-      accounts: data.accounts ?? [],
-      ops: normalizeCloudOps(data.ops),
-      updated_at: data.updated_at ?? null,
-    }
-  } catch {
-    return null
-  }
+  // Suspended/legacy Blob fallback removed — sync goes through /api/portal-sync (GitHub/Redis/etc.)
+  return null
 }
 
 function cloudRowHasData(row: CloudRow | null): boolean {

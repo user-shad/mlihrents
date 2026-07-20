@@ -7,6 +7,7 @@ import { Redis } from '@upstash/redis'
 const SYNC_ID = 'main'
 const BLOB_PATH = 'portal-sync.json'
 const REDIS_KEY = 'portal-sync'
+const GIST_FILENAME = 'portal-sync.json'
 
 /**
  * Public Blob base URL for this project.
@@ -21,8 +22,7 @@ function blobPublicBase() {
     const id = raw.replace(/^store_/i, '').toLowerCase()
     if (id) return `https://${id}.public.blob.vercel-storage.com`
   }
-  // Known store for mlihrents (public Blob)
-  return 'https://nqmasagwcp7ak6i0.public.blob.vercel-storage.com'
+  return ''
 }
 
 function publicBlobObjectUrl(pathname: string) {
@@ -43,7 +43,7 @@ type SyncPayload = {
   updated_at?: string
 }
 
-type StorageKind = 'redis' | 'postgres' | 'blob' | 'supabase'
+type StorageKind = 'redis' | 'github' | 'postgres' | 'supabase' | 'blob'
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
@@ -56,7 +56,8 @@ function getSupabase() {
 }
 
 function hasBlobStorage() {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID)
+  // STORE_ID alone (OIDC) is not enough when the store is suspended — require a RW token
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN)
 }
 
 function hasRedis() {
@@ -74,6 +75,21 @@ function hasPostgres() {
   )
 }
 
+function hasGithub() {
+  return Boolean(
+    (process.env.GITHUB_SYNC_TOKEN || process.env.GITHUB_TOKEN || process.env.GH_TOKEN) &&
+      (process.env.GITHUB_SYNC_GIST_ID || process.env.GIST_ID),
+  )
+}
+
+function githubAuth() {
+  return process.env.GITHUB_SYNC_TOKEN || process.env.GITHUB_TOKEN || process.env.GH_TOKEN || ''
+}
+
+function githubGistId() {
+  return process.env.GITHUB_SYNC_GIST_ID || process.env.GIST_ID || ''
+}
+
 function getRedis() {
   if (!hasRedis()) return null
   try {
@@ -84,15 +100,17 @@ function getRedis() {
 }
 
 function isConfigured() {
-  return Boolean(getSupabase() || hasBlobStorage() || hasRedis() || hasPostgres())
+  return Boolean(getSupabase() || hasBlobStorage() || hasRedis() || hasPostgres() || hasGithub())
 }
 
 function configuredBackends(): StorageKind[] {
+  // Prefer Redis/GitHub over Blob (Blob store for this project is often suspended)
   const list: StorageKind[] = []
-  if (hasBlobStorage()) list.push('blob')
   if (hasRedis()) list.push('redis')
+  if (hasGithub()) list.push('github')
   if (hasPostgres()) list.push('postgres')
   if (getSupabase()) list.push('supabase')
+  if (hasBlobStorage()) list.push('blob')
   return list
 }
 
@@ -281,10 +299,63 @@ async function saveToSupabase(payload: SyncPayload) {
   if (error) throw error
 }
 
+async function loadFromGithub(): Promise<SyncPayload | null> {
+  if (!hasGithub()) return null
+  const res = await fetch(`https://api.github.com/gists/${githubGistId()}`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${githubAuth()}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new Error(`github_load_${res.status}`)
+  const gist = (await res.json()) as {
+    files?: Record<string, { content?: string; truncated?: boolean; raw_url?: string }>
+  }
+  const file = gist.files?.[GIST_FILENAME] ?? Object.values(gist.files ?? {})[0]
+  if (!file) return null
+  let text = file.content ?? ''
+  if ((!text || file.truncated) && file.raw_url) {
+    const raw = await fetch(file.raw_url, {
+      headers: { Authorization: `Bearer ${githubAuth()}` },
+      cache: 'no-store',
+    })
+    if (!raw.ok) throw new Error(`github_raw_${raw.status}`)
+    text = await raw.text()
+  }
+  if (!text) return null
+  return JSON.parse(text) as SyncPayload
+}
+
+async function saveToGithub(payload: SyncPayload) {
+  if (!hasGithub()) throw new Error('github_unavailable')
+  const res = await fetch(`https://api.github.com/gists/${githubGistId()}`, {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${githubAuth()}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      files: {
+        [GIST_FILENAME]: { content: JSON.stringify(payload) },
+      },
+    }),
+  })
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    throw new Error(`github_save_${res.status}${detail ? `:${detail.slice(0, 120)}` : ''}`)
+  }
+}
+
 async function loadFrom(kind: StorageKind): Promise<SyncPayload | null> {
   switch (kind) {
     case 'redis':
       return loadFromRedis()
+    case 'github':
+      return loadFromGithub()
     case 'postgres':
       return loadFromPostgres()
     case 'blob':
@@ -298,6 +369,9 @@ async function saveTo(kind: StorageKind, payload: SyncPayload) {
   switch (kind) {
     case 'redis':
       await saveToRedis(payload)
+      return
+    case 'github':
+      await saveToGithub(payload)
       return
     case 'postgres':
       await saveToPostgres(payload)
@@ -355,20 +429,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!isConfigured()) {
     res.status(503).json({
       configured: false,
-      hint: 'Open Vercel → Storage → create Blob or Redis → Connect → Redeploy',
+      hint: 'Set GITHUB_SYNC_GIST_ID + GITHUB_SYNC_TOKEN on Vercel, or connect Redis/Blob → Redeploy',
     })
     return
   }
 
   if (req.method === 'GET') {
     const { payload, storage } = await loadBest()
+    const blobBase = blobPublicBase()
     res.status(200).json({
       configured: true,
       storage,
       accounts: payload?.accounts ?? [],
       ops: payload?.ops ?? {},
       updated_at: payload?.updated_at ?? null,
-      blob_url: publicBlobObjectUrl(BLOB_PATH),
+      blob_url: blobBase ? publicBlobObjectUrl(BLOB_PATH) : null,
       blob_debug: lastBlobDebug,
     })
     return
