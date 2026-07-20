@@ -738,7 +738,15 @@ export default function AdminPortal() {
                     id="bankSwift"
                     value={bankDraft.swift}
                     onChange={(e) => setBankDraft((d) => ({ ...d, swift: e.target.value }))}
-                    placeholder="EBILAEAD"
+                    placeholder="WIOBAEADXXX"
+                  />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="bankAddress">{tr('bankAddress')}</label>
+                  <input
+                    id="bankAddress"
+                    value={bankDraft.bankAddress}
+                    onChange={(e) => setBankDraft((d) => ({ ...d, bankAddress: e.target.value }))}
                   />
                 </div>
               </div>

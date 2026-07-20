@@ -360,6 +360,12 @@ export default function ResidentPortal() {
                           <code>{bankSettings.swift}</code>
                         </div>
                       )}
+                      {bankSettings.bankAddress && (
+                        <div className="bank-link-box">
+                          <span className="meta">{tr('bankAddress')}</span>
+                          <strong>{bankSettings.bankAddress}</strong>
+                        </div>
+                      )}
                       <div className="bank-link-box">
                         <span className="meta">{tr('transferAmount')}</span>
                         <strong>{formatMoney(checkoutInvoice.amount)}</strong>
