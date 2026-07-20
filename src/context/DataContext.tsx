@@ -178,6 +178,8 @@ interface DataContextValue {
   invoiceHasPendingPayment: (invoiceId: string) => boolean
   confirmBankPayment: (paymentId: string, verifiedAmount: number, asPartial?: boolean) => void
   rejectBankPayment: (paymentId: string, note?: string) => void
+  /** Remove a payment record (and undo paid balance if it was settled) */
+  deletePayment: (paymentId: string) => void
   /** Staff records that an invoice was paid (cash / confirmed transfer) */
   adminRecordPayment: (invoiceId: string) => void
   toast: string | null
@@ -993,6 +995,40 @@ export function DataProvider({
     showToast(lang === 'ar' ? 'تم رفض التحويل — الفاتورة ما زالت مستحقة' : 'Transfer rejected — invoice remains due')
   }
 
+  function deletePayment(paymentId: string) {
+    const payment = payments.find((p) => p.id === paymentId)
+    if (!payment) return
+
+    const credited =
+      payment.status === 'settled' || payment.status === 'partial'
+        ? payment.confirmedAmount ?? payment.amount
+        : 0
+
+    setPayments((prev) => prev.filter((p) => p.id !== paymentId))
+
+    if (credited > 0) {
+      setResidentList((prev) =>
+        prev.map((r) =>
+          r.id === payment.residentId
+            ? { ...r, amountPaid: Math.max(0, r.amountPaid - credited) }
+            : r,
+        ),
+      )
+    }
+
+    if (payment.status === 'settled') {
+      setPaidIds((prev) => prev.filter((id) => id !== payment.invoiceId))
+      setInvoiceMap((prev) => ({
+        ...prev,
+        [payment.residentId]: (prev[payment.residentId] ?? []).map((inv) =>
+          inv.id === payment.invoiceId ? { ...inv, status: 'due' as const } : inv,
+        ),
+      }))
+    }
+
+    showToast(lang === 'ar' ? 'تم حذف الدفعة' : 'Payment deleted')
+  }
+
   function adminRecordPayment(invoiceId: string) {
     const invoice = adminResidentInvoices.find((inv) => inv.id === invoiceId)
     if (!invoice || invoice.status === 'paid') return
@@ -1298,6 +1334,7 @@ export function DataProvider({
         invoiceHasPendingPayment,
         confirmBankPayment,
         rejectBankPayment,
+        deletePayment,
         adminRecordPayment,
         toast,
         chatInput,

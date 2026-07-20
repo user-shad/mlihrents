@@ -61,6 +61,7 @@ export default function AdminPortal() {
     pendingPayments,
     confirmBankPayment,
     rejectBankPayment,
+    deletePayment,
     adminResidentInvoices,
     adminResidentTickets,
     adminResidentPayments,
@@ -1195,8 +1196,8 @@ export default function AdminPortal() {
               <h3 className="section-label">{tr('incomingPayments')}</h3>
               <div className="list">
                 {payments.map((p) => (
-                  <div className="list-row" key={p.id}>
-                    <div>
+                  <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
                       <strong>
                         +{formatMoney(p.confirmedAmount ?? p.amount)} · {p.residentName || p.unit}
                       </strong>
@@ -1214,6 +1215,17 @@ export default function AdminPortal() {
                           <span>{tr('viewProof')}</span>
                         </a>
                       )}
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        type="button"
+                        style={{ marginTop: '0.5rem' }}
+                        onClick={() => {
+                          if (!window.confirm(tr('deletePaymentConfirm'))) return
+                          deletePayment(p.id)
+                        }}
+                      >
+                        {tr('deletePayment')}
+                      </button>
                     </div>
                     <Badge lang={lang} status={p.status === 'settled' ? 'paid' : p.status} />
                   </div>
@@ -1372,8 +1384,8 @@ export default function AdminPortal() {
                 <h3 className="section-label">{tr('receivedAdmin')}</h3>
                 <div className="list">
                   {adminResidentPayments.map((p) => (
-                    <div className="list-row" key={p.id}>
-                      <div>
+                    <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
                         <strong>+{formatMoney(p.confirmedAmount ?? p.amount)}</strong>
                         <div className="meta">
                           {paymentMethodLabel(p.method)} · {p.paidAt}
@@ -1397,6 +1409,17 @@ export default function AdminPortal() {
                             <span>{tr('viewProof')}</span>
                           </a>
                         )}
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          style={{ marginTop: '0.5rem' }}
+                          onClick={() => {
+                            if (!window.confirm(tr('deletePaymentConfirm'))) return
+                            deletePayment(p.id)
+                          }}
+                        >
+                          {tr('deletePayment')}
+                        </button>
                       </div>
                       <Badge lang={lang} status={p.status === 'settled' ? 'paid' : p.status} />
                     </div>
