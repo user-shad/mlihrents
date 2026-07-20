@@ -135,11 +135,9 @@ export interface PaymentRecord {
   transferProof?: { name: string; dataUrl: string }
 }
 
-/** Build a short unique transfer reference for bank matching */
-export function buildPaymentRef(unit: string, invoiceId: string) {
-  const unitPart = unit.replace(/[^A-Za-z0-9]/g, '').toUpperCase() || 'UNIT'
-  const invPart = invoiceId.replace(/[^A-Za-z0-9]/g, '').toUpperCase() || 'INV'
-  return `MLIH-${unitPart}-${invPart}`.slice(0, 32)
+/** Payment reference for bank transfers — the invoice number itself. */
+export function buildPaymentRef(_unit: string, invoiceId: string) {
+  return invoiceId.trim()
 }
 
 export function amountsMatch(a: number, b: number, tolerance = 0.009) {
