@@ -194,6 +194,8 @@ interface DataContextValue {
   adminResidentInvoices: ReturnType<typeof applyDueDayToInvoices>
   adminResidentTickets: Ticket[]
   adminResidentPayments: PaymentRecord[]
+  invoiceMap: Record<string, Invoice[]>
+  ticketMap: Record<string, Ticket[]>
   openCheckout: (id: string) => void
   closeCheckout: () => void
   /** Extend an overdue invoice due date by the given number of days (default 7). */
@@ -1311,6 +1313,8 @@ export function DataProvider({
         adminResidentInvoices,
         adminResidentTickets,
         adminResidentPayments,
+        invoiceMap,
+        ticketMap,
         openCheckout,
         closeCheckout,
         extendInvoiceDueDate,

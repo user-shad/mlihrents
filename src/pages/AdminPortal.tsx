@@ -25,6 +25,7 @@ import { siteLegal } from '../legal/siteLegal'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
 import { bankSummary, BANK_EDIT_PASSWORD, isBankConfigured } from '../config/paymentSettings'
 import { fetchSyncHealth, getSyncMode, getSyncStatus } from '../lib/cloudSync'
+import { exportAllApartmentsExcel, exportApartmentExcel } from '../lib/exportApartmentExcel'
 
 type Tab = 'info' | 'payments' | 'available' | 'chat'
 
@@ -60,8 +61,11 @@ export default function AdminPortal() {
     pendingPayments,
     confirmBankPayment,
     rejectBankPayment,
+    adminResidentInvoices,
     adminResidentTickets,
     adminResidentPayments,
+    invoiceMap,
+    ticketMap,
     dueDayDraft,
     setDueDayDraft,
     scheduleDraft,
@@ -189,6 +193,38 @@ export default function AdminPortal() {
     resetHumanMode()
     logout()
     navigate('/')
+  }
+
+  function bundleForResident(residentId: string) {
+    const resident = residentList.find((r) => r.id === residentId)
+    if (!resident) return null
+    return {
+      resident,
+      invoices: invoiceMap[residentId] ?? [],
+      payments: payments.filter((p) => p.residentId === residentId),
+      tickets: ticketMap[residentId] ?? [],
+    }
+  }
+
+  function exportSelectedApartment() {
+    exportApartmentExcel(
+      {
+        resident: selectedResident,
+        invoices: adminResidentInvoices,
+        payments: adminResidentPayments,
+        tickets: adminResidentTickets,
+      },
+      lang,
+    )
+    showToast(tr('exportApartmentDone'))
+  }
+
+  function exportEveryApartment() {
+    const bundles = residentList
+      .map((r) => bundleForResident(r.id))
+      .filter((b): b is NonNullable<typeof b> => Boolean(b))
+    exportAllApartmentsExcel(bundles, lang)
+    showToast(tr('exportAllApartmentsDone'))
   }
 
   function startEditListing(apt: AvailableApartment) {
@@ -405,6 +441,9 @@ export default function AdminPortal() {
                 <h1>{tr('adminInfoTab')}</h1>
                 <p>{tr('adminInfoLead')}</p>
               </div>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={exportEveryApartment}>
+                {tr('exportAllApartmentsExcel')}
+              </button>
             </header>
             <div className="grid-3">
               <section className="panel stat">
@@ -727,8 +766,17 @@ export default function AdminPortal() {
                   className="btn btn-ghost btn-sm"
                   type="button"
                   style={{ marginTop: '0.5rem', marginInlineStart: '0.5rem' }}
+                  onClick={exportSelectedApartment}
+                >
+                  {tr('exportApartmentExcel')}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  style={{ marginTop: '0.5rem', marginInlineStart: '0.5rem' }}
                   onClick={() => {
                     if (!window.confirm(tr('clearApartmentConfirm'))) return
+                    exportSelectedApartment()
                     clearApartmentInfo()
                     setEditName('')
                     setEditPhone('')
@@ -882,6 +930,9 @@ export default function AdminPortal() {
                 <h1>{tr('adminPaymentsTab')}</h1>
                 <p>{tr('adminPaymentsLead')}</p>
               </div>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={exportEveryApartment}>
+                {tr('exportAllApartmentsExcel')}
+              </button>
             </header>
             <div className="grid-3" style={{ marginBottom: '1rem' }}>
               <section className="panel stat">
@@ -1308,6 +1359,15 @@ export default function AdminPortal() {
                 <div style={{ marginTop: '1rem' }}>
                   <RentBalanceCard resident={selectedResident} lang={lang} tr={tr} />
                 </div>
+
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  style={{ marginTop: '0.75rem' }}
+                  onClick={exportSelectedApartment}
+                >
+                  {tr('exportApartmentExcel')}
+                </button>
 
                 <h3 className="section-label">{tr('receivedAdmin')}</h3>
                 <div className="list">
