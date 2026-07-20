@@ -41,7 +41,9 @@ const en: Dict = {
   changeDefaultPasswordLead:
     'You are still using the default staff password. Update it in the sidebar before sharing the site.',
   syncCloudActive: 'Cloud sync active — changes appear on all devices',
-  syncLocalOnly: 'Local only — connect Vercel Blob Storage (see SETUP-SYNC.md) then redeploy',
+  syncLocalOnly: 'Local only — cloud storage not connected yet',
+  syncNow: 'Sync now',
+  syncInProgress: 'Syncing…',
   updateStaffPassword: 'Update password',
   staffPasswordChanged: 'Your password was updated',
   staffRoleAdmin: 'Administrator',
@@ -374,7 +376,9 @@ const ar: Dict = {
   changeDefaultPasswordLead:
     'ما زلت تستخدم كلمة مرور الموظفين الافتراضية. حدّثها من الشريط الجانبي قبل مشاركة الموقع.',
   syncCloudActive: 'المزامنة السحابية نشطة — التغييرات تظهر على جميع الأجهزة',
-  syncLocalOnly: 'محلي فقط — فعّل Vercel Blob Storage (راجع SETUP-SYNC.md) ثم أعد النشر',
+  syncLocalOnly: 'محلي فقط — التخزين السحابي غير متصل بعد',
+  syncNow: 'مزامنة الآن',
+  syncInProgress: 'جاري المزامنة…',
   updateStaffPassword: 'تحديث كلمة المرور',
   staffPasswordChanged: 'تم تحديث كلمة مرورك',
   staffRoleAdmin: 'مدير المبنى',

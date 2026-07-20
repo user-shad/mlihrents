@@ -26,7 +26,7 @@ import { siteLegal } from '../legal/siteLegal'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
 import { StaffPaymentAssistant } from '../components/StaffPaymentAssistant'
 import { bankSummary, isBankConfigured } from '../config/paymentSettings'
-import { getSyncMode } from '../lib/cloudSync'
+import { forceSyncNow, getSyncMode, getSyncStatus } from '../lib/cloudSync'
 
 type Tab = 'info' | 'payments' | 'available' | 'chat'
 
@@ -96,14 +96,33 @@ export default function AdminPortal() {
   const [tab, setTab] = useState<Tab>('info')
   const isBuildingAdmin = session?.staffTier === 'admin'
   const [cloudSyncActive, setCloudSyncActive] = useState(() => getSyncMode() === 'cloud')
+  const [syncHint, setSyncHint] = useState<string | null>(() => getSyncStatus().hint)
+  const [syncError, setSyncError] = useState<string | null>(() => getSyncStatus().lastError)
+  const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
-    setCloudSyncActive(getSyncMode() === 'cloud')
-    const id = window.setInterval(() => {
-      setCloudSyncActive(getSyncMode() === 'cloud')
-    }, 5000)
+    const refresh = () => {
+      const status = getSyncStatus()
+      setCloudSyncActive(status.mode === 'cloud')
+      setSyncHint(status.hint)
+      setSyncError(status.lastError)
+    }
+    refresh()
+    const id = window.setInterval(refresh, 5000)
     return () => window.clearInterval(id)
   }, [])
+
+  async function handleSyncNow() {
+    setSyncing(true)
+    try {
+      const status = await forceSyncNow()
+      setCloudSyncActive(status.mode === 'cloud')
+      setSyncHint(status.hint)
+      setSyncError(status.lastError)
+    } finally {
+      setSyncing(false)
+    }
+  }
   const [pinDraft, setPinDraft] = useState(selectedResident.pin)
   const [phoneDraft, setPhoneDraft] = useState(selectedResident.phone)
   const [editName, setEditName] = useState(selectedResident.name)
@@ -335,6 +354,25 @@ export default function AdminPortal() {
           >
             {cloudSyncActive ? tr('syncCloudActive') : tr('syncLocalOnly')}
           </p>
+          {!cloudSyncActive && syncHint && (
+            <p className="meta" style={{ margin: '0.35rem 0 0', fontSize: '0.75rem' }}>
+              {syncHint}
+            </p>
+          )}
+          {!cloudSyncActive && syncError && (
+            <p className="meta" style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#c44' }}>
+              {syncError}
+            </p>
+          )}
+          <button
+            className="btn btn-ghost btn-sm"
+            type="button"
+            style={{ marginTop: '0.5rem', width: '100%' }}
+            disabled={syncing}
+            onClick={() => void handleSyncNow()}
+          >
+            {syncing ? tr('syncInProgress') : tr('syncNow')}
+          </button>
         </div>
 
         <div className="side-footer">

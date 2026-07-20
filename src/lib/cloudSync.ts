@@ -21,6 +21,7 @@ export const ACCOUNTS_KEY = 'mlihrents_accounts_v3'
 export const OPS_KEY = 'mlihrents_ops_v5'
 const LEGACY_OPS_KEYS = ['mlihrents_ops_v4']
 const SYNC_ROW_ID = 'main'
+const LOCAL_SYNC_META_KEY = 'mlihrents_sync_meta'
 
 export type SyncMode = 'cloud' | 'local'
 
@@ -40,22 +41,55 @@ export interface BootstrapData {
   ops: PortalOps
 }
 
+export interface SyncStatus {
+  configured: boolean
+  mode: SyncMode
+  storage: string | null
+  updatedAt: string | null
+  hint: string | null
+  lastError: string | null
+}
+
 type AccountsListener = (accounts: AccountRecord[]) => void
 type OpsListener = (ops: PortalOps) => void
+
+type CloudRow = {
+  accounts: AccountRecord[]
+  ops: PortalOps
+  updated_at: string | null
+}
 
 let bootstrapPromise: Promise<BootstrapData> | null = null
 let pendingAccounts: AccountRecord[] | undefined
 let pendingOps: PortalOps | undefined
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let configPollTimer: ReturnType<typeof setInterval> | null = null
 let suppressRemoteUntil = 0
+let suppressCloudPush = 0
 let accountsListener: AccountsListener | null = null
 let opsListener: OpsListener | null = null
 let realtimeStarted = false
 let syncMode: SyncMode = 'local'
+let lastSyncError: string | null = null
+let lastCloudUpdatedAt: string | null = null
 
 export function getSyncMode() {
   return syncMode
+}
+
+export function getSyncStatus(): SyncStatus {
+  return {
+    configured: syncMode === 'cloud',
+    mode: syncMode,
+    storage: syncMode === 'cloud' ? 'api' : null,
+    updatedAt: lastCloudUpdatedAt,
+    hint:
+      syncMode === 'local'
+        ? 'Vercel → Storage → Blob or Redis → Connect → Redeploy'
+        : null,
+    lastError: lastSyncError,
+  }
 }
 
 export function createDefaultOps(): PortalOps {
@@ -69,6 +103,24 @@ export function createDefaultOps(): PortalOps {
     paidIds: [],
     bankSettings: defaultBankSettings,
   }
+}
+
+function readLocalSyncMeta(): { updatedAt: string } {
+  try {
+    const raw = localStorage.getItem(LOCAL_SYNC_META_KEY)
+    if (!raw) return { updatedAt: '' }
+    const parsed = JSON.parse(raw) as { updatedAt?: string }
+    return { updatedAt: parsed.updatedAt ?? '' }
+  } catch {
+    return { updatedAt: '' }
+  }
+}
+
+function touchLocalSyncMeta() {
+  localStorage.setItem(
+    LOCAL_SYNC_META_KEY,
+    JSON.stringify({ updatedAt: new Date().toISOString() }),
+  )
 }
 
 function readLocalAccounts(): AccountRecord[] | null {
@@ -103,9 +155,15 @@ function hasOpsData(ops: PortalOps) {
   return (
     ops.residentList.some((r) => r.name.trim() || r.phone.trim()) ||
     ops.payments.length > 0 ||
-    ops.listings.length > 0 ||
-    Object.keys(ops.invoiceMap).length > 0
+    ops.listings.some((l) => l.highlight?.trim() || l.apartment?.trim()) ||
+    Object.keys(ops.invoiceMap).length > 0 ||
+    isBankConfiguredOps(ops)
   )
+}
+
+function isBankConfiguredOps(ops: PortalOps) {
+  const b = ops.bankSettings
+  return Boolean(b?.iban?.trim() || b?.accountName?.trim())
 }
 
 function hasAccountsData(accounts: AccountRecord[]) {
@@ -127,74 +185,186 @@ function normalizeCloudOps(raw: unknown): PortalOps {
   }
 }
 
-async function loadCloudRowViaApi(): Promise<{ accounts: AccountRecord[]; ops: PortalOps } | null> {
+/** Strip large screenshot data from cloud payload (keeps proofs local per device). */
+export function slimOpsForCloud(ops: PortalOps): PortalOps {
+  return {
+    ...ops,
+    payments: ops.payments.map((p) => ({
+      ...p,
+      transferProof: p.transferProof
+        ? { name: p.transferProof.name, dataUrl: '' }
+        : undefined,
+    })),
+  }
+}
+
+function parseCloudResponse(data: {
+  configured?: boolean
+  accounts?: AccountRecord[]
+  ops?: unknown
+  updated_at?: string | null
+  hint?: string
+  error?: string
+}): CloudRow | null {
+  if (!data.configured) {
+    if (data.hint) lastSyncError = data.hint
+    return null
+  }
+  syncMode = 'cloud'
+  lastSyncError = null
+  lastCloudUpdatedAt = data.updated_at ?? null
+  return {
+    accounts: data.accounts ?? [],
+    ops: normalizeCloudOps(data.ops),
+    updated_at: data.updated_at ?? null,
+  }
+}
+
+async function loadCloudRowViaApi(): Promise<CloudRow | null> {
   try {
     const res = await fetch('/api/portal-sync', { cache: 'no-store' })
-    if (res.status === 503) return null
-    if (!res.ok) return null
-    const data = (await res.json()) as {
-      configured?: boolean
-      accounts?: AccountRecord[]
-      ops?: unknown
+    if (res.status === 503) {
+      const data = (await res.json()) as { hint?: string }
+      lastSyncError = data.hint ?? 'Cloud storage not connected on Vercel'
+      return null
     }
-    if (!data.configured) return null
-    syncMode = 'cloud'
-    return {
-      accounts: data.accounts ?? [],
-      ops: normalizeCloudOps(data.ops),
+    if (!res.ok) {
+      lastSyncError = `Sync API error (${res.status})`
+      return null
     }
+    const data = (await res.json()) as Parameters<typeof parseCloudResponse>[0]
+    return parseCloudResponse(data)
   } catch {
+    lastSyncError = 'Could not reach sync API'
     return null
   }
 }
 
-async function loadCloudRowDirect(): Promise<{ accounts: AccountRecord[]; ops: PortalOps } | null> {
+async function loadCloudRowDirect(): Promise<CloudRow | null> {
   if (!supabase) return null
   const { data, error } = await supabase
     .from('portal_sync')
-    .select('accounts, ops')
+    .select('accounts, ops, updated_at')
     .eq('id', SYNC_ROW_ID)
     .maybeSingle()
   if (error || !data) return null
   syncMode = 'cloud'
+  lastSyncError = null
+  lastCloudUpdatedAt = data.updated_at ?? null
   return {
     accounts: (data.accounts as AccountRecord[]) ?? [],
     ops: normalizeCloudOps(data.ops),
+    updated_at: data.updated_at ?? null,
   }
 }
 
-async function loadCloudRow(): Promise<{ accounts: AccountRecord[]; ops: PortalOps } | null> {
+async function loadCloudRow(): Promise<CloudRow | null> {
   const viaApi = await loadCloudRowViaApi()
   if (viaApi) return viaApi
   return loadCloudRowDirect()
 }
 
 async function saveCloudRowViaApi(accounts: AccountRecord[], ops: PortalOps) {
-  const res = await fetch('/api/portal-sync', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ accounts, ops }),
-  })
-  if (res.ok) {
-    syncMode = 'cloud'
-    return true
+  const slimOps = slimOpsForCloud(ops)
+  try {
+    const res = await fetch('/api/portal-sync', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accounts, ops: slimOps }),
+    })
+    if (res.ok) {
+      const data = (await res.json()) as { updated_at?: string; storage?: string }
+      syncMode = 'cloud'
+      lastSyncError = null
+      lastCloudUpdatedAt = data.updated_at ?? new Date().toISOString()
+      touchLocalSyncMeta()
+      return true
+    }
+    const data = (await res.json().catch(() => ({}))) as { error?: string; hint?: string }
+    lastSyncError = data.error ?? data.hint ?? `Save failed (${res.status})`
+    return false
+  } catch {
+    lastSyncError = 'Could not save to cloud'
+    return false
   }
-  return false
 }
 
 async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps) {
-  suppressRemoteUntil = Date.now() + 2500
+  suppressRemoteUntil = Date.now() + 3000
 
   if (await saveCloudRowViaApi(accounts, ops)) return
 
   if (!supabase) return
+  const slimOps = slimOpsForCloud(ops)
+  const updated_at = new Date().toISOString()
   await supabase.from('portal_sync').upsert({
     id: SYNC_ROW_ID,
     accounts,
-    ops,
-    updated_at: new Date().toISOString(),
+    ops: slimOps,
+    updated_at,
   })
   syncMode = 'cloud'
+  lastSyncError = null
+  lastCloudUpdatedAt = updated_at
+  touchLocalSyncMeta()
+}
+
+function cloudTimestamp(cloud: CloudRow | null) {
+  if (!cloud?.updated_at) return 0
+  const t = Date.parse(cloud.updated_at)
+  return Number.isFinite(t) ? t : 0
+}
+
+function localTimestamp() {
+  const t = Date.parse(readLocalSyncMeta().updatedAt)
+  return Number.isFinite(t) ? t : 0
+}
+
+function mergeBootstrap(
+  cloud: CloudRow | null,
+  localAccounts: AccountRecord[] | null,
+  localOps: PortalOps,
+): BootstrapData {
+  const cloudHasAccounts = cloud ? hasAccountsData(cloud.accounts) : false
+  const cloudHasOps = cloud ? hasOpsData(cloud.ops) : false
+  const localHasAccounts = localAccounts ? hasAccountsData(localAccounts) : false
+  const localHasOps = hasOpsData(localOps)
+
+  const cloudTime = cloudTimestamp(cloud)
+  const localTime = localTimestamp()
+  const preferCloud =
+    cloud &&
+    (cloudHasAccounts || cloudHasOps) &&
+    (cloudTime >= localTime || (!localHasAccounts && !localHasOps))
+
+  let accounts = cloud?.accounts ?? []
+  let ops = cloud?.ops ?? createDefaultOps()
+
+  if (preferCloud) {
+    accounts = cloud!.accounts
+    ops = cloud!.ops
+  } else {
+    if (localHasAccounts && localAccounts) accounts = localAccounts
+    if (localHasOps) ops = localOps
+  }
+
+  return { accounts, ops }
+}
+
+async function pushLocalToCloudIfNeeded(data: BootstrapData, cloud: CloudRow | null) {
+  const cloudHasAccounts = cloud ? hasAccountsData(cloud.accounts) : false
+  const cloudHasOps = cloud ? hasOpsData(cloud.ops) : false
+  const localHasAccounts = hasAccountsData(data.accounts)
+  const localHasOps = hasOpsData(data.ops)
+
+  if (!localHasAccounts && !localHasOps) return
+
+  const cloudTime = cloudTimestamp(cloud)
+  const localTime = localTimestamp()
+
+  if (!cloud || (!cloudHasAccounts && !cloudHasOps) || localTime > cloudTime) {
+    await saveCloudRow(data.accounts, data.ops)
+  }
 }
 
 async function doBootstrap(): Promise<BootstrapData> {
@@ -202,40 +372,28 @@ async function doBootstrap(): Promise<BootstrapData> {
   const localOps = readLocalOps() ?? createDefaultOps()
 
   const cloud = await loadCloudRow()
-  const cloudHasAccounts = cloud ? hasAccountsData(cloud.accounts) : false
-  const cloudHasOps = cloud ? hasOpsData(cloud.ops) : false
-  const localHasAccounts = localAccounts ? hasAccountsData(localAccounts) : false
-  const localHasOps = hasOpsData(localOps)
-
-  let accounts = cloud?.accounts ?? []
-  let ops = cloud?.ops ?? createDefaultOps()
-
-  if (!cloudHasAccounts && localHasAccounts && localAccounts) {
-    accounts = localAccounts
-  }
-  if (!cloudHasOps && localHasOps) {
-    ops = localOps
-  }
+  const merged = mergeBootstrap(cloud, localAccounts, localOps)
 
   if (syncMode === 'cloud') {
-    if (!cloudHasAccounts && !cloudHasOps && (localHasAccounts || localHasOps)) {
-      await saveCloudRow(accounts, ops)
-    } else if (cloud && (!cloudHasAccounts || !cloudHasOps) && (localHasAccounts || localHasOps)) {
-      await saveCloudRow(
-        cloudHasAccounts ? cloud.accounts : accounts,
-        cloudHasOps ? cloud.ops : ops,
-      )
-    }
+    await pushLocalToCloudIfNeeded(merged, cloud)
     startPolling()
     startRealtimeSync()
+  } else {
+    startConfigPolling()
   }
 
-  return { accounts, ops }
+  return merged
 }
 
-function applyRemoteRow(row: { accounts: AccountRecord[]; ops: PortalOps }) {
-  accountsListener?.(row.accounts)
-  opsListener?.(row.ops)
+function applyRemoteRow(row: CloudRow) {
+  suppressCloudPush++
+  try {
+    accountsListener?.(row.accounts)
+    opsListener?.(row.ops)
+    lastCloudUpdatedAt = row.updated_at
+  } finally {
+    suppressCloudPush--
+  }
 }
 
 function startPolling() {
@@ -244,9 +402,35 @@ function startPolling() {
     if (typeof document !== 'undefined' && document.hidden) return
     if (Date.now() < suppressRemoteUntil) return
     void loadCloudRow().then((row) => {
+      if (!row) return
+      const remoteTime = cloudTimestamp(row)
+      const localTime = localTimestamp()
+      if (remoteTime >= localTime || remoteTime > 0) {
+        applyRemoteRow(row)
+      }
+    })
+  }, 8000)
+}
+
+function startConfigPolling() {
+  if (configPollTimer) return
+  configPollTimer = setInterval(() => {
+    if (syncMode === 'cloud') {
+      if (configPollTimer) clearInterval(configPollTimer)
+      configPollTimer = null
+      return
+    }
+    void loadCloudRow().then(async (row) => {
+      if (syncMode !== 'cloud') return
+      startPolling()
+      startRealtimeSync()
+      const localAccounts = readLocalAccounts()
+      const localOps = readLocalOps() ?? createDefaultOps()
+      const merged = mergeBootstrap(row, localAccounts, localOps)
+      await pushLocalToCloudIfNeeded(merged, row)
       if (row) applyRemoteRow(row)
     })
-  }, 12000)
+  }, 15000)
 }
 
 function startRealtimeSync() {
@@ -290,30 +474,44 @@ export function onCloudOps(listener: OpsListener) {
 }
 
 async function flushCloudSave() {
-  const current = await loadCloudRow()
-  const accounts = pendingAccounts ?? current?.accounts ?? []
-  const ops = pendingOps ?? current?.ops ?? createDefaultOps()
+  const accounts = pendingAccounts ?? readLocalAccounts() ?? []
+  const ops = pendingOps ?? readLocalOps() ?? createDefaultOps()
   pendingAccounts = undefined
   pendingOps = undefined
   await saveCloudRow(accounts, ops)
 }
 
 function scheduleCloudSave() {
+  if (suppressCloudPush > 0) return
   if (flushTimer) clearTimeout(flushTimer)
   flushTimer = setTimeout(() => {
     flushTimer = null
     void flushCloudSave()
-  }, 900)
+  }, 700)
 }
 
 export function queueCloudAccounts(accounts: AccountRecord[]) {
+  if (suppressCloudPush > 0) return
   pendingAccounts = accounts
+  touchLocalSyncMeta()
   scheduleCloudSave()
 }
 
 export function queueCloudOps(ops: PortalOps) {
+  if (suppressCloudPush > 0) return
   pendingOps = ops
+  touchLocalSyncMeta()
   scheduleCloudSave()
+}
+
+export async function forceSyncNow(): Promise<SyncStatus> {
+  const localAccounts = readLocalAccounts() ?? []
+  const localOps = readLocalOps() ?? createDefaultOps()
+  touchLocalSyncMeta()
+  await saveCloudRow(localAccounts, localOps)
+  const row = await loadCloudRow()
+  if (row) applyRemoteRow(row)
+  return getSyncStatus()
 }
 
 export function writeLocalAccounts(accounts: AccountRecord[]) {

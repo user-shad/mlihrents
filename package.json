@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",
+    "@upstash/redis": "^1.38.0",
     "@vercel/blob": "^2.6.1",
+    "@vercel/postgres": "^0.10.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.18.1",

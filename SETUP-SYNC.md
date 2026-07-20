@@ -12,9 +12,13 @@ The app needs **cloud storage** on Vercel. Without it, each browser keeps its ow
 
 No API keys to copy — Vercel adds `BLOB_READ_WRITE_TOKEN` automatically.
 
----
+## Option B — Upstash Redis (Vercel Marketplace)
 
-## Option B — Supabase
+1. Vercel → **Storage** → **Marketplace** → search **Upstash Redis**
+2. Create → **Connect** to mlihrents → **Redeploy**
+3. Vercel adds `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` automatically
+
+## Option C — Supabase
 
 See [SETUP-SUPABASE.md](./SETUP-SUPABASE.md) if you prefer Supabase.
 
@@ -22,8 +26,8 @@ See [SETUP-SUPABASE.md](./SETUP-SUPABASE.md) if you prefer Supabase.
 
 ## Verify it works
 
-1. On **phone**: Admin → Info → add a tenant + login info → wait 5 seconds
-2. On **laptop**: refresh Admin → same tenant should appear
+1. On **phone**: Admin → Info → add a tenant + login info → tap **Sync now**
+2. On **laptop**: refresh Admin → same tenant should appear within ~10 seconds
 3. If sidebar still says **Local only**, storage is not connected — redo steps above and **Redeploy**
 
 ---
@@ -32,6 +36,7 @@ See [SETUP-SUPABASE.md](./SETUP-SUPABASE.md) if you prefer Supabase.
 
 | Symptom | Fix |
 |---------|-----|
-| **Local only** in admin sidebar | Blob or Supabase not connected; redeploy after adding storage |
-| Data on phone, empty on laptop | Cloud sync was off when data was created; re-enter on phone after sync is active |
-| **500 error** on sync | Supabase: run `supabase/schema.sql` in SQL Editor |
+| **Local only** in admin sidebar | Blob or Redis not connected; redeploy after adding storage |
+| Data on phone, empty on laptop | Tap **Sync now** on phone after cloud is active |
+| **500 error** on sync | Payload too large — payment screenshots stay local; tenant data still syncs |
+| **503** on sync | No storage connected — complete Option A or B above |
