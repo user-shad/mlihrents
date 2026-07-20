@@ -36,8 +36,10 @@ import { useAuth } from './AuthContext'
 import { useLang } from './LangContext'
 import {
   BankAccountSettings,
-  emptyBankSettings,
   isBankConfigured,
+  normalizeBankSettings,
+  readBankSettings,
+  writeBankSettings,
 } from '../config/paymentSettings'
 
 const OPS_KEY = 'mlihrents_ops_v4'
@@ -177,8 +179,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [listings, setListings] = useState<AvailableApartment[]>(
     persisted?.listings ?? availableApartments,
   )
-  const [bankSettings, setBankSettings] = useState<BankAccountSettings>(
-    persisted?.bankSettings ?? emptyBankSettings,
+  const [bankSettings, setBankSettings] = useState<BankAccountSettings>(() =>
+    readBankSettings(persisted?.bankSettings ?? null),
   )
   const [invoiceMap, setInvoiceMap] = useState<Record<string, Invoice[]>>(
     persisted?.invoiceMap ?? invoicesByResident,
@@ -217,19 +219,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    localStorage.setItem(
-      OPS_KEY,
-      JSON.stringify({
-        residentList,
-        listings,
-        payments,
-        invoiceMap,
-        ticketMap,
-        invoiceExtensions,
-        paidIds,
-        bankSettings,
-      }),
-    )
+    try {
+      localStorage.setItem(
+        OPS_KEY,
+        JSON.stringify({
+          residentList,
+          listings,
+          payments,
+          invoiceMap,
+          ticketMap,
+          invoiceExtensions,
+          paidIds,
+          bankSettings,
+        }),
+      )
+    } catch {
+      /* ops blob may exceed quota — bank settings use a separate key */
+    }
   }, [residentList, listings, payments, invoiceMap, ticketMap, invoiceExtensions, paidIds, bankSettings])
 
   function showToast(msg: string) {
@@ -520,13 +526,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   function saveBankSettings(settings: BankAccountSettings) {
-    setBankSettings({
-      accountName: settings.accountName.trim(),
-      bankName: settings.bankName.trim(),
-      iban: settings.iban.replace(/\s/g, '').toUpperCase(),
-      accountNumber: settings.accountNumber.trim(),
-      swift: settings.swift.trim().toUpperCase(),
-    })
+    const next = normalizeBankSettings(settings)
+    if (!isBankConfigured(next)) {
+      showToast(tr('bankSettingsIncomplete'))
+      return
+    }
+    if (!writeBankSettings(next)) {
+      showToast(tr('bankSettingsSaveFailed'))
+      return
+    }
+    setBankSettings(next)
     showToast(tr('bankSettingsSaved'))
   }
 

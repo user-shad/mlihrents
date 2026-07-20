@@ -697,6 +697,7 @@ export default function AdminPortal() {
               <p className="meta" style={{ marginTop: '0.75rem' }}>
                 {tr('bankSettingsHelp')}
               </p>
+              <p className="meta">{tr('bankSettingsRequired')}</p>
               <div className="rent-plan-editor" style={{ marginTop: '0.75rem' }}>
                 <div className="form-row">
                   <label htmlFor="bankAccountName">{tr('accountHolder')}</label>
