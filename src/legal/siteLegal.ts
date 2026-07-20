@@ -5,16 +5,16 @@ export const siteLegal = {
   tradeLicenseNumber: '[Insert UAE Trade License No.]',
   licensedEmirate: 'Abu Dhabi, United Arab Emirates',
   registeredAddress: 'Etihad Airways Centre, 5th Floor, Abu Dhabi, United Arab Emirates',
-  contactEmail: 'legal@mlaihrent.com',
-  supportEmail: 'support@mlaihrent.com',
+  contactEmail: 'legal@mlihrent.com',
+  supportEmail: 'support@mlihrent.com',
   phone: '+971 4 000 0000',
-  dataProtectionContact: 'privacy@mlaihrent.com',
+  dataProtectionContact: 'privacy@mlihrent.com',
   governingLaw: 'Laws of the United Arab Emirates',
   disputeVenue: 'Courts of Abu Dhabi, United Arab Emirates',
   lastUpdated: '20 July 2026',
-  primaryDomain: 'www.mlaihrent.com',
-  publicUrl: 'https://www.mlaihrent.com',
-  suggestedDomains: ['mlaihrent.com', 'www.mlaihrent.com'],
+  primaryDomain: 'www.mlihrent.com',
+  publicUrl: 'https://www.mlihrent.com',
+  suggestedDomains: ['mlihrent.com', 'www.mlihrent.com'],
 }
 
 export function isTradeLicenseConfigured() {

@@ -9,27 +9,39 @@
   },
   "redirects": [
     {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "mlihrent.com" }],
+      "destination": "https://www.mlihrent.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path((?!api/).*)",
+      "has": [{ "type": "host", "value": "mlihrents.vercel.app" }],
+      "destination": "https://www.mlihrent.com/:path*",
+      "permanent": false
+    },
+    {
       "source": "/:path((?!api/).*)",
       "has": [{ "type": "host", "value": "mlihrents.com" }],
-      "destination": "https://mlihrents.vercel.app/:path*",
+      "destination": "https://www.mlihrent.com/:path*",
       "permanent": false
     },
     {
       "source": "/:path((?!api/).*)",
       "has": [{ "type": "host", "value": "www.mlihrents.com" }],
-      "destination": "https://mlihrents.vercel.app/:path*",
+      "destination": "https://www.mlihrent.com/:path*",
       "permanent": false
     },
     {
       "source": "/:path((?!api/).*)",
       "has": [{ "type": "host", "value": "mlaihrent.com" }],
-      "destination": "https://mlihrents.vercel.app/:path*",
+      "destination": "https://www.mlihrent.com/:path*",
       "permanent": false
     },
     {
       "source": "/:path((?!api/).*)",
       "has": [{ "type": "host", "value": "www.mlaihrent.com" }],
-      "destination": "https://mlihrents.vercel.app/:path*",
+      "destination": "https://www.mlihrent.com/:path*",
       "permanent": false
     }
   ],
