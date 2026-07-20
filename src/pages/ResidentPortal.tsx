@@ -1,0 +1,963 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  adminStats,
+  buildPaymentDueAnnouncements,
+  buildPaymentRef,
+  formatDueDateFromDay,
+  formatMoney,
+  paymentMethodLabel,
+  remainingBalance,
+  rentScheduleLabel,
+  serviceDirectory,
+} from '../data'
+import { useAuth } from '../context/AuthContext'
+import { useLang } from '../context/LangContext'
+import { useData } from '../context/DataContext'
+import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
+
+type Tab = 'home' | 'pay' | 'tickets' | 'chat' | 'profile'
+
+export default function ResidentPortal() {
+  const navigate = useNavigate()
+  const { logout, session } = useAuth()
+  const { lang, tr } = useLang()
+  const {
+    tickets,
+    payments,
+    paidIds,
+    messages,
+    humanMode,
+    liveResident,
+    visibleInvoices,
+    dueInvoice,
+    checkoutInvoice,
+    ticketTitle,
+    setTicketTitle,
+    ticketCategory,
+    setTicketCategory,
+    ticketNote,
+    setTicketNote,
+    payMethod,
+    setPayMethod,
+    cardName,
+    setCardName,
+    cardNumber,
+    setCardNumber,
+    cardExpiry,
+    setCardExpiry,
+    cardCvc,
+    setCardCvc,
+    bankProof,
+    setBankProofFromFile,
+    clearBankProof,
+    paying,
+    invoiceHasPendingPayment,
+    toast,
+    chatInput,
+    setChatInput,
+    chatEndRef,
+    showToast,
+    openCheckout,
+    closeCheckout,
+    extendInvoiceDueDate,
+    completePayment,
+    createTicket,
+    escalateToHuman,
+    sendChat,
+    resetHumanMode,
+  } = useData()
+
+  const residentName = liveResident.name || session?.name || ''
+  const residentFirstName = residentName.split(' ')[0] || residentName || 'there'
+
+  const [tab, setTab] = useState<Tab>('home')
+  const paymentNotices = buildPaymentDueAnnouncements(visibleInvoices, lang)
+
+  function handleLogout() {
+    resetHumanMode()
+    logout()
+    navigate('/')
+  }
+
+  const navItems: { id: Tab; labelKey: string }[] = [
+    { id: 'home', labelKey: 'home' },
+    { id: 'pay', labelKey: 'pay' },
+    { id: 'tickets', labelKey: 'tickets' },
+    { id: 'chat', labelKey: 'chat' },
+    { id: 'profile', labelKey: 'profile' },
+  ]
+
+  return (
+    <div className="portal">
+      <aside className="sidebar">
+        <div className="brand" style={{ color: '#f7faf8' }}>
+          <BrandMark />
+          MLIHrents
+        </div>
+
+        <LanguageSwitch />
+
+        <nav className="side-nav">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`side-link ${tab === item.id ? 'active' : ''}`}
+              onClick={() => setTab(item.id)}
+            >
+              {tr(item.labelKey)}
+            </button>
+          ))}
+        </nav>
+
+        <div className="user-card">
+          <strong>{residentName}</strong>
+          <span>
+            {liveResident.building} · {liveResident.buildingNumber}-{liveResident.apartment}
+          </span>
+        </div>
+
+        <div className="side-footer">
+          <button className="btn btn-ghost btn-sm logout-btn" type="button" onClick={handleLogout}>
+            {tr('signOut')}
+          </button>
+        </div>
+      </aside>
+
+      <main className="main">
+        <div className="portal-topbar">
+          <span className="meta">{tr('resident')}</span>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={handleLogout}>
+            {tr('signOut')}
+          </button>
+        </div>
+        {tab === 'home' && (
+          <>
+            <header className="page-head">
+              <div>
+                <h1>
+                  {tr('goodEvening')}
+                  {lang === 'ar' ? '، ' : ', '}
+                  {residentFirstName}
+                </h1>
+                <p>
+                  {liveResident.building} · {tr('building')} {liveResident.buildingNumber} ·{' '}
+                  {tr('apartment')} {liveResident.apartment}
+                </p>
+              </div>
+              <button className="btn btn-primary" type="button" onClick={() => setTab('chat')}>
+                {tr('askShade')}
+              </button>
+            </header>
+
+            <div className="grid-2">
+              <section className="panel rent-hero">
+                <p className="muted" style={{ margin: 0 }}>
+                  {tr('nextRent')}
+                </p>
+                <div className="rent-amount">
+                  {dueInvoice ? formatMoney(dueInvoice.amount) : tr('allClear')}
+                </div>
+                <p className="muted" style={{ margin: '0 0 1rem' }}>
+                  {dueInvoice
+                    ? `${dueInvoice.period} · ${tr('due')} ${dueInvoice.dueDate}`
+                    : tr('noOutstanding')}
+                </p>
+                {dueInvoice && (
+                  <button
+                    className="btn btn-accent"
+                    type="button"
+                    onClick={() => {
+                      setTab('pay')
+                      openCheckout(dueInvoice.id)
+                    }}
+                  >
+                    {tr('payNow')}
+                  </button>
+                )}
+              </section>
+
+              <section className="panel">
+                <h2>{tr('yourUnit')}</h2>
+                <div className="list">
+                  <div className="list-row">
+                    <div>
+                      <strong>
+                        {tr('building')} {liveResident.buildingNumber}
+                      </strong>
+                      <div className="meta">{liveResident.building}</div>
+                    </div>
+                    <span className="meta">
+                      {tr('floor')} {liveResident.floor}
+                    </span>
+                  </div>
+                  <div className="list-row">
+                    <div>
+                      <strong>
+                        {tr('apartment')} {liveResident.apartment}
+                      </strong>
+                      <div className="meta">
+                        {tr('parking')} {liveResident.parking}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="list-row">
+                    <div>
+                      <strong>{tr('leaseEnds')}</strong>
+                      <div className="meta">{liveResident.leaseEnd}</div>
+                    </div>
+                  </div>
+                  <div className="list-row">
+                    <div>
+                      <strong>{tr('rentDueDay')}</strong>
+                      <div className="meta">
+                        {formatDueDateFromDay(liveResident.rentDueDay, 'Jul 2026', lang)}
+                        {lang === 'ar' ? ' · كل شهر' : ' · every month'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div style={{ marginTop: '1rem' }}>
+              <RentBalanceCard resident={liveResident} lang={lang} tr={tr} />
+            </div>
+
+            <div className="grid-2" style={{ marginTop: '1rem' }}>
+              <section className="panel">
+                <h2>{tr('announcements')}</h2>
+                <div className="list">
+                  {paymentNotices.map((a) => (
+                    <div className="list-row" key={a.id}>
+                      <div>
+                        <strong>{a.title}</strong>
+                        <div className="meta">{a.body}</div>
+                      </div>
+                      <span className="meta">{a.date}</span>
+                    </div>
+                  ))}
+                  {paymentNotices.length === 0 && (
+                    <p className="meta">{tr('noPaymentDue')}</p>
+                  )}
+                </div>
+              </section>
+              <section className="panel">
+                <h2>{tr('openTickets')}</h2>
+                <div className="list">
+                  {tickets
+                    .filter((tkt) => tkt.status !== 'resolved')
+                    .map((tkt) => (
+                      <div className="list-row" key={tkt.id}>
+                        <div>
+                          <strong>{tkt.title}</strong>
+                          <div className="meta">
+                            {tkt.id} · {tkt.note}
+                          </div>
+                        </div>
+                        <Badge lang={lang} status={tkt.status} />
+                      </div>
+                    ))}
+                  {tickets.every((tkt) => tkt.status === 'resolved') && (
+                    <p className="meta">{tr('noOpenTickets')}</p>
+                  )}
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  style={{ marginTop: '0.75rem' }}
+                  onClick={() => setTab('tickets')}
+                >
+                  {tr('newTicket')}
+                </button>
+              </section>
+            </div>
+          </>
+        )}
+
+        {tab === 'pay' && (
+          <>
+            <header className="page-head">
+              <div>
+                <h1>{tr('rentPayments')}</h1>
+                <p>{tr('payLead')}</p>
+              </div>
+            </header>
+            {paidIds.length > 0 && !checkoutInvoice && (
+              <div className="success-flash">
+                {tr('paymentSettled')} {adminStats.accountName}. {tr('receiptSaved')}
+              </div>
+            )}
+
+            {!checkoutInvoice && (
+              <div style={{ marginBottom: '1rem' }}>
+                <RentBalanceCard resident={liveResident} lang={lang} tr={tr} />
+              </div>
+            )}
+
+            {checkoutInvoice ? (
+              <section className="panel checkout-panel">
+                <div className="file-head">
+                  <div>
+                    <h2 style={{ marginBottom: '0.25rem' }}>{tr('checkout')}</h2>
+                    <p className="meta" style={{ margin: 0 }}>
+                      {checkoutInvoice.period} · {checkoutInvoice.id} · {tr('due')}{' '}
+                      {checkoutInvoice.dueDate}
+                    </p>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" type="button" onClick={closeCheckout}>
+                    {tr('cancel')}
+                  </button>
+                </div>
+
+                <div className="rent-amount" style={{ fontSize: '2.2rem', margin: '0.75rem 0 1rem' }}>
+                  {formatMoney(checkoutInvoice.amount)}
+                </div>
+
+                <p className="meta" style={{ marginTop: 0 }}>
+                  {tr('payingFrom')} {residentName} · {liveResident.buildingNumber}-
+                  {liveResident.apartment}
+                  <br />
+                  {tr('destination')}: <strong>{adminStats.accountName}</strong> (
+                  {adminStats.accountBank})
+                </p>
+
+                <h3
+                  className="section-label"
+                  style={{ borderTop: 'none', paddingTop: 0, marginTop: '0.5rem' }}
+                >
+                  {tr('paymentMethod')}
+                </h3>
+                <div className="pay-methods" role="radiogroup" aria-label="Payment method">
+                  <button
+                    type="button"
+                    className={`pay-method ${payMethod === 'apple_pay' ? 'active' : ''}`}
+                    onClick={() => setPayMethod('apple_pay')}
+                    aria-pressed={payMethod === 'apple_pay'}
+                  >
+                    <span className="pay-method-icon" aria-hidden>
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                        <path d="M17.05 12.65c-.02-2.18 1.78-3.22 1.86-3.27-1.02-1.48-2.6-1.68-3.16-1.7-1.34-.14-2.62.79-3.3.79-.69 0-1.76-.77-2.9-.75-1.49.02-2.87.87-3.63 2.21-1.56 2.7-.4 6.7 1.12 8.9.74 1.08 1.62 2.28 2.77 2.24 1.12-.05 1.54-.72 2.89-.72 1.34 0 1.72.72 2.9.7 1.2-.02 1.96-1.09 2.69-2.18.85-1.24 1.2-2.44 1.22-2.5-.03-.01-2.33-.89-2.36-3.72zM14.7 5.9c.61-.74 1.02-1.77.91-2.8-.88.04-1.95.59-2.58 1.33-.56.65-1.06 1.7-.93 2.7 1 .08 2-.51 2.6-1.23z" />
+                      </svg>
+                    </span>
+                    <span>
+                      <strong>{tr('applePay')}</strong>
+                      <span className="meta">{tr('applePayMeta')}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`pay-method ${payMethod === 'card' ? 'active' : ''}`}
+                    onClick={() => setPayMethod('card')}
+                    aria-pressed={payMethod === 'card'}
+                  >
+                    <span className="pay-method-icon" aria-hidden>
+                      <svg
+                        viewBox="0 0 24 24"
+                        width="22"
+                        height="22"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <rect x="2" y="5" width="20" height="14" rx="2" />
+                        <path d="M2 10h20" />
+                      </svg>
+                    </span>
+                    <span>
+                      <strong>{tr('cardPay')}</strong>
+                      <span className="meta">{tr('cardPayMeta')}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`pay-method ${payMethod === 'bank' ? 'active' : ''}`}
+                    onClick={() => setPayMethod('bank')}
+                    aria-pressed={payMethod === 'bank'}
+                  >
+                    <span className="pay-method-icon" aria-hidden>
+                      <svg
+                        viewBox="0 0 24 24"
+                        width="22"
+                        height="22"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="M3 10l9-6 9 6" />
+                        <path d="M5 10v8h14v-8" />
+                        <path d="M3 18h18" />
+                      </svg>
+                    </span>
+                    <span>
+                      <strong>{tr('bankPay')}</strong>
+                      <span className="meta">{tr('bankPayMeta')}</span>
+                    </span>
+                  </button>
+                </div>
+
+                <form onSubmit={completePayment}>
+                  {payMethod === 'card' && (
+                    <div className="card-fields">
+                      <div className="form-row">
+                        <label htmlFor="cardName">{tr('nameOnCard')}</label>
+                        <input
+                          id="cardName"
+                          value={cardName}
+                          onChange={(e) => setCardName(e.target.value)}
+                        />
+                      </div>
+                      <div className="form-row">
+                        <label htmlFor="cardNumber">{tr('cardNumber')}</label>
+                        <input
+                          id="cardNumber"
+                          value={cardNumber}
+                          onChange={(e) => setCardNumber(e.target.value)}
+                          inputMode="numeric"
+                        />
+                      </div>
+                      <div className="card-row">
+                        <div className="form-row">
+                          <label htmlFor="cardExpiry">{tr('expiry')}</label>
+                          <input
+                            id="cardExpiry"
+                            value={cardExpiry}
+                            onChange={(e) => setCardExpiry(e.target.value)}
+                          />
+                        </div>
+                        <div className="form-row">
+                          <label htmlFor="cardCvc">{tr('cvc')}</label>
+                          <input
+                            id="cardCvc"
+                            value={cardCvc}
+                            onChange={(e) => setCardCvc(e.target.value)}
+                            inputMode="numeric"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {payMethod === 'apple_pay' && (
+                    <p className="hint" style={{ marginBottom: '1rem' }}>
+                      {tr('appleHint')}
+                    </p>
+                  )}
+
+                  {payMethod === 'bank' && (
+                    <div className="bank-transfer-block">
+                      <div className="bank-link-box">
+                        <strong>{tr('paymentRefLabel')}</strong>
+                        <code>
+                          {buildPaymentRef(
+                            `${liveResident.buildingNumber}-${liveResident.apartment}`,
+                            checkoutInvoice.id,
+                          )}
+                        </code>
+                        <span className="meta">{tr('paymentRefHint')}</span>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          style={{ marginTop: '0.35rem', justifySelf: 'start' }}
+                          onClick={() => {
+                            const ref = buildPaymentRef(
+                              `${liveResident.buildingNumber}-${liveResident.apartment}`,
+                              checkoutInvoice.id,
+                            )
+                            void navigator.clipboard?.writeText(ref)
+                            showToast(tr('paymentRefCopy'))
+                          }}
+                        >
+                          {tr('paymentRefCopy')}
+                        </button>
+                      </div>
+
+                      <div className="bank-link-box">
+                        <strong>{tr('paymentLink')}</strong>
+                        <code>pay.mlihrents.app/l/{checkoutInvoice.id.toLowerCase()}</code>
+                        <span className="meta">
+                          {lang === 'ar'
+                            ? `حوّل بالضبط ${checkoutInvoice.amount.toLocaleString()} درهم إلى ${adminStats.accountBank}`
+                            : `Transfer exactly AED ${checkoutInvoice.amount.toLocaleString()} to ${adminStats.accountBank}`}
+                        </span>
+                      </div>
+
+                      <p className="hint" style={{ margin: '0 0 0.75rem' }}>
+                        {tr('bankReviewHint')}
+                      </p>
+
+                      <div className="transfer-proof">
+                        <label className="transfer-proof-label" htmlFor="bankProof">
+                          {tr('transferProofLabel')}
+                        </label>
+                        <p className="meta" style={{ margin: '0 0 0.65rem' }}>
+                          {tr('transferProofHint')}
+                        </p>
+                        <input
+                          id="bankProof"
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="transfer-proof-input"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] ?? null
+                            setBankProofFromFile(file)
+                            e.target.value = ''
+                          }}
+                        />
+                        {bankProof ? (
+                          <div className="transfer-proof-preview">
+                            <img src={bankProof.dataUrl} alt={bankProof.name} />
+                            <div className="transfer-proof-meta">
+                              <strong>{tr('transferProofAttached')}</strong>
+                              <span className="meta">{bankProof.name}</span>
+                              <div className="transfer-proof-actions">
+                                <label htmlFor="bankProof" className="btn btn-ghost btn-sm">
+                                  {tr('transferProofChange')}
+                                </label>
+                                <button
+                                  className="btn btn-ghost btn-sm"
+                                  type="button"
+                                  onClick={clearBankProof}
+                                >
+                                  {tr('transferProofRemove')}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <label htmlFor="bankProof" className="transfer-proof-drop">
+                            <span>{tr('transferProofChoose')}</span>
+                            <span className="meta">PNG, JPG, HEIC · max 8 MB</span>
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    className="btn btn-accent btn-block"
+                    type="submit"
+                    disabled={paying || (payMethod === 'bank' && !bankProof)}
+                  >
+                    {paying
+                      ? tr('processing')
+                      : payMethod === 'apple_pay'
+                        ? `${tr('payWithApple')} · ${formatMoney(checkoutInvoice.amount)}`
+                        : payMethod === 'card'
+                          ? `${tr('payByCard')} · ${formatMoney(checkoutInvoice.amount)}`
+                          : `${tr('payViaBank')} · ${formatMoney(checkoutInvoice.amount)}`}
+                  </button>
+                </form>
+              </section>
+            ) : (
+              <>
+                <section className="panel">
+                  <h2>{tr('invoices')}</h2>
+                  <div className="list">
+                    {visibleInvoices.map((inv) => {
+                      const pending = invoiceHasPendingPayment(inv.id)
+                      return (
+                      <div className="list-row" key={inv.id}>
+                        <div>
+                          <strong>{inv.period}</strong>
+                          <div className="meta">
+                            {inv.id} · {tr('due')} {inv.dueDate} · {formatMoney(inv.amount)}
+                            {(inv.extensionDays ?? 0) > 0
+                              ? ` · ${tr('extendedLabel')} +${inv.extensionDays}d`
+                              : ''}
+                          </div>
+                          {inv.status === 'overdue' && !pending && (
+                            <div className="meta" style={{ marginTop: '0.35rem' }}>
+                              {tr('extensionNote')}
+                            </div>
+                          )}
+                          {pending && (
+                            <div className="meta" style={{ marginTop: '0.35rem' }}>
+                              {tr('underReview')}
+                            </div>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.65rem',
+                            flexWrap: 'wrap',
+                            justifyContent: 'flex-end',
+                          }}
+                        >
+                          <Badge lang={lang} status={pending ? 'pending_review' : inv.status} />
+                          {inv.status === 'overdue' && !pending && (
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              type="button"
+                              onClick={() => extendInvoiceDueDate(inv.id, 7)}
+                            >
+                              {tr('extendBy7')}
+                            </button>
+                          )}
+                          {inv.status !== 'paid' && !pending && (
+                            <button
+                              className="btn btn-primary btn-sm"
+                              type="button"
+                              onClick={() => openCheckout(inv.id)}
+                            >
+                              {tr('pay')}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      )
+                    })}
+                    {visibleInvoices.length === 0 && (
+                      <p className="meta">{tr('noInvoices')}</p>
+                    )}
+                  </div>
+                </section>
+
+                <section className="panel" style={{ marginTop: '1rem' }}>
+                  <h2>{tr('paymentHistory')}</h2>
+                  <div className="list">
+                    {payments
+                      .filter((p) => p.residentId === liveResident.id)
+                      .map((p) => (
+                        <div className="list-row" key={p.id}>
+                          <div>
+                            <strong>{formatMoney(p.confirmedAmount ?? p.amount)}</strong>
+                            <div className="meta">
+                              {p.id} · {paymentMethodLabel(p.method)} · {p.paidAt}
+                              {p.paymentRef ? ` · ${p.paymentRef}` : ''}
+                              <br />
+                              {tr('sentTo')} {p.destination}
+                              {p.reviewNote ? (
+                                <>
+                                  <br />
+                                  {p.reviewNote}
+                                </>
+                              ) : null}
+                            </div>
+                            {p.transferProof && (
+                              <a
+                                className="proof-thumb"
+                                href={p.transferProof.dataUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                <img src={p.transferProof.dataUrl} alt={p.transferProof.name} />
+                                <span>{tr('viewProof')}</span>
+                              </a>
+                            )}
+                          </div>
+                          <Badge lang={lang} status={p.status === 'settled' ? 'paid' : p.status} />
+                        </div>
+                      ))}
+                    {payments.filter((p) => p.residentId === liveResident.id).length === 0 && (
+                      <p className="meta">{tr('noPaymentsYet')}</p>
+                    )}
+                  </div>
+                </section>
+              </>
+            )}
+          </>
+        )}
+
+        {tab === 'tickets' && (
+          <>
+            <header className="page-head">
+              <div>
+                <h1>{tr('maintenance')}</h1>
+                <p>
+                  {tr('ticketsAuto')} {liveResident.buildingNumber} / {tr('apartment')}{' '}
+                  {liveResident.apartment}
+                </p>
+              </div>
+            </header>
+            <div className="grid-2">
+              <section className="panel">
+                <h2>{tr('reportIssue')}</h2>
+                <form onSubmit={createTicket}>
+                  <div className="form-row">
+                    <label htmlFor="title">{tr('title')}</label>
+                    <input
+                      id="title"
+                      value={ticketTitle}
+                      onChange={(e) => setTicketTitle(e.target.value)}
+                      placeholder={lang === 'ar' ? 'مثال: صوت من السخان' : 'e.g. Water heater noise'}
+                    />
+                  </div>
+                  <div className="form-row">
+                    <label htmlFor="category">{tr('category')}</label>
+                    <select
+                      id="category"
+                      value={ticketCategory}
+                      onChange={(e) => setTicketCategory(e.target.value)}
+                    >
+                      <option value="Plumbing">{tr('plumbing')}</option>
+                      <option value="HVAC">{tr('hvac')}</option>
+                      <option value="Electrical">{tr('electrical')}</option>
+                      <option value="Appliance">{tr('appliance')}</option>
+                      <option value="Other">{tr('other')}</option>
+                    </select>
+                  </div>
+                  <div className="form-row">
+                    <label htmlFor="note">{tr('details')}</label>
+                    <textarea
+                      id="note"
+                      value={ticketNote}
+                      onChange={(e) => setTicketNote(e.target.value)}
+                      placeholder={
+                        lang === 'ar'
+                          ? 'متى بدأت، أوقات الدخول…'
+                          : 'When it started, access times, photos later…'
+                      }
+                    />
+                  </div>
+                  <button className="btn btn-primary" type="submit">
+                    {tr('submitTicket')}
+                  </button>
+                </form>
+              </section>
+              <section className="panel">
+                <h2>{tr('yourTickets')}</h2>
+                <div className="list">
+                  {tickets.map((t) => (
+                    <div className="list-row" key={t.id}>
+                      <div>
+                        <strong>{t.title}</strong>
+                        <div className="meta">
+                          {t.id} · {t.category} · {t.created}
+                          <br />
+                          {t.note}
+                        </div>
+                      </div>
+                      <Badge lang={lang} status={t.status} />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+          </>
+        )}
+
+        {tab === 'chat' && (
+          <>
+            <header className="page-head">
+              <div>
+                <h1>{tr('askShadeTitle')}</h1>
+                <p>{tr('chatLeadAi')}</p>
+              </div>
+            </header>
+            <div className="chat-layout">
+              <div className={`chat-banner ${humanMode ? 'human' : ''}`}>
+                <div>
+                  <strong>
+                    {humanMode
+                      ? lang === 'ar'
+                        ? 'مايا · دعم المبنى'
+                        : 'Maya · Building Support'
+                      : tr('shadeAssistant')}
+                  </strong>
+                  <span>
+                    {humanMode
+                      ? tr('liveChat')
+                      : `${tr('linkedTo')} ${liveResident.buildingNumber}-${liveResident.apartment}`}
+                  </span>
+                </div>
+                {!humanMode && (
+                  <button className="btn btn-accent btn-sm" type="button" onClick={escalateToHuman}>
+                    {tr('talkToPerson')}
+                  </button>
+                )}
+              </div>
+              <div className="chat-stream">
+                {messages.map((m) => (
+                  <div key={m.id} className={`bubble ${m.role === 'user' ? 'user' : m.role}`}>
+                    {m.text.split('\n').map((line, i) => (
+                      <span key={i}>
+                        {i > 0 && <br />}
+                        {line}
+                      </span>
+                    ))}
+                    {m.contactPhone && (
+                      <a className="call-link" href={`tel:${m.contactPhone.replace(/\s/g, '')}`}>
+                        {tr('call')} {m.contactLabel ?? m.contactPhone}
+                      </a>
+                    )}
+                    <span className="time">{m.time}</span>
+                  </div>
+                ))}
+                <div ref={chatEndRef} />
+              </div>
+              {!humanMode && (
+                <div className="quick-prompts">
+                  {[tr('promptAc'), tr('promptNumbers'), tr('promptHuman')].map((q) => (
+                    <button key={q} className="chip" type="button" onClick={() => sendChat(q)}>
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <form
+                className="chat-compose"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  sendChat(chatInput)
+                }}
+              >
+                <input
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder={humanMode ? tr('messageMaya') : tr('askAnything')}
+                />
+                <button className="btn btn-primary" type="submit">
+                  {tr('send')}
+                </button>
+              </form>
+            </div>
+          </>
+        )}
+
+        {tab === 'profile' && (
+          <>
+            <header className="page-head">
+              <div>
+                <h1>{tr('aptProfile')}</h1>
+                <p>{tr('profileLead')}</p>
+              </div>
+            </header>
+            <section className="panel">
+              <div className="profile-grid">
+                <div className="profile-item">
+                  <span className="k">{tr('fullName')}</span>
+                  <span className="v">{residentName}</span>
+                </div>
+                <div className="profile-item">
+                  <span className="k">{tr('phone')}</span>
+                  <span className="v">{liveResident.phone}</span>
+                </div>
+                <div className="profile-item">
+                  <span className="k">{tr('building')}</span>
+                  <span className="v">
+                    {liveResident.building} ({liveResident.buildingNumber})
+                  </span>
+                </div>
+                <div className="profile-item">
+                  <span className="k">{tr('apartment')}</span>
+                  <span className="v">{liveResident.apartment}</span>
+                </div>
+                <div className="profile-item">
+                  <span className="k">{tr('floor')}</span>
+                  <span className="v">{liveResident.floor}</span>
+                </div>
+                <div className="profile-item">
+                  <span className="k">{tr('parking')}</span>
+                  <span className="v">{liveResident.parking}</span>
+                </div>
+                <div className="profile-item">
+                  <span className="k">{tr('monthlyRent')}</span>
+                  <span className="v">{formatMoney(liveResident.rentAmount)}</span>
+                </div>
+                <div className="profile-item">
+                  <span className="k">{tr('leaseEnd')}</span>
+                  <span className="v">{liveResident.leaseEnd}</span>
+                </div>
+                <div className="profile-item">
+                  <span className="k">{tr('rentDueDay')}</span>
+                  <span className="v">
+                    {lang === 'ar'
+                      ? `يوم ${liveResident.rentDueDay} من كل شهر`
+                      : `Day ${liveResident.rentDueDay} each month`}
+                  </span>
+                </div>
+                <div className="profile-item">
+                  <span className="k">{tr('nextDueDate')}</span>
+                  <span className="v">
+                    {formatDueDateFromDay(liveResident.rentDueDay, 'Jul 2026', lang)}
+                  </span>
+                </div>
+                <div className="profile-item">
+                  <span className="k">{tr('rentSchedule')}</span>
+                  <span className="v">{rentScheduleLabel(liveResident.rentSchedule, lang)}</span>
+                </div>
+                <div className="profile-item">
+                  <span className="k">{tr('amountRemaining')}</span>
+                  <span className="v">
+                    {remainingBalance(liveResident) <= 0
+                      ? tr('fullyPaid')
+                      : formatMoney(remainingBalance(liveResident), liveResident.currency)}
+                  </span>
+                </div>
+              </div>
+              <div style={{ marginTop: '1rem' }}>
+                <RentBalanceCard resident={liveResident} lang={lang} tr={tr} />
+              </div>
+              <button
+                className="btn btn-ghost"
+                type="button"
+                style={{ marginTop: '1rem' }}
+                onClick={() => showToast(tr('visitorToast'))}
+              >
+                {tr('visitorPass')}
+              </button>
+              <button
+                className="btn btn-primary"
+                type="button"
+                style={{ marginTop: '0.75rem', marginInlineStart: '0.5rem' }}
+                onClick={handleLogout}
+              >
+                {tr('signOut')}
+              </button>
+            </section>
+            <section className="panel" style={{ marginTop: '1rem' }}>
+              <h2>{tr('serviceNumbers')}</h2>
+              <p className="meta" style={{ marginTop: 0 }}>
+                {tr('serviceNumbersLead')}
+              </p>
+              <div className="list">
+                {serviceDirectory.map((c) => (
+                  <div className="list-row" key={c.id}>
+                    <div>
+                      <strong>{c.role}</strong>
+                      <div className="meta">
+                        {c.name} · {c.hours}
+                      </div>
+                    </div>
+                    <a className="btn btn-primary btn-sm" href={`tel:${c.phone.replace(/\s/g, '')}`}>
+                      {c.phone}
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+      </main>
+
+      <nav className="mobile-nav" aria-label="Primary">
+        {navItems.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={tab === item.id ? 'active' : ''}
+            onClick={() => setTab(item.id)}
+          >
+            <NavIcon id={item.id} />
+            {tr(item.labelKey)}
+          </button>
+        ))}
+        <button type="button" onClick={handleLogout}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+            <path d="M16 17l5-5-5-5" />
+            <path d="M21 12H9" />
+          </svg>
+          {tr('signOut')}
+        </button>
+      </nav>
+
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  )
+}
