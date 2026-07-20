@@ -3,13 +3,13 @@
     {
       "source": "/:path*",
       "has": [{ "type": "host", "value": "mlihrents.vercel.app" }],
-      "destination": "https://mlihrents.ae/:path*",
+      "destination": "https://www.mlihrents.com/:path*",
       "permanent": true
     },
     {
       "source": "/:path*",
-      "has": [{ "type": "host", "value": "www.mlihrents.ae" }],
-      "destination": "https://mlihrents.ae/:path*",
+      "has": [{ "type": "host", "value": "mlihrents.com" }],
+      "destination": "https://www.mlihrents.com/:path*",
       "permanent": true
     }
   ],

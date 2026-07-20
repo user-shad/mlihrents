@@ -23,19 +23,17 @@ Fastest free option:
 
 ## Custom domain (live)
 
-Production site: **[https://mlihrents.ae](https://mlihrents.ae)**
+Production site: **[https://www.mlihrents.com](https://www.mlihrents.com)**
 
 | Who | URL |
 |-----|-----|
-| Public / listings | `https://mlihrents.ae/` |
-| Residents | `https://mlihrents.ae/login` |
-| Staff | `https://mlihrents.ae/staff` |
+| Public / listings | `https://www.mlihrents.com/` |
+| Residents | `https://www.mlihrents.com/login` |
+| Staff | `https://www.mlihrents.com/staff` |
 
-`vercel.json` redirects `www.mlihrents.ae` and `mlihrents.vercel.app` to the primary domain.
+`vercel.json` redirects `mlihrents.com` (non-www) and `mlihrents.vercel.app` to `www.mlihrents.com`.
 
 **After domain connect:** change default staff passwords in **Admin → sidebar**, add tenants under **Info**, and set your trade licence in `src/legal/siteLegal.ts`.
-
-Optional: connect your own domain in Vercel → **Domains** (already configured for `mlihrents.ae`).
 
 `vercel.json` is already in the project so React Router routes (`/login`, `/admin`, etc.) work on refresh.
 

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://mlihrents.ae/sitemap.xml
+Sitemap: https://www.mlihrents.com/sitemap.xml

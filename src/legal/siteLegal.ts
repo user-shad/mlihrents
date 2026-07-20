@@ -1,20 +1,20 @@
-/** Site identity for UAE domain registration & public disclosures. */
+/** Site identity for public disclosures. */
 export const siteLegal = {
   brandName: 'MLIHrents',
   legalName: 'LULWA MLIH REAL ESTATE - SOLE PROPRIETORSHIP L.L.C.',
   tradeLicenseNumber: '[Insert UAE Trade License No.]',
   licensedEmirate: 'Abu Dhabi, United Arab Emirates',
   registeredAddress: 'Etihad Airways Centre, 5th Floor, Abu Dhabi, United Arab Emirates',
-  contactEmail: 'legal@mlihrents.ae',
-  supportEmail: 'support@mlihrents.ae',
+  contactEmail: 'legal@mlihrents.com',
+  supportEmail: 'support@mlihrents.com',
   phone: '+971 4 000 0000',
-  dataProtectionContact: 'privacy@mlihrents.ae',
+  dataProtectionContact: 'privacy@mlihrents.com',
   governingLaw: 'Laws of the United Arab Emirates',
   disputeVenue: 'Courts of Abu Dhabi, United Arab Emirates',
   lastUpdated: '20 July 2026',
-  primaryDomain: 'mlihrents.ae',
-  publicUrl: 'https://mlihrents.ae',
-  suggestedDomains: ['mlihrents.ae', 'mlihrents.com'],
+  primaryDomain: 'www.mlihrents.com',
+  publicUrl: 'https://www.mlihrents.com',
+  suggestedDomains: ['mlihrents.com', 'www.mlihrents.com'],
 }
 
 export function isTradeLicenseConfigured() {
