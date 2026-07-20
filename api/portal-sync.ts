@@ -46,7 +46,11 @@ function hasRedis() {
 }
 
 function hasPostgres() {
-  return Boolean(process.env.POSTGRES_URL)
+  return Boolean(
+    process.env.POSTGRES_URL ||
+      process.env.DATABASE_URL ||
+      process.env.POSTGRES_URL_NON_POOLING,
+  )
 }
 
 function getRedis() {

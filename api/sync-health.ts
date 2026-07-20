@@ -10,7 +10,11 @@ export default function handler(_req: VercelRequest, res: VercelResponse) {
         (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) ||
           (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN),
       ),
-      postgres: Boolean(process.env.POSTGRES_URL),
+      postgres: Boolean(
+        process.env.POSTGRES_URL ||
+          process.env.DATABASE_URL ||
+          process.env.POSTGRES_URL_NON_POOLING,
+      ),
       supabase: Boolean(
         (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) &&
           (process.env.SUPABASE_SERVICE_ROLE_KEY ||
