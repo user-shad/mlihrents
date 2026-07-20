@@ -29,6 +29,7 @@ import {
   RentSchedule,
   Resident,
   apartmentUnits,
+  buildEmptyApartment,
   residents,
   seedPayments,
   suggestInstallment,
@@ -52,6 +53,58 @@ import {
 
 const OPS_KEY = 'mlihrents_ops_v5'
 const LEGACY_OPS_KEYS = ['mlihrents_ops_v4']
+const LEGACY_A1_TEST_ID = 'apt-a1'
+const LEGACY_A1_TEST_INVOICE = 'INV-TEST-A1'
+
+function isLegacyTestTenantA1(resident: Resident): boolean {
+  if (resident.id !== LEGACY_A1_TEST_ID) return false
+  const phone = resident.phone.replace(/\D/g, '')
+  return (
+    resident.name === 'Test Tenant A1' ||
+    phone === '0501234567' ||
+    resident.email === 'a1-test@mlihrents.ae'
+  )
+}
+
+/** Remove demo A1 tenant data saved in older builds. */
+function stripLegacyTestData(parsed: PersistedOps): PersistedOps {
+  const residentList = parsed.residentList ?? []
+  const hasTestResident = residentList.some(isLegacyTestTenantA1)
+  const hasTestInvoice = (parsed.invoiceMap?.[LEGACY_A1_TEST_ID] ?? []).some(
+    (inv) => inv.id === LEGACY_A1_TEST_INVOICE,
+  )
+  const hasTestPayments = (parsed.payments ?? []).some(
+    (p) =>
+      p.residentId === LEGACY_A1_TEST_ID &&
+      (p.invoiceId === LEGACY_A1_TEST_INVOICE || p.residentName === 'Test Tenant A1'),
+  )
+
+  if (!hasTestResident && !hasTestInvoice && !hasTestPayments) return parsed
+
+  const nextResidents = residentList.map((resident) =>
+    isLegacyTestTenantA1(resident) ? buildEmptyApartment('A', 1) : resident,
+  )
+
+  const invoiceMap = { ...(parsed.invoiceMap ?? {}) }
+  if (invoiceMap[LEGACY_A1_TEST_ID]) {
+    invoiceMap[LEGACY_A1_TEST_ID] = invoiceMap[LEGACY_A1_TEST_ID].filter(
+      (inv) => inv.id !== LEGACY_A1_TEST_INVOICE,
+    )
+    if (invoiceMap[LEGACY_A1_TEST_ID].length === 0) delete invoiceMap[LEGACY_A1_TEST_ID]
+  }
+
+  const payments = (parsed.payments ?? []).filter(
+    (p) =>
+      !(
+        p.residentId === LEGACY_A1_TEST_ID &&
+        (p.invoiceId === LEGACY_A1_TEST_INVOICE || p.residentName === 'Test Tenant A1')
+      ),
+  )
+
+  const paidIds = (parsed.paidIds ?? []).filter((id) => id !== LEGACY_A1_TEST_INVOICE)
+
+  return { ...parsed, residentList: nextResidents, invoiceMap, payments, paidIds }
+}
 
 interface PersistedOps {
   residentList: Resident[]
@@ -85,10 +138,11 @@ function ensureSeedInvoices(map: Record<string, Invoice[]>): Record<string, Invo
 }
 
 function normalizePersistedOps(parsed: PersistedOps): PersistedOps {
+  const cleaned = stripLegacyTestData(parsed)
   return {
-    ...parsed,
-    residentList: ensureSeedApartments(parsed.residentList ?? []),
-    invoiceMap: ensureSeedInvoices(parsed.invoiceMap ?? {}),
+    ...cleaned,
+    residentList: ensureSeedApartments(cleaned.residentList ?? []),
+    invoiceMap: ensureSeedInvoices(cleaned.invoiceMap ?? {}),
   }
 }
 

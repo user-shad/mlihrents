@@ -82,9 +82,21 @@ function ensureBootstrapStaff(list: AccountRecord[]): AccountRecord[] {
   return next
 }
 
+/** Remove demo A1 login saved in older builds. */
+function stripLegacyTestAccounts(list: AccountRecord[]): AccountRecord[] {
+  return list.filter((account) => {
+    if (account.role !== 'resident') return true
+    const phone = normalizePhone(account.phone)
+    const isTestName = account.name === 'Test Tenant A1'
+    const isTestPhone = phone === '0501234567'
+    const isTestUnit = account.residentId === 'apt-a1'
+    return !(isTestName || (isTestUnit && isTestPhone) || (isTestName && isTestPhone))
+  })
+}
+
 /** Ensure sample / seed residents from data.ts exist as login accounts. */
 function ensureSeedResidents(list: AccountRecord[]): AccountRecord[] {
-  let next = [...list]
+  let next = stripLegacyTestAccounts(list)
   for (const r of residents) {
     const phone = normalizePhone(r.phone)
     if (!phone || !r.id) continue
@@ -116,7 +128,7 @@ function readAccounts(): AccountRecord[] {
   try {
     const raw = localStorage.getItem(ACCOUNTS_KEY)
     if (raw) {
-      const parsed = JSON.parse(raw) as AccountRecord[]
+      const parsed = stripLegacyTestAccounts(JSON.parse(raw) as AccountRecord[])
       if (Array.isArray(parsed) && parsed.length > 0) {
         return ensureSeedResidents(ensureBootstrapStaff(parsed))
       }
