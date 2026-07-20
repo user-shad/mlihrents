@@ -123,9 +123,7 @@ export default function AdminPortal() {
   const [editPhone, setEditPhone] = useState(selectedResident.phone)
   const [editEmail, setEditEmail] = useState(selectedResident.email ?? '')
   const [editBuilding, setEditBuilding] = useState(selectedResident.building)
-  const [editBuildingNumber, setEditBuildingNumber] = useState(selectedResident.buildingNumber)
   const [editApartment, setEditApartment] = useState(selectedResident.apartment)
-  const [editFloor, setEditFloor] = useState(String(selectedResident.floor))
   const [editParking, setEditParking] = useState(selectedResident.parking)
   const [editOccupants, setEditOccupants] = useState(String(selectedResident.occupants ?? 1))
   const [editMoveIn, setEditMoveIn] = useState(selectedResident.moveIn ?? '')
@@ -176,9 +174,7 @@ export default function AdminPortal() {
     setEditPhone(selectedResident.phone)
     setEditEmail(selectedResident.email ?? '')
     setEditBuilding(selectedResident.building)
-    setEditBuildingNumber(selectedResident.buildingNumber)
     setEditApartment(selectedResident.apartment)
-    setEditFloor(String(selectedResident.floor))
     setEditParking(selectedResident.parking)
     setEditOccupants(String(selectedResident.occupants ?? 1))
     setEditMoveIn(selectedResident.moveIn ?? '')
@@ -461,7 +457,6 @@ export default function AdminPortal() {
                     <p className="meta" style={{ margin: 0 }}>
                       {unitCodeLabel(selectedResident)}
                       {selectedResident.building ? ` · ${selectedResident.building}` : ''}
-                      {selectedResident.floor ? ` · ${tr('floor')} ${selectedResident.floor}` : ''}
                     </p>
                   </div>
                   <button
@@ -517,30 +512,12 @@ export default function AdminPortal() {
                     />
                   </div>
                   <div className="form-row">
-                    <label htmlFor="editBuildingNumber">{tr('building')} #</label>
-                    <input
-                      id="editBuildingNumber"
-                      value={editBuildingNumber}
-                      onChange={(e) => setEditBuildingNumber(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-row">
                     <label htmlFor="editApartment">{tr('apartment')}</label>
                     <input
                       id="editApartment"
                       value={editApartment}
                       onChange={(e) => setEditApartment(e.target.value)}
                       readOnly={selectedResident.id.startsWith('apt-')}
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="editFloor">{tr('floor')}</label>
-                    <input
-                      id="editFloor"
-                      type="number"
-                      min={0}
-                      value={editFloor}
-                      onChange={(e) => setEditFloor(e.target.value)}
                     />
                   </div>
                   <div className="form-row">
@@ -604,9 +581,9 @@ export default function AdminPortal() {
                       phone: editPhone,
                       email: editEmail,
                       building: editBuilding,
-                      buildingNumber: editBuildingNumber,
+                      buildingNumber: selectedResident.buildingNumber,
                       apartment: editApartment,
-                      floor: Number(editFloor) || 0,
+                      floor: selectedResident.floor,
                       parking: editParking,
                       occupants: Number(editOccupants) || 1,
                       moveIn: editMoveIn,
@@ -1162,7 +1139,6 @@ export default function AdminPortal() {
                     <p className="meta" style={{ margin: 0 }}>
                       {unitCodeLabel(selectedResident)}
                       {selectedResident.building ? ` · ${selectedResident.building}` : ''}
-                      {selectedResident.floor ? ` · ${tr('floor')} ${selectedResident.floor}` : ''}
                     </p>
                   </div>
                 </div>
@@ -1367,10 +1343,10 @@ export default function AdminPortal() {
                     ) : null}
                     <div>
                       <strong>
-                        {apt.building} · {apt.buildingNumber}-{apt.apartment}
+                        {apt.building} · {apt.apartment}
                       </strong>
                       <div className="meta">
-                        {tr('floor')} {apt.floor} · {apt.bedrooms} {tr('bedrooms')} · {apt.bathrooms}{' '}
+                        {apt.bedrooms} {tr('bedrooms')} · {apt.bathrooms}{' '}
                         {tr('bathrooms')} · {apt.sizeSqm} {tr('sqm')} ·{' '}
                         {formatMoney(apt.rentMonthly, apt.currency)}
                         <br />
@@ -1416,31 +1392,11 @@ export default function AdminPortal() {
                   />
                 </div>
                 <div className="form-row">
-                  <label htmlFor="listBuildingNumber">{tr('building')} #</label>
-                  <input
-                    id="listBuildingNumber"
-                    value={listingForm.buildingNumber}
-                    onChange={(e) =>
-                      setListingForm((f) => ({ ...f, buildingNumber: e.target.value }))
-                    }
-                  />
-                </div>
-                <div className="form-row">
                   <label htmlFor="listApartment">{tr('apartment')}</label>
                   <input
                     id="listApartment"
                     value={listingForm.apartment}
                     onChange={(e) => setListingForm((f) => ({ ...f, apartment: e.target.value }))}
-                  />
-                </div>
-                <div className="form-row">
-                  <label htmlFor="listFloor">{tr('floor')}</label>
-                  <input
-                    id="listFloor"
-                    type="number"
-                    min={0}
-                    value={listingForm.floor}
-                    onChange={(e) => setListingForm((f) => ({ ...f, floor: e.target.value }))}
                   />
                 </div>
                 <div className="form-row">

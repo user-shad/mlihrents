@@ -74,17 +74,15 @@ export default function LandingPage() {
                 <img className="available-photo" src={apt.photoDataUrl} alt="" />
               ) : (
                 <div className="available-visual" aria-hidden>
-                  <span>
-                    {apt.buildingNumber}-{apt.apartment}
-                  </span>
+                  <span>{apt.apartment}</span>
                 </div>
               )}
               <div className="available-body">
                 <h3>
-                  {apt.building} · {apt.buildingNumber}-{apt.apartment}
+                  {apt.building} · {apt.apartment}
                 </h3>
                 <p className="meta">
-                  {tr('floor')} {apt.floor} · {apt.bedrooms} {tr('bedrooms')} · {apt.bathrooms}{' '}
+                  {apt.bedrooms} {tr('bedrooms')} · {apt.bathrooms}{' '}
                   {tr('bathrooms')} · {apt.sizeSqm} {tr('sqm')}
                 </p>
                 <p className="available-highlight">{lang === 'ar' ? apt.highlightAr : apt.highlight}</p>
@@ -103,7 +101,7 @@ export default function LandingPage() {
                 <a
                   className="btn btn-primary btn-sm"
                   href={`mailto:${siteLegal.supportEmail}?subject=${encodeURIComponent(
-                    `Inquiry: ${apt.buildingNumber}-${apt.apartment}`,
+                    `Inquiry: ${apt.apartment}`,
                   )}`}
                 >
                   {tr('inquire')}

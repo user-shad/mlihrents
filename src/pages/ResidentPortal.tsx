@@ -113,7 +113,7 @@ export default function ResidentPortal() {
         <div className="user-card">
           <strong>{residentName}</strong>
           <span>
-            {liveResident.building} · {liveResident.buildingNumber}-{liveResident.apartment}
+            {liveResident.building} · {liveResident.apartment}
           </span>
         </div>
 
@@ -141,8 +141,7 @@ export default function ResidentPortal() {
                   {residentFirstName}
                 </h1>
                 <p>
-                  {liveResident.building} · {tr('building')} {liveResident.buildingNumber} ·{' '}
-                  {tr('apartment')} {liveResident.apartment}
+                  {liveResident.building} · {tr('apartment')} {liveResident.apartment}
                 </p>
               </div>
               <button className="btn btn-primary" type="button" onClick={() => setTab('chat')}>
@@ -183,22 +182,16 @@ export default function ResidentPortal() {
                   <div className="list-row">
                     <div>
                       <strong>
-                        {tr('building')} {liveResident.buildingNumber}
+                        {tr('apartment')} {liveResident.apartment}
                       </strong>
                       <div className="meta">{liveResident.building}</div>
                     </div>
-                    <span className="meta">
-                      {tr('floor')} {liveResident.floor}
-                    </span>
                   </div>
                   <div className="list-row">
                     <div>
                       <strong>
-                        {tr('apartment')} {liveResident.apartment}
+                        {tr('parking')} {liveResident.parking || '—'}
                       </strong>
-                      <div className="meta">
-                        {tr('parking')} {liveResident.parking}
-                      </div>
                     </div>
                   </div>
                   <div className="list-row">
@@ -592,7 +585,7 @@ export default function ResidentPortal() {
               <div>
                 <h1>{tr('maintenance')}</h1>
                 <p>
-                  {tr('ticketsAuto')} {liveResident.buildingNumber} / {tr('apartment')}{' '}
+                  {tr('ticketsAuto')} {tr('apartment')}{' '}
                   {liveResident.apartment}
                 </p>
               </div>
@@ -685,7 +678,7 @@ export default function ResidentPortal() {
                   <span>
                     {humanMode
                       ? tr('liveChat')
-                      : `${tr('linkedTo')} ${liveResident.buildingNumber}-${liveResident.apartment}`}
+                      : `${tr('linkedTo')} ${liveResident.apartment}`}
                   </span>
                 </div>
                 {!humanMode && (
@@ -762,17 +755,11 @@ export default function ResidentPortal() {
                 </div>
                 <div className="profile-item">
                   <span className="k">{tr('building')}</span>
-                  <span className="v">
-                    {liveResident.building} ({liveResident.buildingNumber})
-                  </span>
+                  <span className="v">{liveResident.building}</span>
                 </div>
                 <div className="profile-item">
                   <span className="k">{tr('apartment')}</span>
                   <span className="v">{liveResident.apartment}</span>
-                </div>
-                <div className="profile-item">
-                  <span className="k">{tr('floor')}</span>
-                  <span className="v">{liveResident.floor}</span>
                 </div>
                 <div className="profile-item">
                   <span className="k">{tr('parking')}</span>
