@@ -37,6 +37,9 @@ const en: Dict = {
   pinMismatch: 'Passwords do not match',
   changeStaffPassword: 'Change my password',
   changeStaffPasswordHelp: 'Update your staff sign-in password.',
+  changeDefaultPasswordTitle: 'Change your default password',
+  changeDefaultPasswordLead:
+    'You are still using the default staff password. Update it in the sidebar before sharing the site.',
   updateStaffPassword: 'Update password',
   staffPasswordChanged: 'Your password was updated',
   staffRoleAdmin: 'Administrator',
@@ -365,6 +368,9 @@ const ar: Dict = {
   pinMismatch: 'كلمتا المرور غير متطابقتين',
   changeStaffPassword: 'تغيير كلمة مروري',
   changeStaffPasswordHelp: 'حدّث كلمة مرور دخول الموظفين.',
+  changeDefaultPasswordTitle: 'غيّر كلمة المرور الافتراضية',
+  changeDefaultPasswordLead:
+    'ما زلت تستخدم كلمة مرور الموظفين الافتراضية. حدّثها من الشريط الجانبي قبل مشاركة الموقع.',
   updateStaffPassword: 'تحديث كلمة المرور',
   staffPasswordChanged: 'تم تحديث كلمة مرورك',
   staffRoleAdmin: 'مدير المبنى',

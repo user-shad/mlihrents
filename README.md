@@ -21,7 +21,21 @@ Fastest free option:
 4. Leave settings as default (Vite is auto-detected) → **Deploy**.
 5. You get a public URL like `https://mlihrents.vercel.app`.
 
-Optional later: connect your own domain (`mlihrents.ae`) in Vercel → **Domains**.
+## Custom domain (live)
+
+Production site: **[https://mlihrents.ae](https://mlihrents.ae)**
+
+| Who | URL |
+|-----|-----|
+| Public / listings | `https://mlihrents.ae/` |
+| Residents | `https://mlihrents.ae/login` |
+| Staff | `https://mlihrents.ae/staff` |
+
+`vercel.json` redirects `www.mlihrents.ae` and `mlihrents.vercel.app` to the primary domain.
+
+**After domain connect:** change default staff passwords in **Admin → sidebar**, add tenants under **Info**, and set your trade licence in `src/legal/siteLegal.ts`.
+
+Optional: connect your own domain in Vercel → **Domains** (already configured for `mlihrents.ae`).
 
 `vercel.json` is already in the project so React Router routes (`/login`, `/admin`, etc.) work on refresh.
 

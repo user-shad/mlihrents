@@ -17,6 +17,8 @@ import {
   serviceDirectory,
   suggestInstallment,
   unitCodeLabel,
+  staffAccounts,
+  normalizePhone,
 } from '../data'
 import { statusLabel } from '../i18n'
 import { useAuth } from '../context/AuthContext'
@@ -96,6 +98,13 @@ export default function AdminPortal() {
   const [staffNewPin, setStaffNewPin] = useState('')
   const [staffConfirmPin, setStaffConfirmPin] = useState('')
   const isBuildingAdmin = session?.staffTier === 'admin'
+  const staffAccount = accounts.find(
+    (a) => a.role === 'admin' && session && a.phone === session.phone,
+  )
+  const bootstrapPin = staffAccounts.find(
+    (s) => normalizePhone(s.phone) === session?.phone,
+  )?.pin
+  const usingDefaultPin = Boolean(staffAccount && bootstrapPin && staffAccount.pin === bootstrapPin)
   const [pinDraft, setPinDraft] = useState(selectedResident.pin)
   const [phoneDraft, setPhoneDraft] = useState(selectedResident.phone)
   const [editName, setEditName] = useState(selectedResident.name)
@@ -400,6 +409,15 @@ export default function AdminPortal() {
             {tr('signOut')}
           </button>
         </div>
+
+        {usingDefaultPin && (
+          <div className="panel go-live-banner" role="alert">
+            <strong>{tr('changeDefaultPasswordTitle')}</strong>
+            <p className="meta" style={{ margin: '0.35rem 0 0' }}>
+              {tr('changeDefaultPasswordLead')}
+            </p>
+          </div>
+        )}
 
         {tab === 'info' && (
           <>

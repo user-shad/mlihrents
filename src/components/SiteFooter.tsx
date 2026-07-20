@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { siteLegal } from '../legal/siteLegal'
+import { isTradeLicenseConfigured, siteLegal } from '../legal/siteLegal'
 import { useLang } from '../context/LangContext'
 
 export default function SiteFooter() {
@@ -11,9 +11,11 @@ export default function SiteFooter() {
         <div>
           <strong className="site-footer-brand">{siteLegal.brandName}</strong>
           <p className="meta">{siteLegal.legalName}</p>
-          <p className="meta">
-            {tr('tradeLicense')}: {siteLegal.tradeLicenseNumber}
-          </p>
+          {isTradeLicenseConfigured() && (
+            <p className="meta">
+              {tr('tradeLicense')}: {siteLegal.tradeLicenseNumber}
+            </p>
+          )}
           <p className="meta">{siteLegal.licensedEmirate}</p>
         </div>
         <div>

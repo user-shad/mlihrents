@@ -1,4 +1,4 @@
-import { siteLegal } from '../legal/siteLegal'
+import { siteLegal, isTradeLicenseConfigured } from '../legal/siteLegal'
 import { useLang } from '../context/LangContext'
 import LegalLayout from '../components/LegalLayout'
 
@@ -19,8 +19,12 @@ export default function PrivacyPage() {
         {siteLegal.legalName}
         <br />
         {siteLegal.registeredAddress}
-        <br />
-        {ar ? 'الرخصة التجارية' : 'Trade license'}: {siteLegal.tradeLicenseNumber}
+        {isTradeLicenseConfigured() && (
+          <>
+            <br />
+            {ar ? 'الرخصة التجارية' : 'Trade license'}: {siteLegal.tradeLicenseNumber}
+          </>
+        )}
         <br />
         {ar ? 'للتواصل بشأن حماية البيانات' : 'Data protection contact'}:{' '}
         <a href={`mailto:${siteLegal.dataProtectionContact}`}>{siteLegal.dataProtectionContact}</a>

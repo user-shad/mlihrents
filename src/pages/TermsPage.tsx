@@ -1,4 +1,4 @@
-import { siteLegal } from '../legal/siteLegal'
+import { isTradeLicenseConfigured, siteLegal } from '../legal/siteLegal'
 import { useLang } from '../context/LangContext'
 import LegalLayout from '../components/LegalLayout'
 
@@ -19,8 +19,12 @@ export default function TermsPage() {
         {siteLegal.legalName}
         <br />
         {siteLegal.registeredAddress}
-        <br />
-        {ar ? 'الرخصة التجارية' : 'Trade license'}: {siteLegal.tradeLicenseNumber}
+        {isTradeLicenseConfigured() && (
+          <>
+            <br />
+            {ar ? 'الرخصة التجارية' : 'Trade license'}: {siteLegal.tradeLicenseNumber}
+          </>
+        )}
         <br />
         {siteLegal.licensedEmirate}
       </p>
