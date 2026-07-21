@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { requireSyncAuth } from '../lib/syncAuth.js'
 import {
   detachProofsFromPayload,
+  mergeProofStores,
   normalizeLoadedPayload,
   type ProofStore,
 } from '../lib/syncProofStore.js'
@@ -40,7 +41,7 @@ function publicBlobObjectUrl(pathname: string) {
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '4mb',
+      sizeLimit: '10mb',
     },
   },
 }
@@ -157,7 +158,9 @@ async function loadFromRedis(): Promise<SyncPayload | null> {
 async function saveToRedis(payload: SyncPayload) {
   const redis = getRedis()
   if (!redis) throw new Error('redis_unavailable')
-  const { payload: main, proofs } = detachProofsFromPayload(payload)
+  const { payload: main, proofs: incoming } = detachProofsFromPayload(payload)
+  const existing = (await redis.get<ProofStore>(REDIS_PROOFS_KEY)) ?? {}
+  const proofs = mergeProofStores(existing, incoming, main.ops)
   await redis.set(REDIS_KEY, main)
   await redis.set(REDIS_PROOFS_KEY, proofs)
 }
@@ -180,7 +183,13 @@ async function loadProofsFromPostgres(): Promise<ProofStore> {
 
 async function saveProofsToPostgres(proofs: ProofStore) {
   await ensurePostgresTable()
-  await sql`DELETE FROM portal_proofs`
+  const result = await sql`SELECT payment_id FROM portal_proofs`
+  for (const row of result.rows) {
+    const paymentId = row.payment_id as string
+    if (!proofs[paymentId]) {
+      await sql`DELETE FROM portal_proofs WHERE payment_id = ${paymentId}`
+    }
+  }
   for (const [paymentId, proof] of Object.entries(proofs)) {
     await sql`
       INSERT INTO portal_proofs (payment_id, name, data_url)
@@ -215,7 +224,9 @@ async function loadFromPostgres(): Promise<SyncPayload | null> {
 
 async function saveToPostgres(payload: SyncPayload) {
   if (!hasPostgres()) throw new Error('postgres_unavailable')
-  const { payload: main, proofs } = detachProofsFromPayload(payload)
+  const { payload: main, proofs: incoming } = detachProofsFromPayload(payload)
+  const existing = await loadProofsFromPostgres()
+  const proofs = mergeProofStores(existing, incoming, main.ops)
   await ensurePostgresTable()
   const updatedAt = main.updated_at ?? new Date().toISOString()
   await sql`
@@ -372,6 +383,31 @@ async function readGistFileText(
   return text
 }
 
+async function loadProofsFromGithub(): Promise<ProofStore> {
+  if (!hasGithub()) return {}
+  const auth = githubAuth()
+  const res = await fetch(`https://api.github.com/gists/${githubGistId()}`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${auth}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+    cache: 'no-store',
+  })
+  if (!res.ok) return {}
+  const gist = (await res.json()) as {
+    files?: Record<string, { content?: string; truncated?: boolean; raw_url?: string }>
+  }
+  const proofsFile = gist.files?.[PROOFS_GIST_FILENAME]
+  const proofsText = await readGistFileText(proofsFile, auth)
+  if (!proofsText) return {}
+  try {
+    return JSON.parse(proofsText) as ProofStore
+  } catch {
+    return {}
+  }
+}
+
 async function loadFromGithub(): Promise<SyncPayload | null> {
   if (!hasGithub()) return null
   const auth = githubAuth()
@@ -391,24 +427,16 @@ async function loadFromGithub(): Promise<SyncPayload | null> {
   const mainText = await readGistFileText(mainFile, auth)
   if (!mainText) return null
   const main = JSON.parse(mainText) as SyncPayload
-
-  let proofs: ProofStore = {}
-  const proofsFile = gist.files?.[PROOFS_GIST_FILENAME]
-  const proofsText = await readGistFileText(proofsFile, auth)
-  if (proofsText) {
-    try {
-      proofs = JSON.parse(proofsText) as ProofStore
-    } catch {
-      proofs = {}
-    }
-  }
+  const proofs = await loadProofsFromGithub()
 
   return normalizeLoadedPayload(main, proofs)
 }
 
 async function saveToGithub(payload: SyncPayload) {
   if (!hasGithub()) throw new Error('github_unavailable')
-  const { payload: main, proofs } = detachProofsFromPayload(payload)
+  const { payload: main, proofs: incoming } = detachProofsFromPayload(payload)
+  const existing = await loadProofsFromGithub()
+  const proofs = mergeProofStores(existing, incoming, main.ops)
   const res = await fetch(`https://api.github.com/gists/${githubGistId()}`, {
     method: 'PATCH',
     headers: {

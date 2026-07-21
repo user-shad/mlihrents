@@ -21,6 +21,12 @@ import {
   type ServiceContact,
 } from '../data'
 import { defaultBankSettings } from '../config/paymentSettings'
+import {
+  attachProofsToOps,
+  detachProofsFromOps,
+  persistLocalProofsFromOps,
+  readLocalProofs,
+} from './localProofStore'
 import { isSupabaseConfigured, supabase } from './supabase'
 
 export const ACCOUNTS_KEY = 'mlihrents_accounts_v3'
@@ -236,7 +242,8 @@ function readLocalOps(): PortalOps | null {
     }
     if (!raw) return null
     const parsed = JSON.parse(raw) as PortalOps
-    return parsed && typeof parsed === 'object' ? parsed : null
+    if (!parsed || typeof parsed !== 'object') return null
+    return attachProofsToOps(parsed, readLocalProofs())
   } catch {
     return null
   }
@@ -555,27 +562,49 @@ async function doBootstrap(): Promise<BootstrapData> {
   return merged
 }
 
+function mergePaymentRecord(
+  existing: PortalOps['payments'][number],
+  incoming: PortalOps['payments'][number],
+): PortalOps['payments'][number] {
+  if (existing.status === 'deleted' || incoming.status === 'deleted') {
+    return existing.status === 'deleted' ? existing : incoming
+  }
+
+  const preferIncoming =
+    (incoming.transferProof?.dataUrl && !existing.transferProof?.dataUrl) ||
+    (incoming.status === 'pending_review' && existing.status !== 'pending_review')
+  const preferExisting =
+    (existing.transferProof?.dataUrl && !incoming.transferProof?.dataUrl) ||
+    (existing.status === 'pending_review' && incoming.status !== 'pending_review')
+
+  let merged = preferIncoming ? { ...existing, ...incoming } : { ...incoming, ...existing }
+  if (preferExisting && !preferIncoming) {
+    merged = { ...incoming, ...existing }
+  }
+
+  const transferProof = incoming.transferProof?.dataUrl
+    ? incoming.transferProof
+    : existing.transferProof?.dataUrl
+      ? existing.transferProof
+      : incoming.transferProof ?? existing.transferProof
+
+  return transferProof?.dataUrl ? { ...merged, transferProof } : { ...merged, transferProof: undefined }
+}
+
 function mergePaymentLists(
   remote: PortalOps['payments'],
   local: PortalOps['payments'] | undefined,
 ): PortalOps['payments'] {
   const map = new Map<string, PortalOps['payments'][number]>()
-  for (const p of remote) map.set(p.id, p)
-  for (const p of local ?? []) {
-    const existing = map.get(p.id)
+  for (const payment of remote) map.set(payment.id, payment)
+  for (const payment of local ?? []) {
+    const existing = map.get(payment.id)
     if (!existing) {
       // Don't resurrect payments the other side soft-deleted; only keep in-flight pending
-      if (p.status === 'pending_review') map.set(p.id, p)
+      if (payment.status === 'pending_review') map.set(payment.id, payment)
       continue
     }
-    if (existing.status === 'deleted' || p.status === 'deleted') {
-      map.set(p.id, existing.status === 'deleted' ? existing : p)
-      continue
-    }
-    const preferLocal =
-      (p.transferProof?.dataUrl && !existing.transferProof?.dataUrl) ||
-      (p.status === 'pending_review' && existing.status !== 'pending_review')
-    if (preferLocal) map.set(p.id, p)
+    map.set(payment.id, mergePaymentRecord(existing, payment))
   }
   return [...map.values()].sort((a, b) => b.id.localeCompare(a.id))
 }
@@ -782,7 +811,10 @@ export function onCloudOps(listener: OpsListener) {
 
 async function flushCloudSave() {
   const accounts = pendingAccounts ?? readLocalAccounts() ?? []
-  const ops = pendingOps ?? readLocalOps() ?? createDefaultOps()
+  const ops = attachProofsToOps(
+    pendingOps ?? readLocalOps() ?? createDefaultOps(),
+    readLocalProofs(),
+  )
   pendingAccounts = undefined
   pendingOps = undefined
   await saveCloudRow(accounts, ops)
@@ -828,7 +860,9 @@ export function writeLocalAccounts(accounts: AccountRecord[]) {
 
 export function writeLocalOps(ops: PortalOps) {
   try {
-    localStorage.setItem(OPS_KEY, JSON.stringify(ops))
+    persistLocalProofsFromOps(ops)
+    const { ops: slimOps } = detachProofsFromOps(ops)
+    localStorage.setItem(OPS_KEY, JSON.stringify(slimOps))
   } catch {
     /* quota */
   }

@@ -18,6 +18,31 @@ function paymentsFromOps(ops: unknown): PaymentLike[] {
   return Array.isArray(list) ? (list as PaymentLike[]) : []
 }
 
+function pendingPaymentIds(ops: unknown): Set<string> {
+  return new Set(
+    paymentsFromOps(ops)
+      .filter((payment) => payment.status === 'pending_review')
+      .map((payment) => payment.id),
+  )
+}
+
+/** Merge proof uploads without wiping screenshots another device already saved. */
+export function mergeProofStores(
+  existing: ProofStore,
+  incoming: ProofStore,
+  ops: unknown,
+): ProofStore {
+  const pendingIds = pendingPaymentIds(ops)
+  const merged: ProofStore = {}
+
+  for (const id of pendingIds) {
+    const next = incoming[id]?.dataUrl ? incoming[id] : existing[id]
+    if (next?.dataUrl) merged[id] = next
+  }
+
+  return merged
+}
+
 /** Move pending proof images out of the main sync blob. */
 export function detachProofsFromPayload(payload: SyncPayload): {
   payload: SyncPayload
