@@ -31,12 +31,11 @@ import {
   isValidBankReference,
   normalizeBankReferenceDigits,
   buildInstallmentInvoice,
-  buildResidentFromListing,
   canCollectRent,
-  findVacantUnitForListing,
   formatMoney,
   isUnitOccupied,
   normalizeUnitCode,
+  apartmentBuildingLetter,
   remainingBalance,
   unitCodeLabel,
   RentSchedule,
@@ -281,13 +280,34 @@ interface DataContextValue {
     status: 'active' | 'arrears' | 'notice'
   }) => void
   clearApartmentInfo: () => void
+  saveApartmentRecord: (
+    input: {
+      buildingNumber: string
+      building: string
+      apartment: string
+      floor: number
+      contractTotal: number
+      amountPaid: number
+      rentAmount: number
+      rentSchedule: RentSchedule
+      rentDueDay: number
+      name: string
+      phone: string
+      pin: string
+      email: string
+      parking: string
+      leaseEnd: string
+      status: 'active' | 'arrears' | 'notice'
+    },
+    residentId?: string,
+  ) => void
+  removeApartment: (residentId: string) => void
   resetHumanMode: () => void
   syncWelcomeMessage: () => void
   availableListings: AvailableApartment[]
   addAvailableListing: (input: Omit<AvailableApartment, 'id'>) => void
   updateAvailableListing: (id: string, input: Partial<AvailableApartment>) => void
   removeAvailableListing: (id: string) => void
-  addApartmentFromListing: (listingId: string) => void
   bankSettings: BankAccountSettings
   bankConfigured: boolean
   saveBankSettings: (settings: BankAccountSettings) => void
@@ -780,6 +800,215 @@ export function DataProvider({
       setPaidIds((prev) => prev.filter((id) => !invoiceIds.includes(id)))
     }
     showToast(tr('apartmentCleared'))
+  }
+
+  function saveApartmentRecord(
+    input: {
+      buildingNumber: string
+      building: string
+      apartment: string
+      floor: number
+      contractTotal: number
+      amountPaid: number
+      rentAmount: number
+      rentSchedule: RentSchedule
+      rentDueDay: number
+      name: string
+      phone: string
+      pin: string
+      email: string
+      parking: string
+      leaseEnd: string
+      status: 'active' | 'arrears' | 'notice'
+    },
+    residentId?: string,
+  ) {
+    if (denyStaff('manage_apartments')) return
+
+    const apartmentCode = input.apartment.trim()
+    if (!apartmentCode) {
+      showToast(tr('listingApartmentRequired'))
+      return
+    }
+
+    const contractTotal = Math.max(0, Number(input.contractTotal) || 0)
+    const amountPaid = Math.max(0, Math.min(contractTotal, Number(input.amountPaid) || 0))
+    const rentAmount = Math.max(0, Number(input.rentAmount) || 0)
+    const rentDueDay = Math.min(28, Math.max(1, Number(input.rentDueDay) || 1))
+    const letter = input.buildingNumber.trim().toUpperCase() || apartmentBuildingLetter(apartmentCode) || 'A'
+    const parsed = apartmentCode.match(/^([A-Da-d])\s*-?\s*(\d+)$/i)
+    const unitNum = parsed ? Number(parsed[2]) : 0
+    const normalizedApartment = parsed ? `${letter}${unitNum}` : apartmentCode
+    const normalizedCode = normalizeUnitCode(normalizedApartment)
+
+    const duplicate = residentList.find(
+      (r) => normalizeUnitCode(r.apartment) === normalizedCode && r.id !== residentId,
+    )
+    if (duplicate) {
+      showToast(tr('apartmentCodeExists'))
+      return
+    }
+
+    const baseFields = {
+      building: input.building.trim() || `Building ${letter}`,
+      buildingNumber: letter,
+      apartment: normalizedApartment,
+      floor: Number.isFinite(input.floor) ? input.floor : 0,
+      contractTotal,
+      amountPaid,
+      rentAmount,
+      rentSchedule: input.rentSchedule,
+      rentDueDay,
+      name: input.name.trim(),
+      phone: input.phone.trim(),
+      email: input.email.trim() || undefined,
+      parking: input.parking.trim(),
+      leaseEnd: input.leaseEnd.trim(),
+      status: input.status,
+    }
+
+    if (!residentId) {
+      let id = parsed ? `apt-${letter.toLowerCase()}${unitNum}` : `apt-extra-${Date.now()}`
+      const seed = residentList.find((r) => r.id === id)
+      if (seed && isUnitOccupied(seed)) {
+        showToast(tr('apartmentCodeExists'))
+        return
+      }
+      if (!seed && residentList.some((r) => r.id === id)) {
+        id = `apt-extra-${Date.now()}`
+      }
+
+      const pin = input.pin.trim()
+      if (input.phone.trim() && pin) {
+        const err = registerResidentAccount({
+          name: baseFields.name || baseFields.apartment,
+          phone: input.phone.trim(),
+          pin,
+          residentId: id,
+        })
+        if (err) {
+          showToast(tr(err))
+          return
+        }
+      }
+
+      const next: Resident = {
+        ...(seed ?? buildEmptyApartment(letter, unitNum)),
+        ...baseFields,
+        id: seed?.id ?? id,
+        pin: pin || seed?.pin || '',
+        currency: 'AED',
+      }
+
+      if (seed) {
+        setResidentList((prev) => prev.map((r) => (r.id === next.id ? next : r)))
+      } else {
+        setResidentList((prev) => [...prev, next])
+        setInvoiceMap((prev) => ({ ...prev, [next.id]: prev[next.id] ?? [] }))
+        setTicketMap((prev) => ({ ...prev, [next.id]: prev[next.id] ?? [] }))
+      }
+      setSelectedResidentId(next.id)
+      if (canCollectRent(next)) {
+        ensureInstallmentInvoiceFor(next)
+      }
+      showToast(tr('apartmentAdded'))
+      return
+    }
+
+    const existing = residentList.find((r) => r.id === residentId)
+    if (!existing) return
+
+    const phone = input.phone.trim()
+    const pin = input.pin.trim()
+    if (phone && pin) {
+      const err = setResidentPin(residentId, phone, pin, baseFields.name || existing.name)
+      if (err) {
+        showToast(tr(err))
+        return
+      }
+    } else if (phone && existing.pin) {
+      const err = setResidentPin(residentId, phone, existing.pin, baseFields.name || existing.name)
+      if (err) {
+        showToast(tr(err))
+        return
+      }
+    }
+
+    const updated: Resident = {
+      ...existing,
+      ...baseFields,
+      pin: pin || existing.pin,
+    }
+    setResidentList((prev) => prev.map((r) => (r.id === residentId ? updated : r)))
+
+    if (!canCollectRent(updated)) {
+      const invoiceIds = (invoiceMap[residentId] ?? []).map((inv) => inv.id)
+      setInvoiceMap((prev) => {
+        const existingInvoices = prev[residentId] ?? []
+        const kept = existingInvoices.filter((inv) => inv.status === 'paid' || paidIds.includes(inv.id))
+        const next = { ...prev }
+        if (kept.length > 0) next[residentId] = kept
+        else delete next[residentId]
+        return next
+      })
+      if (invoiceIds.length > 0) {
+        setInvoiceExtensions((prev) => {
+          const next = { ...prev }
+          for (const id of invoiceIds) delete next[id]
+          return next
+        })
+        setPaidIds((prev) => prev.filter((id) => !invoiceIds.includes(id)))
+      }
+    } else {
+      ensureInstallmentInvoiceFor(updated)
+    }
+
+    setSelectedResidentId(residentId)
+    showToast(tr('apartmentUpdated'))
+  }
+
+  function removeApartment(residentId: string) {
+    if (denyStaff('manage_apartments')) return
+    const resident = residentList.find((r) => r.id === residentId)
+    if (!resident) return
+
+    const invoiceIds = (invoiceMap[residentId] ?? []).map((inv) => inv.id)
+    clearResidentCredentials(residentId)
+
+    setPayments((prev) => prev.filter((p) => p.residentId !== residentId))
+
+    setInvoiceMap((prev) => {
+      const next = { ...prev }
+      delete next[residentId]
+      return next
+    })
+    setTicketMap((prev) => {
+      const next = { ...prev }
+      delete next[residentId]
+      return next
+    })
+    if (invoiceIds.length > 0) {
+      setInvoiceExtensions((prev) => {
+        const next = { ...prev }
+        for (const id of invoiceIds) delete next[id]
+        return next
+      })
+      setPaidIds((prev) => prev.filter((id) => !invoiceIds.includes(id)))
+    }
+
+    const seed = apartmentUnits.find((u) => u.id === residentId)
+    if (seed) {
+      setResidentList((prev) => prev.map((r) => (r.id === residentId ? seed : r)))
+    } else {
+      setResidentList((prev) => prev.filter((r) => r.id !== residentId))
+    }
+
+    if (selectedResidentId === residentId) {
+      const remaining = residentList.filter((r) => r.id !== residentId)
+      setSelectedResidentId(remaining[0]?.id ?? '')
+    }
+
+    showToast(tr('apartmentRemoved'))
   }
 
   function openCheckout(id: string) {
@@ -1459,40 +1688,6 @@ export function DataProvider({
     showToast(tr('listingRemoved'))
   }
 
-  function addApartmentFromListing(listingId: string) {
-    if (denyStaff('manage_listings')) return
-    const listing = listings.find((item) => item.id === listingId)
-    if (!listing) return
-    if (!listing.apartment.trim()) {
-      showToast(tr('listingApartmentRequired'))
-      return
-    }
-
-    const code = normalizeUnitCode(listing.apartment)
-    const matched = residentList.find((r) => normalizeUnitCode(r.apartment) === code)
-    if (matched && isUnitOccupied(matched)) {
-      showToast(tr('listingUnitOccupied'))
-      return
-    }
-
-    const vacant = findVacantUnitForListing(listing, residentList)
-    let next = buildResidentFromListing(listing, vacant ?? matched)
-
-    if (vacant || matched) {
-      setResidentList((prev) => prev.map((r) => (r.id === next.id ? next : r)))
-    } else {
-      if (residentList.some((r) => r.id === next.id)) {
-        next = { ...next, id: `apt-extra-${Date.now()}` }
-      }
-      setResidentList((prev) => [...prev, next])
-      setInvoiceMap((prev) => ({ ...prev, [next.id]: prev[next.id] ?? [] }))
-      setTicketMap((prev) => ({ ...prev, [next.id]: prev[next.id] ?? [] }))
-    }
-
-    setSelectedResidentId(next.id)
-    showToast(tr('listingAddedToRoster'))
-  }
-
   return (
     <DataContext.Provider
       value={{
@@ -1574,7 +1769,8 @@ export function DataProvider({
         addAvailableListing,
         updateAvailableListing,
         removeAvailableListing,
-        addApartmentFromListing,
+        saveApartmentRecord,
+        removeApartment,
         bankSettings,
         bankConfigured: isBankConfigured(bankSettings),
         saveBankSettings,

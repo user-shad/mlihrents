@@ -32,7 +32,13 @@ describe('staffPermissions', () => {
   })
 
   it('grants restricted capabilities only to building admin', () => {
-    const caps = ['bank_settings', 'clear_apartment', 'delete_payment', 'manage_listings'] as const
+    const caps = [
+      'bank_settings',
+      'clear_apartment',
+      'delete_payment',
+      'manage_listings',
+      'manage_apartments',
+    ] as const
     for (const cap of caps) {
       expect(staffCan(buildingAdmin, cap)).toBe(true)
       expect(staffCan(operationsManager, cap)).toBe(false)

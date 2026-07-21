@@ -5,6 +5,7 @@ export type StaffCapability =
   | 'clear_apartment'
   | 'delete_payment'
   | 'manage_listings'
+  | 'manage_apartments'
 
 export function isStaffSession(session: Session | null) {
   return session?.role === 'admin'
