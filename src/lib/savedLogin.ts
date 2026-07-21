@@ -1,16 +1,15 @@
 export interface SavedLogin {
   phone: string
-  pin: string
 }
 
 export function readSavedLogin(key: string): SavedLogin | null {
   try {
     const raw = localStorage.getItem(key)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as SavedLogin
-    if (parsed?.phone?.trim()) {
-      return { phone: parsed.phone, pin: parsed.pin ?? '' }
-    }
+    const parsed = JSON.parse(raw) as { phone?: string; pin?: string }
+    const phone = parsed?.phone?.trim()
+    if (!phone) return null
+    return { phone }
   } catch {
     /* ignore */
   }
@@ -18,7 +17,12 @@ export function readSavedLogin(key: string): SavedLogin | null {
 }
 
 export function writeSavedLogin(key: string, login: SavedLogin) {
-  localStorage.setItem(key, JSON.stringify(login))
+  const phone = login.phone.trim()
+  if (!phone) {
+    clearSavedLogin(key)
+    return
+  }
+  localStorage.setItem(key, JSON.stringify({ phone }))
 }
 
 export function clearSavedLogin(key: string) {

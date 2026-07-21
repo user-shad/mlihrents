@@ -62,7 +62,7 @@ const en: Dict = {
   clearLoginConfirm:
     'Clear phone and password for this unit? The tenant will not be able to sign in until you set new credentials.',
   loginCleared: 'Login credentials cleared',
-  rememberLoginInfo: 'Save login info on this device',
+  rememberLoginInfo: 'Remember my phone number on this device',
   registerResident: 'Register new resident',
   registerResidentHelp: 'Admin creates the phone number and 4-digit password before the resident can sign in.',
   registerSave: 'Create account',
@@ -446,7 +446,7 @@ const ar: Dict = {
   clearLoginConfirm:
     'مسح رقم الجوال وكلمة المرور لهذه الوحدة؟ لن يتمكن الساكن من تسجيل الدخول حتى تضع بيانات جديدة.',
   loginCleared: 'تم مسح بيانات الدخول',
-  rememberLoginInfo: 'حفظ معلومات الدخول على هذا الجهاز',
+  rememberLoginInfo: 'تذكّر رقم جوالي على هذا الجهاز',
   registerResident: 'تسجيل ساكن جديد',
   registerResidentHelp: 'ينشئ المدير رقم الهاتف وكلمة المرور قبل أن يتمكن الساكن من الدخول.',
   registerSave: 'إنشاء الحساب',

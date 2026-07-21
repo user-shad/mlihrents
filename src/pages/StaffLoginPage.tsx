@@ -19,7 +19,7 @@ export default function StaffLoginPage() {
   const navigate = useNavigate()
   const saved = readSavedLogin(STAFF_LOGIN_SAVE_KEY)
   const [phone, setPhone] = useState(saved?.phone ?? '')
-  const [pin, setPin] = useState(saved?.pin ?? '')
+  const [pin, setPin] = useState('')
   const [rememberLogin, setRememberLogin] = useState(Boolean(saved))
 
   if (session?.role === 'admin') {
@@ -37,7 +37,7 @@ export default function StaffLoginPage() {
       return
     }
     if (rememberLogin) {
-      writeSavedLogin(STAFF_LOGIN_SAVE_KEY, { phone, pin })
+      writeSavedLogin(STAFF_LOGIN_SAVE_KEY, { phone })
     } else {
       clearSavedLogin(STAFF_LOGIN_SAVE_KEY)
     }

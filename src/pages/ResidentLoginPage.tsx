@@ -19,7 +19,7 @@ export default function ResidentLoginPage() {
   const navigate = useNavigate()
   const saved = readSavedLogin(RESIDENT_LOGIN_SAVE_KEY)
   const [phone, setPhone] = useState(saved?.phone ?? '')
-  const [pin, setPin] = useState(saved?.pin ?? '')
+  const [pin, setPin] = useState('')
   const [rememberLogin, setRememberLogin] = useState(Boolean(saved))
 
   if (session?.role === 'resident') {
@@ -37,7 +37,7 @@ export default function ResidentLoginPage() {
       return
     }
     if (rememberLogin) {
-      writeSavedLogin(RESIDENT_LOGIN_SAVE_KEY, { phone, pin })
+      writeSavedLogin(RESIDENT_LOGIN_SAVE_KEY, { phone })
     } else {
       clearSavedLogin(RESIDENT_LOGIN_SAVE_KEY)
     }
