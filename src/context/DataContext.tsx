@@ -19,7 +19,6 @@ import {
   resolveStaffOcrTargets,
   extractBankReference,
   applyDueDayToInvoices,
-  applyRentPaidThroughMonth,
   AvailableApartment,
   blankResident,
   ChatMessage,
@@ -317,7 +316,6 @@ interface DataContextValue {
     residentId?: string,
   ) => void
   removeApartment: (residentId: string) => void
-  markAllRentPaidThroughJuly: () => void
   resetHumanMode: () => void
   syncWelcomeMessage: () => void
   availableListings: AvailableApartment[]
@@ -992,16 +990,6 @@ export function DataProvider({
 
     setSelectedResidentId(residentId)
     showToast(tr('apartmentUpdated'))
-  }
-
-  function markAllRentPaidThroughJuly() {
-    if (denyStaff('manage_apartments')) return
-    markLocalMutation()
-    const fixed = applyRentPaidThroughMonth(residentList, invoiceMap, paidIds, 2026, 7)
-    setResidentList(fixed.residentList)
-    setInvoiceMap(fixed.invoiceMap)
-    setPaidIds(fixed.paidIds)
-    showToast(tr('rentPaidThroughJulyDone'))
   }
 
   function removeApartment(residentId: string) {
@@ -1831,7 +1819,6 @@ export function DataProvider({
         suppressVacantListing,
         saveApartmentRecord,
         removeApartment,
-        markAllRentPaidThroughJuly,
         bankSettings,
         bankConfigured: isBankConfigured(bankSettings),
         saveBankSettings,

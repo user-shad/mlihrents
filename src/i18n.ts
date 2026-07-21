@@ -409,10 +409,6 @@ const en: Dict = {
   adminInfoLead: 'Resident profiles, units, and account access',
   adminIncomeLead: 'Monthly rent roll, collection totals, arrears, and payment history.',
   adminPaymentsLead: 'Bank account, pending reviews, and rent collection per unit',
-  markPaidThroughJuly: 'Mark paid through July',
-  markPaidThroughJulyConfirm:
-    'Update all occupied units so rent through July 2026 is marked paid? This adjusts amount paid and closes invoices through July.',
-  rentPaidThroughJulyDone: 'Rent marked paid through July 2026',
   staffPaymentAssistant: 'Payment verification assistant',
   staffPaymentAssistantLead: 'Compare a bank reference number from your statement to the “Reference number” on the transfer screenshot.',
   staffPaymentAssistantMeta: 'Bank reference · screenshot OCR · match check',
@@ -857,10 +853,6 @@ const ar: Dict = {
   adminInfoLead: 'ملفات السكان والوحدات والوصول للحساب',
   adminIncomeLead: 'الإيجار الشهري وإجمالي التحصيل والمتأخرات وسجل المدفوعات.',
   adminPaymentsLead: 'الحساب البنكي والمراجعات المعلقة وتحصيل الإيجار لكل وحدة',
-  markPaidThroughJuly: 'تسجيل المدفوع حتى يوليو',
-  markPaidThroughJulyConfirm:
-    'تحديث جميع الوحدات المشغولة لتسجيل الإيجار حتى يوليو 2026 كمدفوع؟ سيتم تعديل المبلغ المدفوع وإغلاق الفواتير حتى يوليو.',
-  rentPaidThroughJulyDone: 'تم تسجيل الإيجار مدفوعاً حتى يوليو 2026',
   staffPaymentAssistant: 'مساعد التحقق من المدفوعات',
   staffPaymentAssistantLead: 'قارن رقم المرجع من كشف الحساب مع حقل «Reference number» في لقطة التحويل.',
   staffPaymentAssistantMeta: 'مرجع بنكي · قراءة اللقطة · مطابقة',
