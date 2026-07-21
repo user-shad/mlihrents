@@ -114,6 +114,7 @@ export type NavTab =
   | 'ops'
   | 'inbox'
   | 'info'
+  | 'income'
   | 'payments'
   | 'available'
 
@@ -132,6 +133,13 @@ export function NavIcon({ id }: { id: NavTab }) {
         <svg {...props}>
           <rect x="3" y="6" width="18" height="12" rx="2" />
           <path d="M3 10h18" />
+        </svg>
+      )
+    case 'income':
+      return (
+        <svg {...props}>
+          <path d="M4 20V10l4-2 4 2 4-3 4 3v10" />
+          <path d="M4 20h16" />
         </svg>
       )
     case 'tickets':

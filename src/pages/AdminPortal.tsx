@@ -37,7 +37,7 @@ import { fetchSyncHealth, getSyncMode, getSyncStatus } from '../lib/cloudSync'
 import { exportAllApartmentsExcel, exportApartmentExcel } from '../lib/exportApartmentExcel'
 import { isBuildingAdmin, staffCan } from '../lib/staffPermissions'
 
-type Tab = 'info' | 'payments' | 'available' | 'chat'
+type Tab = 'info' | 'income' | 'payments' | 'available' | 'chat'
 
 const emptyListingForm = {
   building: '',
@@ -222,6 +222,10 @@ export default function AdminPortal() {
     const now = new Date()
     return collectedInMonth(payments, now.getFullYear(), now.getMonth())
   }, [payments])
+  const incomePayments = useMemo(
+    () => payments.filter((p) => p.status !== 'pending_review' && p.status !== 'deleted'),
+    [payments],
+  )
 
   useEffect(() => {
     setPinDraft(selectedResident.pin)
@@ -612,6 +616,13 @@ export default function AdminPortal() {
             onClick={() => setTab('info')}
           >
             {tr('adminInfoTab')}
+          </button>
+          <button
+            type="button"
+            className={`side-link ${tab === 'income' ? 'active' : ''}`}
+            onClick={() => setTab('income')}
+          >
+            {tr('adminIncomeTab')}
           </button>
           <button
             type="button"
@@ -1451,12 +1462,12 @@ export default function AdminPortal() {
           </>
         )}
 
-        {tab === 'payments' && (
+        {tab === 'income' && (
           <>
             <header className="page-head">
               <div>
-                <h1>{tr('adminPaymentsTab')}</h1>
-                <p>{tr('adminPaymentsLead')}</p>
+                <h1>{tr('adminIncomeTab')}</h1>
+                <p>{tr('adminIncomeLead')}</p>
               </div>
               <button className="btn btn-ghost btn-sm" type="button" onClick={exportEveryApartment}>
                 {tr('exportAllApartmentsExcel')}
@@ -1490,12 +1501,97 @@ export default function AdminPortal() {
                 <span className="label">{tr('merchantBalance')}</span>
               </section>
             </div>
-            <div className="grid-3">
+            <div className="grid-3" style={{ marginBottom: '1rem' }}>
               <section className="panel stat">
                 <span className="value">{payments.filter((p) => p.status !== 'deleted').length}</span>
                 <span className="label">{tr('settledPayments')}</span>
               </section>
             </div>
+
+            <section className="panel" style={{ marginBottom: '1rem' }}>
+              <h2 style={{ marginBottom: '0.25rem' }}>{tr('arrearsSnapshot')}</h2>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>{tr('unit')}</th>
+                    <th>{tr('amount')}</th>
+                    <th>{tr('days')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {arrearsList.map((row) => (
+                    <tr key={row.unit}>
+                      <td>{row.unit}</td>
+                      <td>{formatMoney(row.amount)}</td>
+                      <td>{row.days}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {arrearsList.length === 0 && <p className="meta">{tr('allClear')}</p>}
+            </section>
+
+            <section className="panel">
+              <h2 style={{ marginBottom: '0.25rem' }}>{tr('incomingPayments')}</h2>
+              <p className="meta" style={{ marginTop: 0 }}>
+                {tr('incomingPaymentsLead')}
+              </p>
+              <div className="list">
+                {incomePayments.map((p) => (
+                  <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <strong>
+                        +{formatMoney(p.confirmedAmount ?? p.amount)} · {p.residentName || p.unit}
+                      </strong>
+                      <div className="meta">
+                        {p.unit} · {paymentMethodLabel(p.method)} · {p.paidAt}
+                      </div>
+                      {p.transferProof?.dataUrl && (
+                        <a
+                          className="proof-thumb"
+                          href={p.transferProof.dataUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <img src={p.transferProof.dataUrl} alt={p.transferProof.name} />
+                          <span>{tr('viewProof')}</span>
+                        </a>
+                      )}
+                      {(() => {
+                        const kind = paymentNotifyKind(p)
+                        return kind ? renderPaymentNotifyActions(p, kind) : null
+                      })()}
+                      {canDeletePayment && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          style={{ marginTop: '0.5rem' }}
+                          onClick={() => {
+                            if (!window.confirm(tr('deletePaymentConfirm'))) return
+                            deletePayment(p.id)
+                          }}
+                        >
+                          {tr('deletePayment')}
+                        </button>
+                      )}
+                    </div>
+                    <Badge lang={lang} status={p.status === 'settled' ? 'paid' : p.status} />
+                  </div>
+                ))}
+                {incomePayments.length === 0 && <p className="meta">{tr('noPaymentsYet')}</p>}
+              </div>
+            </section>
+          </>
+        )}
+
+        {tab === 'payments' && (
+          <>
+            <header className="page-head">
+              <div>
+                <h1>{tr('adminPaymentsTab')}</h1>
+                <p>{tr('adminPaymentsLead')}</p>
+              </div>
+            </header>
 
             <section className="panel" style={{ marginTop: '1rem' }}>
               <div className="file-head">
@@ -1657,23 +1753,13 @@ export default function AdminPortal() {
                 </>
               )}
 
-              <p
-                style={{
-                  margin: '1.25rem 0 0.75rem',
-                  fontFamily: 'var(--font-display)',
-                  fontSize: '1.5rem',
-                  fontWeight: 700,
-                }}
-              >
-                {formatMoney(adminBalance)}
-              </p>
-              <h3
-                className="section-label"
-                style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}
-              >
+            </section>
+
+            <section className="panel" style={{ marginTop: '1rem' }}>
+              <h2 style={{ marginBottom: '0.25rem' }}>
                 {tr('pendingPayments')}
                 {pendingPayments.length > 0 ? ` (${pendingPayments.length})` : ''}
-              </h3>
+              </h2>
               <p className="meta" style={{ marginTop: 0 }}>
                 {tr('pendingPaymentsLead')}
               </p>
@@ -1700,7 +1786,7 @@ export default function AdminPortal() {
                   </button>
                 </section>
               )}
-              <div className="list" style={{ marginBottom: '1.25rem' }}>
+              <div className="list">
                 {pendingPayments.map((p) => (
                   <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
@@ -1790,60 +1876,6 @@ export default function AdminPortal() {
                   <p className="meta">{tr('noPendingPayments')}</p>
                 )}
               </div>
-
-              <h3 className="section-label">{tr('incomingPayments')}</h3>
-              <p className="meta" style={{ marginTop: 0 }}>
-                {tr('incomingPaymentsLead')}
-              </p>
-              <div className="list">
-                {payments
-                  .filter((p) => p.status !== 'pending_review' && p.status !== 'deleted')
-                  .map((p) => (
-                  <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1 }}>
-                      <strong>
-                        +{formatMoney(p.confirmedAmount ?? p.amount)} · {p.residentName || p.unit}
-                      </strong>
-                      <div className="meta">
-                        {p.unit} · {paymentMethodLabel(p.method)} · {p.paidAt}
-                      </div>
-                      {p.transferProof?.dataUrl && (
-                        <a
-                          className="proof-thumb"
-                          href={p.transferProof.dataUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <img src={p.transferProof.dataUrl} alt={p.transferProof.name} />
-                          <span>{tr('viewProof')}</span>
-                        </a>
-                      )}
-                      {(() => {
-                        const kind = paymentNotifyKind(p)
-                        return kind ? renderPaymentNotifyActions(p, kind) : null
-                      })()}
-                      {canDeletePayment && (
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        type="button"
-                        style={{ marginTop: '0.5rem' }}
-                        onClick={() => {
-                          if (!window.confirm(tr('deletePaymentConfirm'))) return
-                          deletePayment(p.id)
-                        }}
-                      >
-                        {tr('deletePayment')}
-                      </button>
-                      )}
-                    </div>
-                    <Badge lang={lang} status={p.status === 'settled' ? 'paid' : p.status} />
-                  </div>
-                ))}
-                {payments.filter((p) => p.status !== 'pending_review' && p.status !== 'deleted')
-                  .length === 0 && (
-                  <p className="meta">{tr('noPaymentsYet')}</p>
-                )}
-              </div>
             </section>
 
             <div className="admin-split" style={{ marginTop: '1rem' }}>
@@ -1853,30 +1885,6 @@ export default function AdminPortal() {
                   {tr('selectApartment')}
                 </p>
                 {renderResidentPicker(true)}
-                <div style={{ marginTop: '1rem' }}>
-                  <h2 style={{ fontSize: '1rem' }}>{tr('arrearsSnapshot')}</h2>
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>{tr('unit')}</th>
-                        <th>{tr('amount')}</th>
-                        <th>{tr('days')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {arrearsList.map((row) => (
-                        <tr key={row.unit}>
-                          <td>{row.unit}</td>
-                          <td>{formatMoney(row.amount)}</td>
-                          <td>{row.days}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {arrearsList.length === 0 && (
-                    <p className="meta">{tr('allClear')}</p>
-                  )}
-                </div>
               </section>
 
               <section className="panel resident-file">
@@ -2380,6 +2388,7 @@ export default function AdminPortal() {
         {(
           [
             { id: 'info' as Tab, labelKey: 'adminInfoTab', icon: 'info' as const },
+            { id: 'income' as Tab, labelKey: 'adminIncomeTab', icon: 'income' as const },
             { id: 'payments' as Tab, labelKey: 'adminPaymentsTab', icon: 'payments' as const },
             { id: 'available' as Tab, labelKey: 'adminAvailableTab', icon: 'available' as const },
             { id: 'chat' as Tab, labelKey: 'inbox', icon: 'inbox' as const },
