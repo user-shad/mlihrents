@@ -71,6 +71,9 @@ const emptyApartmentForm = {
   email: '',
   parking: '',
   leaseEnd: '',
+  unitType: '',
+  nationality: '',
+  idNumber: '',
   status: 'active' as 'active' | 'arrears' | 'notice',
 }
 
@@ -268,6 +271,9 @@ export default function AdminPortal() {
       email: resident.email ?? '',
       parking: resident.parking,
       leaseEnd: resident.leaseEnd,
+      unitType: resident.unitType ?? '',
+      nationality: resident.nationality ?? '',
+      idNumber: resident.idNumber ?? '',
       status: resident.status ?? 'active',
     })
   }
@@ -290,6 +296,9 @@ export default function AdminPortal() {
         email: apartmentForm.email,
         parking: apartmentForm.parking,
         leaseEnd: apartmentForm.leaseEnd,
+        unitType: apartmentForm.unitType,
+        nationality: apartmentForm.nationality,
+        idNumber: apartmentForm.idNumber,
         status: apartmentForm.status,
       },
       editingApartmentId ?? undefined,
@@ -873,7 +882,15 @@ export default function AdminPortal() {
                           <strong>{apartmentDisplayTitle(r, lang)}</strong>
                           <div className="meta">
                             {unitCodeLabel(r)}
+                            {r.unitType ? ` · ${r.unitType}` : ''}
                             {vacant ? ` · ${tr('vacantUnit')}` : ` · ${r.phone}`}
+                            {!vacant && r.nationality ? (
+                              <>
+                                <br />
+                                {r.nationality}
+                                {r.idNumber ? ` · ${r.idNumber}` : ''}
+                              </>
+                            ) : null}
                             <br />
                             {formatMoney(r.rentAmount, r.currency)} / {rentScheduleLabel(r.rentSchedule, lang)}
                             {' · '}
@@ -1016,6 +1033,15 @@ export default function AdminPortal() {
                       />
                     </div>
                     <div className="form-row">
+                      <label htmlFor="aptUnitType">{tr('unitType')}</label>
+                      <input
+                        id="aptUnitType"
+                        value={apartmentForm.unitType}
+                        onChange={(e) => setApartmentForm((f) => ({ ...f, unitType: e.target.value }))}
+                        placeholder="Studio, 1BR"
+                      />
+                    </div>
+                    <div className="form-row">
                       <label htmlFor="aptName">{tr('fullName')}</label>
                       <input
                         id="aptName"
@@ -1030,6 +1056,23 @@ export default function AdminPortal() {
                         value={apartmentForm.phone}
                         onChange={(e) => setApartmentForm((f) => ({ ...f, phone: e.target.value }))}
                         inputMode="tel"
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label htmlFor="aptNationality">{tr('nationality')}</label>
+                      <input
+                        id="aptNationality"
+                        value={apartmentForm.nationality}
+                        onChange={(e) => setApartmentForm((f) => ({ ...f, nationality: e.target.value }))}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label htmlFor="aptIdNumber">{tr('idNumber')}</label>
+                      <input
+                        id="aptIdNumber"
+                        value={apartmentForm.idNumber}
+                        onChange={(e) => setApartmentForm((f) => ({ ...f, idNumber: e.target.value }))}
+                        placeholder="784-XXXX-XXXXXXX-X"
                       />
                     </div>
                     <div className="form-row">

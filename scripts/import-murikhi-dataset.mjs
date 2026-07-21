@@ -188,6 +188,9 @@ function buildResidents(units, paidByUnit) {
       rentSchedule,
       contractTotal: u.annual,
       amountPaid: paid,
+      unitType: u.unitType || undefined,
+      nationality: u.nationality || undefined,
+      idNumber: u.idNumber || undefined,
       status,
     }
   })

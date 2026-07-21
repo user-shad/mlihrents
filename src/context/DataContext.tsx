@@ -297,6 +297,9 @@ interface DataContextValue {
       email: string
       parking: string
       leaseEnd: string
+      unitType: string
+      nationality: string
+      idNumber: string
       status: 'active' | 'arrears' | 'notice'
     },
     residentId?: string,
@@ -819,6 +822,9 @@ export function DataProvider({
       email: string
       parking: string
       leaseEnd: string
+      unitType: string
+      nationality: string
+      idNumber: string
       status: 'active' | 'arrears' | 'notice'
     },
     residentId?: string,
@@ -864,6 +870,9 @@ export function DataProvider({
       email: input.email.trim() || undefined,
       parking: input.parking.trim(),
       leaseEnd: input.leaseEnd.trim(),
+      unitType: input.unitType.trim() || undefined,
+      nationality: input.nationality.trim() || undefined,
+      idNumber: input.idNumber.trim() || undefined,
       status: input.status,
     }
 

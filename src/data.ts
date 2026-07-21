@@ -35,6 +35,11 @@ export interface Resident {
   email?: string
   moveIn?: string
   occupants?: number
+  /** Studio, 1BR, etc. */
+  unitType?: string
+  nationality?: string
+  /** UAE Emirates ID or passport number */
+  idNumber?: string
   status?: 'active' | 'arrears' | 'notice'
 }
 
