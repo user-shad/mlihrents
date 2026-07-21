@@ -225,7 +225,6 @@ export default function AdminPortal() {
         phone,
       },
       adminResidentInvoices,
-      lang,
       `${siteLegal.publicUrl}/resident`,
       siteLegal.brandName,
     )

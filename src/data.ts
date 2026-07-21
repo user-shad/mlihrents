@@ -85,8 +85,8 @@ export function whatsappChatUrl(phone: string, text?: string) {
   return `${base}?text=${encodeURIComponent(message)}`
 }
 
-/** Pre-filled WhatsApp rent reminder for admin to send manually. */
-export function buildRentReminderWhatsAppMessage(
+/** Pre-filled WhatsApp rent reminder for admin to send manually (one language). */
+export function buildRentReminderWhatsAppMessageForLang(
   resident: Resident,
   invoices: Invoice[],
   lang: 'en' | 'ar',
@@ -126,6 +126,18 @@ export function buildRentReminderWhatsAppMessage(
     detail = 'Please review your payment status on the portal.'
   }
   return `Hello ${name},\n\nThis is a rent reminder from ${brandName} for unit ${unit}.\n${detail}\n\nPay via the resident portal:\n${portalUrl}\n\nThank you.`
+}
+
+/** Bilingual rent reminder (English + Arabic) for WhatsApp. */
+export function buildRentReminderWhatsAppMessage(
+  resident: Resident,
+  invoices: Invoice[],
+  portalUrl: string,
+  brandName = 'MLIH Rents',
+) {
+  const en = buildRentReminderWhatsAppMessageForLang(resident, invoices, 'en', portalUrl, brandName)
+  const ar = buildRentReminderWhatsAppMessageForLang(resident, invoices, 'ar', portalUrl, brandName)
+  return `${en}\n\n———\n\n${ar}`
 }
 
 export type PaymentNotifyKind = 'approved' | 'partial' | 'rejected'
