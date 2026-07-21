@@ -732,7 +732,7 @@ export interface StaffAccount {
 /**
  * Bootstrap staff logins (passwords persist after first change in localStorage).
  * Building Admin: `0553262626` · PIN `1989` — can change tenant passwords
- * Operations Manager: `0505001021` · PIN `3004` — own password only
+ * Operations Manager: `0505001021` · PIN `3004` — can set tenant login passwords
  */
 export const staffAccounts: StaffAccount[] = [
   { phone: '0553262626', pin: '1989', name: 'Building Admin', tier: 'admin' },

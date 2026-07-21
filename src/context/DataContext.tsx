@@ -557,10 +557,7 @@ export function DataProvider({
   }
 
   function saveResidentLoginPin(phone: string, pin: string) {
-    if (session?.role !== 'admin' || session.staffTier !== 'admin') {
-      showToast(tr('residentPinAdminOnly'))
-      return
-    }
+    if (session?.role !== 'admin') return
     const resident = residentList.find((r) => r.id === selectedResidentId)
     if (!resident) return
     const err = setResidentPin(selectedResidentId, phone, pin, resident.name)
@@ -575,10 +572,7 @@ export function DataProvider({
   }
 
   function clearResidentLogin() {
-    if (session?.role !== 'admin' || session.staffTier !== 'admin') {
-      showToast(tr('residentPinAdminOnly'))
-      return
-    }
+    if (session?.role !== 'admin') return
     if (!selectedResidentId) return
     clearResidentCredentials(selectedResidentId)
     setResidentList((prev) =>

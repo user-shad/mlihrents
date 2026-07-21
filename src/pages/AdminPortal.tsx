@@ -800,6 +800,57 @@ export default function AdminPortal() {
                 >
                   {tr('saveApartmentInfo')}
                 </button>
+
+                <h3 className="section-label" style={{ marginTop: '1.25rem' }}>
+                  {tr('setLoginPin')}
+                </h3>
+                <p className="meta" style={{ marginTop: 0 }}>
+                  {tr('setLoginPinHelp')}
+                </p>
+                <div className="rent-plan-editor">
+                  <div className="form-row">
+                    <label htmlFor="loginPhone">{tr('mobileNumber')}</label>
+                    <input
+                      id="loginPhone"
+                      value={phoneDraft}
+                      onChange={(e) => setPhoneDraft(e.target.value)}
+                      inputMode="tel"
+                    />
+                  </div>
+                  <div className="form-row">
+                    <label htmlFor="loginPin">{tr('loginPin')}</label>
+                    <input
+                      id="loginPin"
+                      value={pinDraft}
+                      onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      inputMode="numeric"
+                      maxLength={4}
+                      placeholder="1234"
+                    />
+                  </div>
+                </div>
+                <button
+                  className="btn btn-primary btn-sm"
+                  type="button"
+                  style={{ marginTop: '0.75rem' }}
+                  onClick={() => saveResidentLoginPin(phoneDraft, pinDraft)}
+                >
+                  {tr('saveLoginPin')}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  style={{ marginTop: '0.5rem', marginInlineStart: '0.5rem' }}
+                  onClick={() => {
+                    if (!window.confirm(tr('clearLoginConfirm'))) return
+                    clearResidentLogin()
+                    setPhoneDraft('')
+                    setPinDraft('')
+                  }}
+                >
+                  {tr('clearLoginPin')}
+                </button>
+
                 <button
                   className="btn btn-ghost btn-sm"
                   type="button"
@@ -835,58 +886,6 @@ export default function AdminPortal() {
                 >
                   {tr('clearApartmentInfo')}
                 </button>
-
-                {isBuildingAdmin && (
-                  <>
-                    <h3 className="section-label">{tr('setLoginPin')}</h3>
-                    <p className="meta" style={{ marginTop: 0 }}>
-                      {tr('setLoginPinHelp')}
-                    </p>
-                    <div className="rent-plan-editor">
-                      <div className="form-row">
-                        <label htmlFor="loginPhone">{tr('mobileNumber')}</label>
-                        <input
-                          id="loginPhone"
-                          value={phoneDraft}
-                          onChange={(e) => setPhoneDraft(e.target.value)}
-                          inputMode="tel"
-                        />
-                      </div>
-                      <div className="form-row">
-                        <label htmlFor="loginPin">{tr('loginPin')}</label>
-                        <input
-                          id="loginPin"
-                          value={pinDraft}
-                          onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                          inputMode="numeric"
-                          maxLength={4}
-                          placeholder="1234"
-                        />
-                      </div>
-                    </div>
-                    <button
-                      className="btn btn-primary btn-sm"
-                      type="button"
-                      style={{ marginTop: '0.75rem' }}
-                      onClick={() => saveResidentLoginPin(phoneDraft, pinDraft)}
-                    >
-                      {tr('saveLoginPin')}
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      type="button"
-                      style={{ marginTop: '0.5rem', marginInlineStart: '0.5rem' }}
-                      onClick={() => {
-                        if (!window.confirm(tr('clearLoginConfirm'))) return
-                        clearResidentLogin()
-                        setPhoneDraft('')
-                        setPinDraft('')
-                      }}
-                    >
-                      {tr('clearLoginPin')}
-                    </button>
-                  </>
-                )}
 
                 <h3 className="section-label">{tr('maintenanceTickets')}</h3>
                 <div className="list">
