@@ -187,6 +187,14 @@ export interface PaymentRecord {
   destination: string
   /** Unique code resident must put in the bank transfer note */
   paymentRef?: string
+  /** Bank "Reference number" from the transfer (digits, e.g. Wio). */
+  bankReference?: string
+  /** OCR-read amount from screenshot at submission. */
+  ocrAmount?: number | null
+  /** Set when OCR amount differs from the invoice. */
+  amountMismatchFlag?: boolean
+  /** Set when entered bank ref does not match OCR on the screenshot. */
+  bankRefMismatchFlag?: boolean
   /** Amount admin verified on the bank statement */
   confirmedAmount?: number
   reviewedAt?: string
@@ -198,6 +206,33 @@ export interface PaymentRecord {
 /** Payment reference for bank transfers — the invoice number itself. */
 export function buildPaymentRef(_unit: string, invoiceId: string) {
   return invoiceId.trim()
+}
+
+export function normalizeBankReferenceDigits(ref: string) {
+  return ref.replace(/\D/g, '')
+}
+
+export function isValidBankReference(ref: string) {
+  const digits = normalizeBankReferenceDigits(ref)
+  return digits.length >= 6 && digits.length <= 15
+}
+
+/** Block re-using a bank reference already tied to another payment. */
+export function findDuplicateBankReference(
+  ref: string,
+  payments: PaymentRecord[],
+  excludePaymentId?: string,
+): PaymentRecord | null {
+  const digits = normalizeBankReferenceDigits(ref)
+  if (!digits) return null
+  return (
+    payments.find((p) => {
+      if (excludePaymentId && p.id === excludePaymentId) return false
+      if (p.status === 'rejected' || p.status === 'deleted') return false
+      const existing = p.bankReference ? normalizeBankReferenceDigits(p.bankReference) : ''
+      return existing.length > 0 && existing === digits
+    }) ?? null
+  )
 }
 
 export type PaymentLookupMatch =

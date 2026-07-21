@@ -24,6 +24,9 @@ import {
   PaymentRecord,
   amountsMatch,
   buildPaymentRef,
+  findDuplicateBankReference,
+  isValidBankReference,
+  normalizeBankReferenceDigits,
   buildInstallmentInvoice,
   formatMoney,
   remainingBalance,
@@ -50,6 +53,7 @@ import {
 import {
   formatScreenshotAnalysis,
   recognizeTransferProof,
+  bankRefsMatch,
 } from '../lib/transferProofOcr'
 import {
   onCloudOps,
@@ -171,6 +175,8 @@ interface DataContextValue {
   setTicketNote: (v: string) => void
   checkoutInvoiceId: string | null
   bankProof: { name: string; dataUrl: string } | null
+  bankReferenceDraft: string
+  setBankReferenceDraft: (v: string) => void
   setBankProofFromFile: (file: File | null) => void
   clearBankProof: () => void
   paying: boolean
@@ -296,6 +302,7 @@ export function DataProvider({
   )
   const [checkoutInvoiceId, setCheckoutInvoiceId] = useState<string | null>(null)
   const [bankProof, setBankProof] = useState<{ name: string; dataUrl: string } | null>(null)
+  const [bankReferenceDraft, setBankReferenceDraft] = useState('')
   const [paying, setPaying] = useState(false)
   const [payments, setPayments] = useState<PaymentRecord[]>(() => bootOps.payments)
   const [toast, setToast] = useState<string | null>(null)
@@ -727,12 +734,14 @@ export function DataProvider({
     }
     setCheckoutInvoiceId(id)
     setBankProof(null)
+    setBankReferenceDraft('')
   }
 
   function closeCheckout() {
     setCheckoutInvoiceId(null)
     setPaying(false)
     setBankProof(null)
+    setBankReferenceDraft('')
   }
 
   function clearBankProof() {
@@ -901,6 +910,16 @@ export function DataProvider({
       )
       return
     }
+    if (!isValidBankReference(bankReferenceDraft)) {
+      showToast(tr('bankReferenceInvalid'))
+      return
+    }
+    const bankReference = normalizeBankReferenceDigits(bankReferenceDraft)
+    const duplicate = findDuplicateBankReference(bankReference, payments)
+    if (duplicate) {
+      showToast(tr('bankReferenceDuplicate'))
+      return
+    }
     if (!bankProof) {
       showToast(
         lang === 'ar'
@@ -910,9 +929,28 @@ export function DataProvider({
       return
     }
     setPaying(true)
-    window.setTimeout(() => {
+    void (async () => {
+      let ocrAmount: number | null = null
+      let amountMismatchFlag = false
+      let bankRefMismatchFlag = false
+      try {
+        const ocr = await recognizeTransferProof(bankProof.dataUrl, checkoutInvoice.amount)
+        ocrAmount = ocr.extractedAmount
+        if (ocrAmount != null && !amountsMatch(ocrAmount, checkoutInvoice.amount)) {
+          amountMismatchFlag = true
+        }
+        const refMatch = bankRefsMatch(bankReference, ocr.extractedBankRef)
+        if (refMatch === false) bankRefMismatchFlag = true
+      } catch {
+        /* OCR optional — admin reviews manually */
+      }
+
       const unit = `${liveResident.buildingNumber}-${liveResident.apartment}`
       const paymentRef = buildPaymentRef(unit, checkoutInvoice.id)
+      const reviewFlags: string[] = []
+      if (amountMismatchFlag) reviewFlags.push('Amount mismatch on screenshot')
+      if (bankRefMismatchFlag) reviewFlags.push('Bank reference mismatch on screenshot')
+
       const record: PaymentRecord = {
         id: `PAY-${Date.now().toString().slice(-6)}`,
         invoiceId: checkoutInvoice.id,
@@ -925,6 +963,11 @@ export function DataProvider({
         paidAt: `${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · ${nowLabel()}`,
         destination: bankSettings.accountName,
         paymentRef,
+        bankReference,
+        ocrAmount,
+        amountMismatchFlag,
+        bankRefMismatchFlag,
+        reviewNote: reviewFlags.length > 0 ? reviewFlags.join(' · ') : undefined,
         transferProof: bankProof,
       }
       setPayments((prev) => [record, ...prev])
@@ -932,12 +975,15 @@ export function DataProvider({
       setPaying(false)
       setCheckoutInvoiceId(null)
       setBankProof(null)
+      setBankReferenceDraft('')
       showToast(
-        lang === 'ar'
-          ? `تم إرسال الإثبات للمراجعة. استخدم المرجع ${paymentRef} في التحويل`
-          : `Proof submitted for review. Use reference ${paymentRef} on the transfer`,
+        amountMismatchFlag || bankRefMismatchFlag
+          ? tr('paymentSubmittedWithFlags')
+          : lang === 'ar'
+            ? `تم إرسال الإثبات للمراجعة. رقم المرجع ${bankReference}`
+            : `Proof submitted for review. Bank reference ${bankReference}`,
       )
-    }, 900)
+    })()
   }
 
   function confirmBankPayment(paymentId: string, verifiedAmount: number, asPartial = false) {
@@ -1367,6 +1413,8 @@ export function DataProvider({
         setTicketNote,
         checkoutInvoiceId,
         bankProof,
+        bankReferenceDraft,
+        setBankReferenceDraft,
         setBankProofFromFile,
         clearBankProof,
         paying,

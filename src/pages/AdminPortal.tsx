@@ -1181,7 +1181,40 @@ export default function AdminPortal() {
                       </strong>
                       <div className="meta">
                         {p.unit} · {p.paidAt}
+                        {p.bankReference ? (
+                          <>
+                            <br />
+                            {tr('bankReferenceShort')}: {p.bankReference}
+                          </>
+                        ) : null}
+                        {p.paymentRef ? (
+                          <>
+                            <br />
+                            {tr('paymentRefLabel')}: {p.paymentRef}
+                          </>
+                        ) : null}
+                        {p.ocrAmount != null ? (
+                          <>
+                            <br />
+                            {tr('ocrAmountLabel')}: {formatMoney(p.ocrAmount)}
+                          </>
+                        ) : null}
                       </div>
+                      {(p.amountMismatchFlag || p.bankRefMismatchFlag) && (
+                        <p
+                          className="meta"
+                          style={{ marginTop: '0.5rem', color: '#c44', fontWeight: 600 }}
+                        >
+                          {p.amountMismatchFlag && tr('amountMismatchFlag')}
+                          {p.amountMismatchFlag && p.bankRefMismatchFlag ? ' · ' : ''}
+                          {p.bankRefMismatchFlag && tr('bankRefMismatchFlag')}
+                        </p>
+                      )}
+                      {p.reviewNote && (
+                        <p className="meta" style={{ marginTop: '0.35rem' }}>
+                          {p.reviewNote}
+                        </p>
+                      )}
                       {p.transferProof?.dataUrl ? (
                         <a
                           className="proof-thumb"

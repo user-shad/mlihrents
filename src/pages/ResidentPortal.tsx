@@ -59,6 +59,8 @@ export default function ResidentPortal() {
     escalateToHuman,
     sendChat,
     resetHumanMode,
+    bankReferenceDraft,
+    setBankReferenceDraft,
   } = useData()
 
   const residentName = liveResident.name || session?.name || ''
@@ -386,6 +388,24 @@ export default function ResidentPortal() {
                         </div>
                       )}
                       <div className="bank-link-box">
+                        <span className="meta">{tr('paymentRefLabel')}</span>
+                        <code>{checkoutInvoice.id}</code>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          style={{ marginTop: '0.35rem', justifySelf: 'start' }}
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(checkoutInvoice.id)
+                            showToast(tr('paymentRefCopied'))
+                          }}
+                        >
+                          {tr('paymentRefCopy')}
+                        </button>
+                        <span className="meta" style={{ marginTop: '0.35rem' }}>
+                          {tr('paymentRefHint')}
+                        </span>
+                      </div>
+                      <div className="bank-link-box">
                         <span className="meta">{tr('transferAmount')}</span>
                         <strong>{formatMoney(checkoutInvoice.amount)}</strong>
                       </div>
@@ -393,6 +413,23 @@ export default function ResidentPortal() {
                       <p className="hint" style={{ margin: '0 0 0.75rem' }}>
                         {tr('bankReviewHint')}
                       </p>
+
+                      <div className="form-row" style={{ marginBottom: '1rem' }}>
+                        <label htmlFor="bankReference">{tr('bankReferenceLabel')}</label>
+                        <input
+                          id="bankReference"
+                          value={bankReferenceDraft}
+                          onChange={(e) =>
+                            setBankReferenceDraft(e.target.value.replace(/\D/g, '').slice(0, 15))
+                          }
+                          inputMode="numeric"
+                          placeholder="1422869093"
+                          autoComplete="off"
+                        />
+                        <span className="meta" style={{ marginTop: '0.35rem' }}>
+                          {tr('bankReferenceHint')}
+                        </span>
+                      </div>
 
                       <div className="transfer-proof">
                         <span className="transfer-proof-label">{tr('transferProofLabel')}</span>
@@ -463,7 +500,9 @@ export default function ResidentPortal() {
                       <button
                         className="btn btn-accent btn-block"
                         type="submit"
-                        disabled={paying || !bankProof}
+                        disabled={
+                          paying || !bankProof || bankReferenceDraft.replace(/\D/g, '').length < 6
+                        }
                       >
                         {paying
                           ? tr('processing')
