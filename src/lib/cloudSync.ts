@@ -26,6 +26,7 @@ import {
   detachProofsFromOps,
   persistLocalProofsFromOps,
   readLocalProofs,
+  writeLocalProofs,
 } from './localProofStore'
 import { isSupabaseConfigured, supabase } from './supabase'
 
@@ -34,6 +35,7 @@ export const OPS_KEY = 'mlihrents_ops_v5'
 const LEGACY_OPS_KEYS = ['mlihrents_ops_v4']
 const SYNC_ROW_ID = 'main'
 const LOCAL_SYNC_META_KEY = 'mlihrents_sync_meta'
+const PAYMENT_RESET_ACK_KEY = 'mlihrents_payment_reset_ack'
 
 function syncApiToken() {
   return (import.meta.env.VITE_SYNC_API_TOKEN as string | undefined)?.trim() ?? ''
@@ -69,6 +71,8 @@ export interface PortalOps {
   serviceDirectory: ServiceContact[]
   /** Set after rent schedule values were migrated to month intervals. */
   rentScheduleUsesIntervalMonths?: boolean
+  /** When set, all devices clear local payment cache once this timestamp is seen. */
+  paymentResetAt?: string
 }
 
 export interface BootstrapData {
@@ -203,6 +207,68 @@ function readLocalSyncMeta(): { updatedAt: string } {
   }
 }
 
+function readPaymentResetAck(): string {
+  try {
+    return localStorage.getItem(PAYMENT_RESET_ACK_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function ackPaymentReset(at: string) {
+  try {
+    localStorage.setItem(PAYMENT_RESET_ACK_KEY, at)
+  } catch {
+    /* quota */
+  }
+}
+
+function mergeResidentsAfterPaymentReset(
+  remote: PortalOps['residentList'],
+  local: PortalOps['residentList'] | undefined,
+): PortalOps['residentList'] {
+  if (!local?.length) return remote
+  const localById = new Map(local.map((r) => [r.id, r]))
+  return remote.map((remoteResident) => {
+    const localResident = localById.get(remoteResident.id)
+    if (!localResident) return remoteResident
+    return {
+      ...localResident,
+      ...remoteResident,
+      amountPaid: remoteResident.amountPaid,
+      status: remoteResident.status,
+      apartment: remoteResident.apartment,
+      id: remoteResident.id,
+    }
+  })
+}
+
+/** Apply admin payment wipe to this device (admin + resident portals). */
+function applyPaymentResetFromCloud(remote: PortalOps, local: PortalOps | null): PortalOps {
+  const resetAt = remote.paymentResetAt?.trim()
+  if (!resetAt) {
+    return local ? mergeOpsPreferringLocalProofs(remote, local) : remote
+  }
+
+  const acked = readPaymentResetAck()
+  if (acked && acked >= resetAt) {
+    return local ? mergeOpsPreferringLocalProofs(remote, local) : remote
+  }
+
+  writeLocalProofs({})
+  ackPaymentReset(resetAt)
+
+  const base = local ? { ...local, ...remote } : remote
+  return {
+    ...base,
+    payments: remote.payments ?? [],
+    paidIds: remote.paidIds ?? [],
+    invoiceMap: remote.invoiceMap ?? {},
+    residentList: mergeResidentsAfterPaymentReset(remote.residentList ?? [], local?.residentList),
+    paymentResetAt: resetAt,
+  }
+}
+
 function touchLocalSyncMeta() {
   localStorage.setItem(
     LOCAL_SYNC_META_KEY,
@@ -301,17 +367,18 @@ function normalizeCloudOps(raw: unknown): PortalOps {
   return {
     residentList,
     listings: ops.listings ?? availableApartments,
-    payments: ops.payments ?? seedPayments,
+    payments: Array.isArray(ops.payments) ? ops.payments : [],
     invoiceMap: ops.invoiceMap ?? invoicesByResident,
     ticketMap: ops.ticketMap ?? ticketsByResident,
     invoiceExtensions: ops.invoiceExtensions ?? {},
-    paidIds: ops.paidIds ?? [],
+    paidIds: Array.isArray(ops.paidIds) ? ops.paidIds : [],
     bankSettings: ops.bankSettings ?? defaultBankSettings,
     serviceDirectory:
       Array.isArray(ops.serviceDirectory) && ops.serviceDirectory.length > 0
         ? ops.serviceDirectory
         : defaultServiceDirectory,
     rentScheduleUsesIntervalMonths: true,
+    paymentResetAt: ops.paymentResetAt,
   }
 }
 
@@ -525,10 +592,13 @@ function mergeBootstrap(
 
   if (preferCloud) {
     accounts = cloud!.accounts
-    ops = cloud!.ops
+    ops = applyPaymentResetFromCloud(cloud!.ops, localHasOps ? localOps : null)
   } else {
     if (localHasAccounts && localAccounts) accounts = localAccounts
     if (localHasOps) ops = localOps
+    if (cloud?.ops?.paymentResetAt) {
+      ops = applyPaymentResetFromCloud(cloud.ops, localHasOps ? localOps : null)
+    }
   }
 
   return { accounts: prepareStoredAccounts(accounts), ops }
@@ -696,6 +766,21 @@ function applyRemoteRow(row: CloudRow) {
 
   const remoteTime = cloudTimestamp(row)
   const localTime = localTimestamp()
+
+  if (row.ops.paymentResetAt && row.ops.paymentResetAt > readPaymentResetAck()) {
+    const mergedOps = applyPaymentResetFromCloud(row.ops, localOps)
+    const mergedAccounts = mergeAccountsPreferringLocal(row.accounts, localAccounts)
+    suppressCloudPush++
+    try {
+      accountsListener?.(prepareStoredAccounts(mergedAccounts))
+      opsListener?.(mergedOps)
+      lastCloudUpdatedAt = row.updated_at
+    } finally {
+      suppressCloudPush--
+    }
+    return
+  }
+
   if (localTime > remoteTime) {
     const mergedOps = localOps
       ? { ...row.ops, ...localOps, payments: mergePaymentLists(row.ops.payments, localOps.payments) }

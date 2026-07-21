@@ -48,6 +48,7 @@ function cleanAllPaymentData(ops) {
     paidIds: [],
     residentList,
     invoiceMap,
+    paymentResetAt: new Date().toISOString(),
   }
 }
 
