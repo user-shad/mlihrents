@@ -2,12 +2,32 @@ export type Role = 'resident' | 'admin'
 
 export type TicketStatus = 'open' | 'in_progress' | 'resolved'
 
-export type RentSchedule =
-  | 'monthly'
-  | 'quarterly'
-  | 'semi_annual'
-  | 'annual'
-  | 'full_lease'
+/** Number of rent payments per year (1 = once a year, 12 = monthly). */
+export type RentSchedule = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
+
+export const RENT_SCHEDULE_OPTIONS: RentSchedule[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+const LEGACY_RENT_SCHEDULE: Record<string, RentSchedule> = {
+  monthly: 12,
+  quarterly: 4,
+  semi_annual: 2,
+  annual: 1,
+  full_lease: 1,
+}
+
+/** Coerce saved values (legacy strings or numbers) to 1–12 payments per year. */
+export function normalizeRentSchedule(value: unknown): RentSchedule {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.min(12, Math.max(1, Math.round(value))) as RentSchedule
+  }
+  if (typeof value === 'string') {
+    const legacy = LEGACY_RENT_SCHEDULE[value.trim()]
+    if (legacy) return legacy
+    const n = Number(value)
+    if (Number.isFinite(n)) return normalizeRentSchedule(n)
+  }
+  return 12
+}
 
 export interface Resident {
   id: string
@@ -28,7 +48,7 @@ export interface Resident {
   currency: string
   /** Day of month rent is due (1–28). Admin can change anytime. */
   rentDueDay: number
-  /** How often rent is collected */
+  /** How many times rent is paid per year (1–12) */
   rentSchedule: RentSchedule
   /** Full rent obligation for the current lease term */
   contractTotal: number
@@ -58,17 +78,18 @@ export const blankResident: Resident = {
   rentAmount: 0,
   currency: 'AED',
   rentDueDay: 1,
-  rentSchedule: 'monthly',
+  rentSchedule: 12,
   contractTotal: 0,
   amountPaid: 0,
   status: 'active',
 }
 
-/** Map legacy moveIn field from older saved data. */
-export function migrateResident(r: Resident & { moveIn?: string }): Resident {
+/** Map legacy moveIn field and rent schedule from older saved data. */
+export function migrateResident(r: Resident & { moveIn?: string; rentSchedule?: unknown }): Resident {
   const leaseStart = r.leaseStart ?? r.moveIn
   const { moveIn: _legacy, ...rest } = r
-  return leaseStart !== undefined ? { ...rest, leaseStart } : rest
+  const migrated = { ...rest, rentSchedule: normalizeRentSchedule(r.rentSchedule) }
+  return leaseStart !== undefined ? { ...migrated, leaseStart } : migrated
 }
 
 /** Digits only for phone comparison (0545882666 and +971 54 588 2666 match). */
@@ -97,40 +118,59 @@ export function whatsappChatUrl(phone: string, text?: string) {
   return `${base}?text=${encodeURIComponent(message)}`
 }
 
+/** Next due/overdue invoice for reminders, or a generated installment when none exists. */
+export function nextReminderInvoice(
+  resident: Resident,
+  invoices: Invoice[],
+  lang: 'en' | 'ar' = 'en',
+): Invoice | null {
+  const unpaid = invoices.filter((inv) => inv.status === 'due' || inv.status === 'overdue')
+  const next = unpaid.find((inv) => inv.status === 'overdue') ?? unpaid.find((inv) => inv.status === 'due')
+  if (next) return next
+  return buildInstallmentInvoice(resident, lang)
+}
+
+function reminderInvoiceMonthLabel(invoice: Invoice) {
+  if (invoice.dueDateIso) {
+    const d = new Date(`${invoice.dueDateIso}T12:00:00`)
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+    }
+  }
+  return invoice.period
+}
+
 /** Pre-filled WhatsApp rent reminder for admin to send manually (one language). */
 export function buildRentReminderWhatsAppMessageForLang(
   resident: Resident,
+  invoices: Invoice[],
   lang: 'en' | 'ar',
   portalUrl: string,
   brandName = 'MLIH Rents',
 ) {
   const name = resident.name.trim() || (lang === 'ar' ? 'الساكن' : 'Resident')
   const unit = unitCodeLabel(resident)
-  const balance = remainingBalance(resident)
 
   if (lang === 'ar') {
-    const detail =
-      balance > 0
-        ? `المبلغ المتبقي على العقد: ${balance.toLocaleString()} درهم.`
-        : 'يرجى مراجعة حالة الدفع في البوابة.'
-    return `مرحباً ${name}،\n\nتذكير من ${brandName} بخصوص الوحدة ${unit}.\n${detail}\n\nادفع عبر بوابة السكان:\n${portalUrl}\n\nشكراً لكم.`
+    const next = nextReminderInvoice(resident, invoices, lang)
+    const invoiceLine = next
+      ? `فاتورة ${next.period} ${reminderInvoiceMonthLabel(next)}.`
+      : ''
+    return `مرحباً ${name}،\n\nتذكير من ${brandName} بخصوص الوحدة ${unit}.\n${invoiceLine ? `\n${invoiceLine}\n` : '\n'}\nادفع عبر بوابة السكان:\n${portalUrl}\n\nشكراً لكم.`
   }
 
-  const detail =
-    balance > 0
-      ? `Remaining balance on your lease: AED ${balance.toLocaleString()}.`
-      : 'Please review your payment status on the portal.'
-  return `Hello ${name},\n\nThis is a rent reminder from ${brandName} for unit ${unit}.\n${detail}\n\nPay via the resident portal:\n${portalUrl}\n\nThank you.`
+  return `Hello ${name},\n\nThis is a rent reminder from ${brandName} for unit ${unit}.\n\nPay via the resident portal:\n${portalUrl}\n\nThank you.`
 }
 
 /** Bilingual rent reminder (English + Arabic) for WhatsApp. */
 export function buildRentReminderWhatsAppMessage(
   resident: Resident,
+  invoices: Invoice[],
   portalUrl: string,
   brandName = 'MLIH Rents',
 ) {
-  const en = buildRentReminderWhatsAppMessageForLang(resident, 'en', portalUrl, brandName)
-  const ar = buildRentReminderWhatsAppMessageForLang(resident, 'ar', portalUrl, brandName)
+  const en = buildRentReminderWhatsAppMessageForLang(resident, invoices, 'en', portalUrl, brandName)
+  const ar = buildRentReminderWhatsAppMessageForLang(resident, invoices, 'ar', portalUrl, brandName)
   return `${en}\n\n———\n\n${ar}`
 }
 
@@ -750,7 +790,7 @@ export function buildEmptyApartment(buildingLetter: string, unitNumber: number):
     rentAmount: 0,
     currency: 'AED',
     rentDueDay: 1,
-    rentSchedule: 'monthly',
+    rentSchedule: 12,
     contractTotal: 0,
     amountPaid: 0,
     status: 'active',
@@ -1069,20 +1109,8 @@ export function canCollectRent(resident: Resident) {
 export function monthlyRentEquivalent(resident: Resident) {
   const amount = Math.max(0, resident.rentAmount)
   if (amount <= 0) return 0
-  switch (resident.rentSchedule) {
-    case 'monthly':
-      return amount
-    case 'quarterly':
-      return amount / 3
-    case 'semi_annual':
-      return amount / 6
-    case 'annual':
-      return amount / 12
-    case 'full_lease':
-      return resident.contractTotal > 0 ? resident.contractTotal / 12 : amount
-    default:
-      return amount
-  }
+  const paymentsPerYear = normalizeRentSchedule(resident.rentSchedule)
+  return (amount * paymentsPerYear) / 12
 }
 
 export function expectedMonthlyIncome(residents: Resident[]) {
@@ -1154,34 +1182,13 @@ export function buildInstallmentInvoice(
   }
 }
 
-export function rentScheduleLabel(schedule: RentSchedule, lang: 'en' | 'ar' = 'en') {
-  const en: Record<RentSchedule, string> = {
-    monthly: 'Monthly',
-    quarterly: 'Every 3 months',
-    semi_annual: 'Every 6 months',
-    annual: 'Once a year',
-    full_lease: 'Paid in full (lease)',
-  }
-  const ar: Record<RentSchedule, string> = {
-    monthly: 'شهري',
-    quarterly: 'كل 3 أشهر',
-    semi_annual: 'كل 6 أشهر',
-    annual: 'مرة في السنة',
-    full_lease: 'دفع كامل للعقد',
-  }
-  return lang === 'ar' ? ar[schedule] : en[schedule]
+export function rentScheduleLabel(schedule: RentSchedule | unknown, _lang: 'en' | 'ar' = 'en') {
+  return String(normalizeRentSchedule(schedule))
 }
 
-/** Suggested installment count / amount when admin changes schedule */
-export function suggestInstallment(contractTotal: number, schedule: RentSchedule) {
-  const parts: Record<RentSchedule, number> = {
-    monthly: 12,
-    quarterly: 4,
-    semi_annual: 2,
-    annual: 1,
-    full_lease: 1,
-  }
-  const n = parts[schedule]
+/** Suggested installment amount when admin changes payments per year */
+export function suggestInstallment(contractTotal: number, schedule: RentSchedule | unknown) {
+  const n = normalizeRentSchedule(schedule)
   return Math.round(contractTotal / n)
 }
 

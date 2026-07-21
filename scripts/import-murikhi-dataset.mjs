@@ -99,11 +99,10 @@ function formatPaidAt(dateStr) {
 }
 
 function rentFields(annual, py, monthly) {
-  if (py >= 12) return { rentAmount: monthly, rentSchedule: 'monthly' }
-  if (py === 2) return { rentAmount: Math.round(annual / 2), rentSchedule: 'semi_annual' }
-  if (py === 4) return { rentAmount: Math.round(annual / 4), rentSchedule: 'quarterly' }
-  if (py === 3) return { rentAmount: Math.round(annual / 3), rentSchedule: 'quarterly' }
-  return { rentAmount: monthly, rentSchedule: 'monthly' }
+  const paymentsPerYear = Math.min(12, Math.max(1, py || 12))
+  const rentAmount =
+    paymentsPerYear >= 12 ? monthly : Math.round(annual / paymentsPerYear)
+  return { rentAmount, rentSchedule: paymentsPerYear }
 }
 
 function buildingLetter(code) {
@@ -284,10 +283,8 @@ async function main() {
   console.log(`Residents: ${residentList.length}, Accounts: ${accounts.length}, Payments: ${payments.length}`)
   console.log(`Total collected (imported): ${payments.reduce((s, p) => s + p.confirmedAmount, 0).toLocaleString()} AED`)
   console.log(`Expected monthly rent roll: ${residentList.reduce((s, r) => {
-    if (r.rentSchedule === 'monthly') return s + r.rentAmount
-    if (r.rentSchedule === 'quarterly') return s + r.rentAmount / 3
-    if (r.rentSchedule === 'semi_annual') return s + r.rentAmount / 6
-    return s + r.rentAmount / 12
+    const py = Math.min(12, Math.max(1, r.rentSchedule || 12))
+    return s + (r.rentAmount * py) / 12
   }, 0).toLocaleString()} AED (approx)`)
 
   if (DRY_RUN) {

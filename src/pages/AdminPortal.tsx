@@ -17,7 +17,9 @@ import {
   findPaymentById,
   findResidentByUnitCode,
   formatMoney,
+  normalizeRentSchedule,
   paymentMethodLabel,
+  RENT_SCHEDULE_OPTIONS,
   type PaymentNotifyKind,
   type PaymentRecord,
   remainingBalance,
@@ -73,7 +75,7 @@ const emptyApartmentForm = {
   contractTotal: '0',
   amountPaid: '0',
   rentAmount: '0',
-  rentSchedule: 'monthly' as RentSchedule,
+  rentSchedule: 12 as RentSchedule,
   rentDueDay: '1',
   name: '',
   phone: '',
@@ -491,18 +493,22 @@ export default function AdminPortal() {
           <select
             id="aptSchedule"
             value={apartmentForm.rentSchedule}
-            onChange={(e) =>
+            onChange={(e) => {
+              const next = normalizeRentSchedule(Number(e.target.value))
               setApartmentForm((f) => ({
                 ...f,
-                rentSchedule: e.target.value as RentSchedule,
+                rentSchedule: next,
+                rentAmount: String(
+                  suggestInstallment(Number(f.contractTotal) || 0, next),
+                ),
               }))
-            }
+            }}
           >
-            <option value="monthly">{rentScheduleLabel('monthly', lang)}</option>
-            <option value="quarterly">{rentScheduleLabel('quarterly', lang)}</option>
-            <option value="semi_annual">{rentScheduleLabel('semi_annual', lang)}</option>
-            <option value="annual">{rentScheduleLabel('annual', lang)}</option>
-            <option value="full_lease">{rentScheduleLabel('full_lease', lang)}</option>
+            {RENT_SCHEDULE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
           </select>
         </div>
         <div className="form-row">
@@ -634,6 +640,7 @@ export default function AdminPortal() {
         name: apartmentForm.name.trim() || selectedResident.name,
         phone,
       },
+      adminResidentInvoices,
       `${siteLegal.publicUrl}/resident`,
       siteLegal.brandName,
     )
@@ -1321,7 +1328,7 @@ export default function AdminPortal() {
                             setPaidDraft('0')
                             setInstallmentDraft('0')
                             setDueDayDraft('1')
-                            setScheduleDraft('monthly')
+                            setScheduleDraft(12)
                           }}
                         >
                           {tr('clearApartmentInfo')}
@@ -1915,17 +1922,17 @@ export default function AdminPortal() {
                       id="schedule"
                       value={scheduleDraft}
                       onChange={(e) => {
-                        const next = e.target.value as RentSchedule
+                        const next = normalizeRentSchedule(Number(e.target.value))
                         setScheduleDraft(next)
                         const total = Number(contractDraft) || selectedResident.contractTotal
                         setInstallmentDraft(String(suggestInstallment(total, next)))
                       }}
                     >
-                      <option value="monthly">{rentScheduleLabel('monthly', lang)}</option>
-                      <option value="quarterly">{rentScheduleLabel('quarterly', lang)}</option>
-                      <option value="semi_annual">{rentScheduleLabel('semi_annual', lang)}</option>
-                      <option value="annual">{rentScheduleLabel('annual', lang)}</option>
-                      <option value="full_lease">{rentScheduleLabel('full_lease', lang)}</option>
+                      {RENT_SCHEDULE_OPTIONS.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="form-row">

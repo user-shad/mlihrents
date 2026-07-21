@@ -13,7 +13,7 @@ describe('monthly income helpers', () => {
       monthlyRentEquivalent({
         ...blankResident,
         rentAmount: 9000,
-        rentSchedule: 'quarterly',
+        rentSchedule: 4,
         contractTotal: 36000,
       }),
     ).toBe(3000)
@@ -21,8 +21,8 @@ describe('monthly income helpers', () => {
 
   it('sums expected monthly income from rent plans', () => {
     const total = expectedMonthlyIncome([
-      { ...blankResident, id: '1', contractTotal: 12000, rentAmount: 1000, rentSchedule: 'monthly' },
-      { ...blankResident, id: '2', contractTotal: 36000, rentAmount: 9000, rentSchedule: 'quarterly' },
+      { ...blankResident, id: '1', contractTotal: 12000, rentAmount: 1000, rentSchedule: 12 },
+      { ...blankResident, id: '2', contractTotal: 36000, rentAmount: 9000, rentSchedule: 4 },
     ])
     expect(total).toBe(4000)
   })

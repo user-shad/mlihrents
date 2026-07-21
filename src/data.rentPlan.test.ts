@@ -23,7 +23,7 @@ describe('rent plan helpers', () => {
         contractTotal: 0,
         amountPaid: 0,
         rentAmount: 0,
-        rentSchedule: 'quarterly',
+        rentSchedule: 4,
       }),
     ).toBe(false)
     expect(
