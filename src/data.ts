@@ -1066,6 +1066,51 @@ export function canCollectRent(resident: Resident) {
   return hasRentPlan(resident) && remainingBalance(resident) > 0
 }
 
+/** Normalize installment amount to a monthly figure for income summaries. */
+export function monthlyRentEquivalent(resident: Resident) {
+  const amount = Math.max(0, resident.rentAmount)
+  if (amount <= 0) return 0
+  switch (resident.rentSchedule) {
+    case 'monthly':
+      return amount
+    case 'quarterly':
+      return amount / 3
+    case 'semi_annual':
+      return amount / 6
+    case 'annual':
+      return amount / 12
+    case 'full_lease':
+      return resident.contractTotal > 0 ? resident.contractTotal / 12 : amount
+    default:
+      return amount
+  }
+}
+
+export function expectedMonthlyIncome(residents: Resident[]) {
+  return residents.reduce((sum, r) => {
+    if (!hasRentPlan(r)) return sum
+    return sum + monthlyRentEquivalent(r)
+  }, 0)
+}
+
+function parsePaidAtDate(paidAt: string) {
+  const datePart = paidAt.split('·')[0]?.trim() ?? paidAt.trim()
+  const d = new Date(datePart)
+  if (Number.isNaN(d.getTime())) return null
+  return d
+}
+
+/** Sum of verified payments received in a calendar month. */
+export function collectedInMonth(payments: PaymentRecord[], year: number, month: number) {
+  return payments
+    .filter((p) => p.status === 'settled' || p.status === 'partial')
+    .filter((p) => {
+      const d = parsePaidAtDate(p.paidAt)
+      return d && d.getFullYear() === year && d.getMonth() === month
+    })
+    .reduce((sum, p) => sum + (p.confirmedAmount ?? p.amount), 0)
+}
+
 export function paidPercent(resident: Resident) {
   if (resident.contractTotal <= 0) return 0
   return Math.min(100, Math.round((resident.amountPaid / resident.contractTotal) * 100))

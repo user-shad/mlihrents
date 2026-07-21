@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   apartmentBuildingLetter,
@@ -8,6 +8,8 @@ import {
   AvailableApartment,
   BUILDING_INVENTORY,
   apartmentUnits,
+  collectedInMonth,
+  expectedMonthlyIncome,
   buildingLabel,
   buildRentReminderWhatsAppMessage,
   buildPaymentStatusEmailMessage,
@@ -212,6 +214,11 @@ export default function AdminPortal() {
   const totalFromResidents = residentList.reduce((sum, r) => sum + (Number(r.amountPaid) || 0), 0)
   const totalOutstanding = residentList.reduce((sum, r) => sum + remainingBalance(r), 0)
   const totalContractValue = residentList.reduce((sum, r) => sum + (Number(r.contractTotal) || 0), 0)
+  const monthlyIncomeExpected = useMemo(() => expectedMonthlyIncome(residentList), [residentList])
+  const monthlyIncomeCollected = useMemo(() => {
+    const now = new Date()
+    return collectedInMonth(payments, now.getFullYear(), now.getMonth())
+  }, [payments])
 
   useEffect(() => {
     setPinDraft(selectedResident.pin)
@@ -1414,9 +1421,19 @@ export default function AdminPortal() {
             </header>
             <div className="grid-3" style={{ marginBottom: '1rem' }}>
               <section className="panel stat">
+                <span className="value">{formatMoney(monthlyIncomeExpected).replace('AED ', '')}</span>
+                <span className="label">{tr('monthlyIncomeExpected')}</span>
+              </section>
+              <section className="panel stat">
+                <span className="value">{formatMoney(monthlyIncomeCollected).replace('AED ', '')}</span>
+                <span className="label">{tr('monthlyIncomeCollected')}</span>
+              </section>
+              <section className="panel stat">
                 <span className="value">{formatMoney(totalFromResidents).replace('AED ', '')}</span>
                 <span className="label">{tr('totalFromResidents')}</span>
               </section>
+            </div>
+            <div className="grid-3" style={{ marginBottom: '1rem' }}>
               <section className="panel stat">
                 <span className="value">{formatMoney(totalOutstanding).replace('AED ', '')}</span>
                 <span className="label">{tr('totalOutstanding')}</span>
@@ -1425,14 +1442,14 @@ export default function AdminPortal() {
                 <span className="value">{formatMoney(totalContractValue).replace('AED ', '')}</span>
                 <span className="label">{tr('totalContractValue')}</span>
               </section>
-            </div>
-            <div className="grid-3">
               <section className="panel stat">
                 <span className="value">{formatMoney(adminBalance).replace('AED ', '')}</span>
                 <span className="label">{tr('merchantBalance')}</span>
               </section>
+            </div>
+            <div className="grid-3">
               <section className="panel stat">
-                <span className="value">{payments.length}</span>
+                <span className="value">{payments.filter((p) => p.status !== 'deleted').length}</span>
                 <span className="label">{tr('settledPayments')}</span>
               </section>
             </div>
