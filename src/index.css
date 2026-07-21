@@ -1247,6 +1247,13 @@ a.resident-pick:visited {
   text-decoration: underline;
 }
 
+.list-row.record-focused {
+  outline: 2px solid var(--accent, #1a6b5c);
+  outline-offset: 2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent, #1a6b5c) 8%, transparent);
+}
+
 .resident-directory .info-scroll-list {
   max-height: min(62vh, 640px);
   overflow-y: auto;

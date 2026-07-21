@@ -13,6 +13,8 @@ import {
   buildingLabel,
   buildRentReminderWhatsAppMessage,
   buildPaymentStatusWhatsAppMessage,
+  findInvoiceInMap,
+  findPaymentById,
   findResidentByUnitCode,
   formatMoney,
   paymentMethodLabel,
@@ -31,8 +33,15 @@ import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
 import { siteLegal } from '../legal/siteLegal'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
+import AdminInvoiceLink from '../components/AdminInvoiceLink'
+import AdminPaymentLink from '../components/AdminPaymentLink'
 import AdminUnitLink from '../components/AdminUnitLink'
-import { adminPortalHref, adminUnitHref, parseAdminPortalTab, type AdminPortalTab } from '../lib/adminUnitLink'
+import {
+  adminPortalHref,
+  adminUnitHref,
+  parseAdminPortalTab,
+  type AdminPortalTab,
+} from '../lib/adminUnitLink'
 import { bankSummary, BANK_EDIT_PASSWORD, isBankConfigured } from '../config/paymentSettings'
 import { fetchSyncHealth, getSyncMode, getSyncStatus } from '../lib/cloudSync'
 import { exportAllApartmentsExcel, exportApartmentExcel } from '../lib/exportApartmentExcel'
@@ -185,7 +194,12 @@ export default function AdminPortal() {
   const [apartmentEditorOpen, setApartmentEditorOpen] = useState(false)
   const [tab, setTab] = useState<Tab>(() => parseAdminPortalTab(searchParams.get('tab')) ?? 'info')
   const unitFromUrl = searchParams.get('unit')?.trim() ?? ''
+  const paymentFromUrl = searchParams.get('payment')?.trim() ?? ''
+  const invoiceFromUrl = searchParams.get('invoice')?.trim() ?? ''
   const unitFocus = Boolean(unitFromUrl) && tab === 'info' && !apartmentEditorOpen
+  const paymentsUnitFocus = Boolean(unitFromUrl) && tab === 'payments'
+  const paymentFocus = Boolean(paymentFromUrl)
+  const invoiceFocus = Boolean(invoiceFromUrl)
   const canEditBank = staffCan(session, 'bank_settings')
   const canClearApartment = staffCan(session, 'clear_apartment')
   const canDeletePayment = staffCan(session, 'delete_payment')
@@ -291,21 +305,58 @@ export default function AdminPortal() {
 
   useEffect(() => {
     const tabParam = parseAdminPortalTab(searchParams.get('tab'))
-    if (tabParam && tabParam !== tab) setTab(tabParam)
+    const paymentParam = searchParams.get('payment')?.trim() ?? ''
+    const invoiceParam = searchParams.get('invoice')?.trim() ?? ''
+    const unitParam = searchParams.get('unit')?.trim() ?? ''
 
-    const unitParam = searchParams.get('unit')?.trim()
-    if (!unitParam) return
-    const found = findResidentByUnitCode(residentList, unitParam)
-    if (found && found.id !== selectedResidentId) {
-      setSelectedResidentId(found.id)
-      setApartmentEditorOpen(false)
+    let nextTab: Tab | null = tabParam
+    if (!nextTab && paymentParam) nextTab = 'income'
+    if (!nextTab && invoiceParam) nextTab = 'payments'
+    if (nextTab && nextTab !== tab) setTab(nextTab)
+
+    if (paymentParam) {
+      const payment = findPaymentById(payments, paymentParam)
+      if (payment && payment.residentId !== selectedResidentId) {
+        setSelectedResidentId(payment.residentId)
+        setApartmentEditorOpen(false)
+      }
+    } else if (invoiceParam) {
+      const found = findInvoiceInMap(invoiceMap, invoiceParam)
+      if (found && found.residentId !== selectedResidentId) {
+        setSelectedResidentId(found.residentId)
+        setApartmentEditorOpen(false)
+      }
     }
-  }, [searchParams, residentList, selectedResidentId, tab])
+
+    if (unitParam) {
+      const found = findResidentByUnitCode(residentList, unitParam)
+      if (found && found.id !== selectedResidentId) {
+        setSelectedResidentId(found.id)
+        setApartmentEditorOpen(false)
+      }
+    }
+  }, [searchParams, residentList, selectedResidentId, tab, payments, invoiceMap])
 
   useEffect(() => {
     if (!unitFromUrl || tab !== 'info' || apartmentEditorOpen) return
     detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [unitFromUrl, tab, selectedResidentId, apartmentEditorOpen])
+
+  useEffect(() => {
+    if (!paymentFromUrl) return
+    const payment = findPaymentById(payments, paymentFromUrl)
+    if (!payment) return
+    const el = document.getElementById(`admin-payment-${payment.id}`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [paymentFromUrl, tab, payments, selectedResidentId])
+
+  useEffect(() => {
+    if (!invoiceFromUrl || tab !== 'payments') return
+    const found = findInvoiceInMap(invoiceMap, invoiceFromUrl)
+    if (!found) return
+    const el = document.getElementById(`admin-invoice-${found.invoice.id}`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [invoiceFromUrl, tab, invoiceMap, selectedResidentId])
 
   function currentUnitCode() {
     const code = unitCodeLabel(selectedResident)
@@ -583,7 +634,6 @@ export default function AdminPortal() {
         name: apartmentForm.name.trim() || selectedResident.name,
         phone,
       },
-      adminResidentInvoices,
       `${siteLegal.publicUrl}/resident`,
       siteLegal.brandName,
     )
@@ -756,7 +806,22 @@ export default function AdminPortal() {
     resetListingForm()
   }
 
-  function renderResidentPicker(showFinancialMeta: boolean, residents = residentList) {
+  function paymentRowClass(p: PaymentRecord) {
+    const focused = paymentFromUrl && findPaymentById([p], paymentFromUrl)
+    return focused ? 'list-row record-focused' : 'list-row'
+  }
+
+  function invoiceRowClass(inv: { id: string }) {
+    const focused =
+      invoiceFromUrl && inv.id.trim().toUpperCase() === invoiceFromUrl.trim().toUpperCase()
+    return focused ? 'list-row record-focused' : 'list-row'
+  }
+
+  function renderResidentPicker(
+    showFinancialMeta: boolean,
+    residents = residentList,
+    linkTab: Tab = 'info',
+  ) {
     if (residents.length === 0) {
       return <p className="meta">{tr('noApartmentsYet')}</p>
     }
@@ -780,7 +845,7 @@ export default function AdminPortal() {
       return (
         <Link
           key={r.id}
-          to={adminUnitHref(unit)}
+          to={adminUnitHref(unit, linkTab)}
           className={`resident-pick ${active ? 'active' : ''}`}
           onClick={() => setApartmentEditorOpen(false)}
         >
@@ -1413,19 +1478,43 @@ export default function AdminPortal() {
             </section>
 
             <section className="panel">
+              {paymentFocus && (
+                <Link
+                  to={adminPortalHref({ tab: 'income' })}
+                  className="btn btn-ghost btn-sm"
+                  style={{ marginBottom: '0.75rem' }}
+                >
+                  {tr('allPayments')}
+                </Link>
+              )}
               <h2 style={{ marginBottom: '0.25rem' }}>{tr('incomingPayments')}</h2>
               <p className="meta" style={{ marginTop: 0 }}>
                 {tr('incomingPaymentsLead')}
               </p>
               <div className="list">
                 {incomePayments.map((p) => (
-                  <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
+                  <div
+                    className={paymentRowClass(p)}
+                    key={p.id}
+                    id={`admin-payment-${p.id}`}
+                    style={{ alignItems: 'flex-start' }}
+                  >
                     <div style={{ flex: 1 }}>
                       <strong>
-                        +{formatMoney(p.confirmedAmount ?? p.amount)} · {p.residentName || p.unit}
+                        <AdminPaymentLink paymentId={p.id} />
                       </strong>
                       <div className="meta">
-                        <AdminUnitLink unit={p.unit} /> · {paymentMethodLabel(p.method)} · {p.paidAt}
+                        +{formatMoney(p.confirmedAmount ?? p.amount)} · {p.residentName || p.unit}
+                        <br />
+                        <AdminUnitLink unit={p.unit} tab="payments" /> · {paymentMethodLabel(p.method)} ·{' '}
+                        {p.paidAt}
+                        {p.invoiceId ? (
+                          <>
+                            <br />
+                            <AdminInvoiceLink invoiceId={p.invoiceId} unit={p.unit} /> ·{' '}
+                            {tr('paymentRefLabel')}
+                          </>
+                        ) : null}
                       </div>
                       {p.transferProof?.dataUrl && (
                         <a
@@ -1669,17 +1758,30 @@ export default function AdminPortal() {
               )}
               <div className="list">
                 {pendingPayments.map((p) => (
-                  <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
+                  <div
+                    className={paymentRowClass(p)}
+                    key={p.id}
+                    id={`admin-payment-${p.id}`}
+                    style={{ alignItems: 'flex-start' }}
+                  >
                     <div style={{ flex: 1 }}>
                       <strong>
-                        {formatMoney(p.amount)} · {p.residentName || p.unit}
+                        <AdminPaymentLink paymentId={p.id} tab="payments" />
                       </strong>
                       <div className="meta">
-                        <AdminUnitLink unit={p.unit} /> · {p.paidAt}
+                        {formatMoney(p.amount)} · {p.residentName || p.unit}
+                        <br />
+                        <AdminUnitLink unit={p.unit} tab="payments" /> · {p.paidAt}
                         {p.bankReference ? (
                           <>
                             <br />
                             {tr('bankReferenceShort')}: {p.bankReference}
+                          </>
+                        ) : null}
+                        {p.invoiceId ? (
+                          <>
+                            <br />
+                            <AdminInvoiceLink invoiceId={p.invoiceId} unit={p.unit} />
                           </>
                         ) : null}
                         {p.paymentRef ? (
@@ -1759,23 +1861,36 @@ export default function AdminPortal() {
               </div>
             </section>
 
-            <div className="admin-split" style={{ marginTop: '1rem' }}>
+            <div className={`admin-split ${paymentsUnitFocus ? 'unit-focused' : ''}`} style={{ marginTop: '1rem' }}>
               <section className="panel resident-directory">
                 <h2>{tr('apartments')}</h2>
                 <p className="meta" style={{ marginTop: 0, marginBottom: '0.85rem' }}>
                   {tr('selectApartment')}
                 </p>
-                {renderResidentPicker(true)}
+                {renderResidentPicker(true, residentList, 'payments')}
               </section>
 
-              <section className="panel resident-file">
+              <section className="panel resident-file" ref={paymentsUnitFocus ? detailRef : undefined}>
+                {(paymentsUnitFocus || invoiceFocus || (paymentFocus && tab === 'payments')) && (
+                  <Link
+                    to={adminPortalHref({ tab: 'payments' })}
+                    className="btn btn-ghost btn-sm"
+                    style={{ marginBottom: '0.75rem' }}
+                  >
+                    {invoiceFocus
+                      ? tr('allInvoices')
+                      : paymentFocus
+                        ? tr('allPayments')
+                        : tr('allUnits')}
+                  </Link>
+                )}
                 <div className="file-head">
                   <div>
                     <h2 style={{ marginBottom: '0.25rem' }}>
                       {apartmentDisplayTitle(selectedResident, lang)}
                     </h2>
                     <p className="meta" style={{ margin: 0 }}>
-                      {unitCodeLabel(selectedResident)}
+                      <AdminUnitLink unit={unitCodeLabel(selectedResident)} tab="payments" />
                       {selectedResident.building ? ` · ${selectedResident.building}` : ''}
                     </p>
                   </div>
@@ -1890,14 +2005,59 @@ export default function AdminPortal() {
                   {tr('exportApartmentExcel')}
                 </button>
 
+                <h3 className="section-label">{tr('invoices')}</h3>
+                <div className="list">
+                  {adminResidentInvoices.map((inv) => (
+                    <div
+                      className={invoiceRowClass(inv)}
+                      key={inv.id}
+                      id={`admin-invoice-${inv.id}`}
+                      style={{ alignItems: 'flex-start' }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <strong>
+                          <AdminInvoiceLink
+                            invoiceId={inv.id}
+                            unit={unitCodeLabel(selectedResident)}
+                          />
+                        </strong>
+                        <div className="meta">
+                          {inv.period} · {tr('due')} {inv.dueDate} · {formatMoney(inv.amount)}
+                          {(inv.extensionDays ?? 0) > 0
+                            ? ` · +${inv.extensionDays}d`
+                            : ''}
+                        </div>
+                      </div>
+                      <Badge lang={lang} status={inv.status} />
+                    </div>
+                  ))}
+                  {adminResidentInvoices.length === 0 && (
+                    <p className="meta">{tr('noInvoices')}</p>
+                  )}
+                </div>
+
                 <h3 className="section-label">{tr('receivedAdmin')}</h3>
                 <div className="list">
                   {adminResidentPayments.map((p) => (
-                    <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
+                    <div
+                      className={paymentRowClass(p)}
+                      key={p.id}
+                      id={`admin-payment-${p.id}`}
+                      style={{ alignItems: 'flex-start' }}
+                    >
                       <div style={{ flex: 1 }}>
-                        <strong>+{formatMoney(p.confirmedAmount ?? p.amount)}</strong>
+                        <strong>
+                          <AdminPaymentLink paymentId={p.id} tab="payments" />
+                        </strong>
                         <div className="meta">
-                          {paymentMethodLabel(p.method)} · {p.paidAt}
+                          +{formatMoney(p.confirmedAmount ?? p.amount)} · {paymentMethodLabel(p.method)} ·{' '}
+                          {p.paidAt}
+                          {p.invoiceId ? (
+                            <>
+                              <br />
+                              <AdminInvoiceLink invoiceId={p.invoiceId} unit={p.unit} />
+                            </>
+                          ) : null}
                           <br />
                           {p.destination}
                           {p.reviewNote ? (

@@ -16,18 +16,11 @@ describe('buildRentReminderWhatsAppMessage', () => {
     }
     const message = buildRentReminderWhatsAppMessage(
       resident,
-      [
-        {
-          id: 'INV-001',
-          period: 'Mar 2026',
-          amount: 2_500,
-          dueDate: '1 Apr 2026',
-          status: 'due',
-        },
-      ],
       'https://www.mlihrent.com/resident',
     )
     expect(message).toContain('Hello Sara Ali')
+    expect(message).toContain('Remaining balance on your lease: AED 5,000')
+    expect(message).not.toContain('invoice')
     expect(message).toContain('مرحباً Sara Ali')
     expect(message).toContain('———')
   })

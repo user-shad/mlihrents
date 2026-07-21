@@ -100,55 +100,37 @@ export function whatsappChatUrl(phone: string, text?: string) {
 /** Pre-filled WhatsApp rent reminder for admin to send manually (one language). */
 export function buildRentReminderWhatsAppMessageForLang(
   resident: Resident,
-  invoices: Invoice[],
   lang: 'en' | 'ar',
   portalUrl: string,
   brandName = 'MLIH Rents',
 ) {
   const name = resident.name.trim() || (lang === 'ar' ? 'الساكن' : 'Resident')
   const unit = unitCodeLabel(resident)
-  const unpaid = invoices.filter((inv) => inv.status === 'due' || inv.status === 'overdue')
-  const next = unpaid.find((inv) => inv.status === 'overdue') ?? unpaid.find((inv) => inv.status === 'due')
   const balance = remainingBalance(resident)
 
   if (lang === 'ar') {
-    let detail = ''
-    if (next) {
-      detail =
-        next.status === 'overdue'
-          ? `فاتورة ${next.period} بمبلغ ${next.amount.toLocaleString()} درهم كانت مستحقة في ${next.dueDate}.`
-          : `إيجار ${next.period} بمبلغ ${next.amount.toLocaleString()} درهم مستحق في ${next.dueDate}.`
-    } else if (balance > 0) {
-      detail = `المبلغ المتبقي على العقد: ${balance.toLocaleString()} درهم.`
-    } else {
-      detail = 'يرجى مراجعة حالة الدفع في البوابة.'
-    }
+    const detail =
+      balance > 0
+        ? `المبلغ المتبقي على العقد: ${balance.toLocaleString()} درهم.`
+        : 'يرجى مراجعة حالة الدفع في البوابة.'
     return `مرحباً ${name}،\n\nتذكير من ${brandName} بخصوص الوحدة ${unit}.\n${detail}\n\nادفع عبر بوابة السكان:\n${portalUrl}\n\nشكراً لكم.`
   }
 
-  let detail = ''
-  if (next) {
-    detail =
-      next.status === 'overdue'
-        ? `Your ${next.period} invoice of AED ${next.amount.toLocaleString()} was due on ${next.dueDate}.`
-        : `Your ${next.period} rent of AED ${next.amount.toLocaleString()} is due on ${next.dueDate}.`
-  } else if (balance > 0) {
-    detail = `Remaining balance on your lease: AED ${balance.toLocaleString()}.`
-  } else {
-    detail = 'Please review your payment status on the portal.'
-  }
+  const detail =
+    balance > 0
+      ? `Remaining balance on your lease: AED ${balance.toLocaleString()}.`
+      : 'Please review your payment status on the portal.'
   return `Hello ${name},\n\nThis is a rent reminder from ${brandName} for unit ${unit}.\n${detail}\n\nPay via the resident portal:\n${portalUrl}\n\nThank you.`
 }
 
 /** Bilingual rent reminder (English + Arabic) for WhatsApp. */
 export function buildRentReminderWhatsAppMessage(
   resident: Resident,
-  invoices: Invoice[],
   portalUrl: string,
   brandName = 'MLIH Rents',
 ) {
-  const en = buildRentReminderWhatsAppMessageForLang(resident, invoices, 'en', portalUrl, brandName)
-  const ar = buildRentReminderWhatsAppMessageForLang(resident, invoices, 'ar', portalUrl, brandName)
+  const en = buildRentReminderWhatsAppMessageForLang(resident, 'en', portalUrl, brandName)
+  const ar = buildRentReminderWhatsAppMessageForLang(resident, 'ar', portalUrl, brandName)
   return `${en}\n\n———\n\n${ar}`
 }
 
@@ -802,6 +784,32 @@ export function findResidentByUnitCode(residents: Resident[], code: string) {
   return residents.find(
     (r) => normalizeUnitCode(r.apartment) === norm || normalizeUnitCode(unitCodeLabel(r)) === norm,
   )
+}
+
+/** Find a payment by id, payment ref, or invoice id on the record. */
+export function findPaymentById(payments: PaymentRecord[], id: string) {
+  const key = normalizeRef(id)
+  if (!key) return undefined
+  return payments.find(
+    (p) =>
+      normalizeRef(p.id) === key ||
+      normalizeRef(p.paymentRef ?? '') === key ||
+      normalizeRef(p.invoiceId) === key,
+  )
+}
+
+/** Find an invoice anywhere in the map; returns the owning resident id. */
+export function findInvoiceInMap(
+  invoiceMap: Record<string, Invoice[]>,
+  id: string,
+): { residentId: string; invoice: Invoice } | undefined {
+  const key = normalizeRef(id)
+  if (!key) return undefined
+  for (const [residentId, invoices] of Object.entries(invoiceMap)) {
+    const invoice = invoices.find((i) => normalizeRef(i.id) === key)
+    if (invoice) return { residentId, invoice }
+  }
+  return undefined
 }
 
 export function isUnitOccupied(resident: Resident) {
