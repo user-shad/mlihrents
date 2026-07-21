@@ -72,7 +72,7 @@ export function normalizePhone(phone: string) {
 }
 
 /** Retired bootstrap staff phones — removed on sync so new defaults apply. */
-export const LEGACY_STAFF_PHONES = ['0500000000']
+export const LEGACY_STAFF_PHONES = ['0500000000', '0501111111']
 
 /** Open WhatsApp chat for a UAE/local phone number. Optional pre-filled message. */
 export function whatsappChatUrl(phone: string, text?: string) {
@@ -732,11 +732,11 @@ export interface StaffAccount {
 /**
  * Bootstrap staff logins (passwords persist after first change in localStorage).
  * Building Admin: `0553262626` · PIN `1989` — can change tenant passwords
- * Operations Manager: `0501111111` · PIN `5678` — own password only
+ * Operations Manager: `0505001021` · PIN `3004` — own password only
  */
 export const staffAccounts: StaffAccount[] = [
   { phone: '0553262626', pin: '1989', name: 'Building Admin', tier: 'admin' },
-  { phone: '0501111111', pin: '5678', name: 'Operations Manager', tier: 'staff' },
+  { phone: '0505001021', pin: '3004', name: 'Operations Manager', tier: 'staff' },
 ]
 
 export const invoices: Invoice[] = []
