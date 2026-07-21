@@ -1,4 +1,5 @@
 import type { AccountRecord } from '../context/AuthContext'
+import { prepareStoredAccounts } from './accountBootstrap'
 import type { BankAccountSettings } from '../config/paymentSettings'
 import type {
   AvailableApartment,
@@ -352,12 +353,13 @@ async function loadCloudRow(): Promise<CloudRow | null> {
 }
 
 async function saveCloudRowViaApi(accounts: AccountRecord[], ops: PortalOps) {
+  const preparedAccounts = prepareStoredAccounts(accounts)
   const slimOps = slimOpsForCloud(ops)
   try {
     const res = await fetch('/api/portal-sync', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accounts, ops: slimOps }),
+      body: JSON.stringify({ accounts: preparedAccounts, ops: slimOps }),
     })
     if (res.ok) {
       const data = (await res.json()) as { updated_at?: string; storage?: string }
@@ -394,11 +396,12 @@ async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps) {
   if (await saveCloudRowViaApi(accounts, ops)) return
 
   if (!supabase) return
+  const preparedAccounts = prepareStoredAccounts(accounts)
   const slimOps = slimOpsForCloud(ops)
   const updated_at = new Date().toISOString()
   await supabase.from('portal_sync').upsert({
     id: SYNC_ROW_ID,
-    accounts,
+    accounts: preparedAccounts,
     ops: slimOps,
     updated_at,
   })
@@ -447,7 +450,7 @@ function mergeBootstrap(
     if (localHasOps) ops = localOps
   }
 
-  return { accounts, ops }
+  return { accounts: prepareStoredAccounts(accounts), ops }
 }
 
 async function pushLocalToCloudIfNeeded(data: BootstrapData, cloud: CloudRow | null) {

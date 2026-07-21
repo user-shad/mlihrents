@@ -61,19 +61,71 @@ export const blankResident: Resident = {
 
 /** Digits only for phone comparison (0545882666 and +971 54 588 2666 match). */
 export function normalizePhone(phone: string) {
-  const digits = phone.replace(/\D/g, '')
+  let digits = phone.replace(/\D/g, '')
   if (digits.startsWith('971') && digits.length >= 12) {
-    return `0${digits.slice(3)}`
+    digits = `0${digits.slice(3)}`
+  }
+  if (digits.length === 9 && digits.startsWith('5')) {
+    digits = `0${digits}`
   }
   return digits
 }
 
-/** Open WhatsApp chat for a UAE/local phone number. */
-export function whatsappChatUrl(phone: string) {
+/** Retired bootstrap staff phones — removed on sync so new defaults apply. */
+export const LEGACY_STAFF_PHONES = ['0500000000']
+
+/** Open WhatsApp chat for a UAE/local phone number. Optional pre-filled message. */
+export function whatsappChatUrl(phone: string, text?: string) {
   let digits = phone.replace(/\D/g, '')
   if (!digits) return ''
   if (digits.startsWith('0')) digits = `971${digits.slice(1)}`
-  return `https://wa.me/${digits}`
+  const base = `https://wa.me/${digits}`
+  const message = text?.trim()
+  if (!message) return base
+  return `${base}?text=${encodeURIComponent(message)}`
+}
+
+/** Pre-filled WhatsApp rent reminder for admin to send manually. */
+export function buildRentReminderWhatsAppMessage(
+  resident: Resident,
+  invoices: Invoice[],
+  lang: 'en' | 'ar',
+  portalUrl: string,
+  brandName = 'MLIH Rents',
+) {
+  const name = resident.name.trim() || (lang === 'ar' ? 'الساكن' : 'Resident')
+  const unit = unitCodeLabel(resident)
+  const unpaid = invoices.filter((inv) => inv.status === 'due' || inv.status === 'overdue')
+  const next = unpaid.find((inv) => inv.status === 'overdue') ?? unpaid.find((inv) => inv.status === 'due')
+  const balance = remainingBalance(resident)
+
+  if (lang === 'ar') {
+    let detail = ''
+    if (next) {
+      detail =
+        next.status === 'overdue'
+          ? `فاتورة ${next.period} بمبلغ ${next.amount.toLocaleString()} درهم كانت مستحقة في ${next.dueDate}.`
+          : `إيجار ${next.period} بمبلغ ${next.amount.toLocaleString()} درهم مستحق في ${next.dueDate}.`
+    } else if (balance > 0) {
+      detail = `المبلغ المتبقي على العقد: ${balance.toLocaleString()} درهم.`
+    } else {
+      detail = 'يرجى مراجعة حالة الدفع في البوابة.'
+    }
+    return `مرحباً ${name}،\n\nتذكير من ${brandName} بخصوص الوحدة ${unit}.\n${detail}\n\nادفع عبر بوابة السكان:\n${portalUrl}\n\nشكراً لكم.`
+  }
+
+  let detail = ''
+  if (next) {
+    detail =
+      next.status === 'overdue'
+        ? `Your ${next.period} invoice of AED ${next.amount.toLocaleString()} was due on ${next.dueDate}.`
+        : `Your ${next.period} rent of AED ${next.amount.toLocaleString()} is due on ${next.dueDate}.`
+  } else if (balance > 0) {
+    detail = `Remaining balance on your lease: AED ${balance.toLocaleString()}.`
+  } else {
+    detail = 'Please review your payment status on the portal.'
+  }
+  return `Hello ${name},\n\nThis is a rent reminder from ${brandName} for unit ${unit}.\n${detail}\n\nPay via the resident portal:\n${portalUrl}\n\nThank you.`
 }
 
 export function isValidPin(pin: string) {
@@ -679,11 +731,11 @@ export interface StaffAccount {
 
 /**
  * Bootstrap staff logins (passwords persist after first change in localStorage).
- * Building Admin: `0500000000` · PIN `1234` — can change tenant passwords
+ * Building Admin: `0553262626` · PIN `1989` — can change tenant passwords
  * Operations Manager: `0501111111` · PIN `5678` — own password only
  */
 export const staffAccounts: StaffAccount[] = [
-  { phone: '0500000000', pin: '1234', name: 'Building Admin', tier: 'admin' },
+  { phone: '0553262626', pin: '1989', name: 'Building Admin', tier: 'admin' },
   { phone: '0501111111', pin: '5678', name: 'Operations Manager', tier: 'staff' },
 ]
 

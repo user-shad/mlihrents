@@ -2,16 +2,14 @@ import { createContext, ReactNode, useContext, useEffect, useState } from 'react
 import {
   isValidPin,
   normalizePhone,
-  residents,
-  staffAccounts,
   StaffTier,
 } from '../data'
+import { ensureBootstrapStaff, prepareStoredAccounts } from '../lib/accountBootstrap'
 import {
   onCloudAccounts,
   queueCloudAccounts,
   writeLocalAccounts,
 } from '../lib/cloudSync'
-
 export type SessionRole = 'resident' | 'admin'
 
 export interface Session {
@@ -52,89 +50,7 @@ const SESSION_KEY = 'mlihrents_session'
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-function seedAccounts(): AccountRecord[] {
-  const fromResidents: AccountRecord[] = residents.map((r) => ({
-    phone: normalizePhone(r.phone),
-    pin: r.pin,
-    role: 'resident',
-    name: r.name,
-    residentId: r.id,
-  }))
-  const fromStaff: AccountRecord[] = staffAccounts.map((s) => ({
-    phone: normalizePhone(s.phone),
-    pin: s.pin,
-    role: 'admin',
-    name: s.name,
-    staffTier: s.tier,
-  }))
-  return [...fromResidents, ...fromStaff]
-}
-
-/** Always keep bootstrap staff accounts from data.ts available for login. */
-function ensureBootstrapStaff(list: AccountRecord[]): AccountRecord[] {
-  let next = [...list]
-  for (const s of staffAccounts) {
-    const phone = normalizePhone(s.phone)
-    if (!phone) continue
-    const idx = next.findIndex((a) => a.role === 'admin' && a.phone === phone)
-    if (idx >= 0) {
-      next[idx] = { ...next[idx], name: s.name, staffTier: s.tier }
-    } else {
-      next.push({ phone, pin: s.pin, role: 'admin', name: s.name, staffTier: s.tier })
-    }
-  }
-  return next
-}
-
-/** Remove demo A1 login saved in older builds. */
-function stripLegacyTestAccounts(list: AccountRecord[]): AccountRecord[] {
-  return list.filter((account) => {
-    if (account.role !== 'resident') return true
-    const phone = normalizePhone(account.phone)
-    const isTestName = account.name === 'Test Tenant A1'
-    const isTestPhone = phone === '0501234567'
-    const isTestUnit = account.residentId === 'apt-a1'
-    return !(isTestName || (isTestUnit && isTestPhone) || (isTestName && isTestPhone))
-  })
-}
-
-/** Ensure sample / seed residents from data.ts exist as login accounts. */
-function ensureSeedResidents(list: AccountRecord[]): AccountRecord[] {
-  let next = stripLegacyTestAccounts(list)
-  for (const r of residents) {
-    const phone = normalizePhone(r.phone)
-    if (!phone || !r.id) continue
-    const idx = next.findIndex(
-      (a) => a.role === 'resident' && (a.residentId === r.id || a.phone === phone),
-    )
-    if (idx >= 0) {
-      next[idx] = {
-        ...next[idx],
-        phone,
-        pin: r.pin,
-        name: r.name,
-        residentId: r.id,
-      }
-    } else {
-      next.push({
-        phone,
-        pin: r.pin,
-        role: 'resident',
-        name: r.name,
-        residentId: r.id,
-      })
-    }
-  }
-  return next
-}
-
-function prepareAccounts(raw: AccountRecord[]): AccountRecord[] {
-  const base = raw.length > 0 ? raw : seedAccounts()
-  return ensureSeedResidents(ensureBootstrapStaff(base))
-}
-
-function enrichSession(session: Session, accounts: AccountRecord[]): Session {
-  if (session.role !== 'admin' || session.staffTier) return session
+function enrichSession(session: Session, accounts: AccountRecord[]): Session {  if (session.role !== 'admin' || session.staffTier) return session
   const account = accounts.find((a) => a.role === 'admin' && a.phone === session.phone)
   return { ...session, staffTier: account?.staffTier ?? 'admin' }
 }
@@ -160,17 +76,16 @@ export function AuthProvider({
   children: ReactNode
   initialAccounts: AccountRecord[]
 }) {
-  const [accounts, setAccounts] = useState<AccountRecord[]>(() => prepareAccounts(initialAccounts))
+  const [accounts, setAccounts] = useState<AccountRecord[]>(() => prepareStoredAccounts(initialAccounts))
   const [session, setSession] = useState<Session | null>(() =>
-    readStoredSession(prepareAccounts(initialAccounts)),
+    readStoredSession(prepareStoredAccounts(initialAccounts)),
   )
 
   useEffect(() => {
     return onCloudAccounts((remote) => {
-      setAccounts(prepareAccounts(remote))
+      setAccounts(prepareStoredAccounts(remote))
     })
   }, [])
-
   useEffect(() => {
     if (session) {
       localStorage.setItem(SESSION_KEY, JSON.stringify(session))
@@ -206,7 +121,7 @@ export function AuthProvider({
     const key = normalizePhone(phone.trim())
     if (!key) return 'phoneRequired'
     const account = ensureBootstrapStaff(accounts).find(
-      (a) => a.role === 'admin' && a.phone === key,
+      (a) => a.role === 'admin' && normalizePhone(a.phone) === key,
     )
     if (!account) return 'staffNotFound'
     if (account.pin !== pin) return 'wrongPin'

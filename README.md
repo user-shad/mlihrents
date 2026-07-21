@@ -64,7 +64,7 @@ Staff bootstrap accounts (change passwords after first sign-in):
 
 | Role | Phone | Password |
 |------|-------|----------|
-| Building Admin | `0500000000` | `1234` |
+| Building Admin | `0553262626` | `1989` |
 | Operations Manager | `0501111111` | `5678` |
 
 Residents are created by staff in **Admin → Info** — assign phone number and 4-digit password before the tenant can sign in.

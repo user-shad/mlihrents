@@ -8,6 +8,7 @@ import {
   AvailableApartment,
   BUILDING_INVENTORY,
   buildingLabel,
+  buildRentReminderWhatsAppMessage,
   formatMoney,
   paymentMethodLabel,
   remainingBalance,
@@ -194,6 +195,31 @@ export default function AdminPortal() {
     resetHumanMode()
     logout()
     navigate('/')
+  }
+
+  function sendRentReminder() {
+    const phone = (editPhone || selectedResident.phone).trim()
+    if (!phone) {
+      showToast(tr('reminderNoPhone'))
+      return
+    }
+    const message = buildRentReminderWhatsAppMessage(
+      {
+        ...selectedResident,
+        name: editName.trim() || selectedResident.name,
+        phone,
+      },
+      adminResidentInvoices,
+      lang,
+      `${siteLegal.publicUrl}/resident`,
+      siteLegal.brandName,
+    )
+    const url = whatsappChatUrl(phone, message)
+    if (!url) {
+      showToast(tr('reminderNoPhone'))
+      return
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   function bundleForResident(residentId: string) {
@@ -629,21 +655,31 @@ export default function AdminPortal() {
                       {selectedResident.building ? ` · ${selectedResident.building}` : ''}
                     </p>
                   </div>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    type="button"
-                    onClick={() => {
-                      setSelectedResidentId(selectedResident.id)
-                      setTab('chat')
-                      showToast(
-                        lang === 'ar'
-                          ? `تم فتح محادثة الدعم لـ ${apartmentDisplayTitle(selectedResident, lang)}`
-                          : `Opened support thread for ${apartmentDisplayTitle(selectedResident, lang)}`,
-                      )
-                    }}
-                  >
-                    {tr('openChat')}
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      title={tr('sendReminderHelp')}
+                      onClick={sendRentReminder}
+                    >
+                      {tr('sendReminder')}
+                    </button>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      type="button"
+                      onClick={() => {
+                        setSelectedResidentId(selectedResident.id)
+                        setTab('chat')
+                        showToast(
+                          lang === 'ar'
+                            ? `تم فتح محادثة الدعم لـ ${apartmentDisplayTitle(selectedResident, lang)}`
+                            : `Opened support thread for ${apartmentDisplayTitle(selectedResident, lang)}`,
+                        )
+                      }}
+                    >
+                      {tr('openChat')}
+                    </button>
+                  </div>
                 </div>
 
                 <h3 className="section-label">{tr('editApartmentInfo')}</h3>
@@ -1288,6 +1324,14 @@ export default function AdminPortal() {
                       {selectedResident.building ? ` · ${selectedResident.building}` : ''}
                     </p>
                   </div>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    type="button"
+                    title={tr('sendReminderHelp')}
+                    onClick={sendRentReminder}
+                  >
+                    {tr('sendReminder')}
+                  </button>
                 </div>
 
                 <h3 className="section-label">{tr('rentSchedule')}</h3>
