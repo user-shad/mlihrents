@@ -808,6 +808,46 @@ export const apartmentUnits: Resident[] = generateApartmentUnits()
 /** Seed apartment records for admin operations */
 export const residents: Resident[] = [...apartmentUnits]
 
+/** Normalize unit codes for matching (A-5, a5, A5 → A5). */
+export function normalizeUnitCode(code: string) {
+  return code.replace(/[\s-]/g, '').toUpperCase()
+}
+
+export function isUnitOccupied(resident: Resident) {
+  return !!(resident.name.trim() || resident.phone.trim())
+}
+
+/** Find a vacant inventory unit matching a public listing. */
+export function findVacantUnitForListing(listing: AvailableApartment, residents: Resident[]) {
+  const code = normalizeUnitCode(listing.apartment)
+  if (!code) return null
+  return residents.find((r) => normalizeUnitCode(r.apartment) === code && !isUnitOccupied(r)) ?? null
+}
+
+/** Apply listing details onto an apartment record (new or existing slot). */
+export function buildResidentFromListing(listing: AvailableApartment, base?: Resident): Resident {
+  const parsed = listing.apartment.trim().match(/^([A-Da-d])\s*-?\s*(\d+)$/i)
+  const letter =
+    listing.buildingNumber.trim().toUpperCase() ||
+    (parsed ? parsed[1].toUpperCase() : apartmentBuildingLetter(listing.apartment)) ||
+    'A'
+  const unitNum = parsed ? Number(parsed[2]) : 0
+  const aptCode = parsed ? `${letter}${unitNum}` : listing.apartment.trim()
+  const empty = base ?? buildEmptyApartment(letter, unitNum)
+
+  return {
+    ...empty,
+    id: base?.id ?? empty.id,
+    building: listing.building.trim() || empty.building,
+    buildingNumber: letter,
+    apartment: aptCode || empty.apartment,
+    floor: listing.floor ?? empty.floor,
+    rentAmount: listing.rentMonthly > 0 ? listing.rentMonthly : empty.rentAmount,
+    currency: listing.currency?.trim() || empty.currency,
+    parking: listing.parking ? 'Included' : empty.parking,
+  }
+}
+
 export function apartmentSortKey(apartment: string) {
   const match = apartment.trim().match(/^([A-D])(\d+)$/i)
   if (!match) return 9999

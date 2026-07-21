@@ -7,6 +7,7 @@ import {
   arrearsList,
   AvailableApartment,
   BUILDING_INVENTORY,
+  apartmentUnits,
   buildingLabel,
   buildRentReminderWhatsAppMessage,
   buildPaymentStatusEmailMessage,
@@ -100,6 +101,7 @@ export default function AdminPortal() {
     addAvailableListing,
     updateAvailableListing,
     removeAvailableListing,
+    addApartmentFromListing,
     bankSettings,
     saveBankSettings,
     serviceDirectory,
@@ -440,6 +442,44 @@ export default function AdminPortal() {
       units: sorted.filter((r) => apartmentBuildingLetter(r.apartment) === building.letter),
     })).filter((group) => group.units.length > 0)
 
+    const seedIds = new Set(apartmentUnits.map((u) => u.id))
+    const extraUnits = sorted.filter((r) => !seedIds.has(r.id))
+
+    const renderUnitButton = (r: (typeof sorted)[number]) => {
+      const unit = unitCodeLabel(r)
+      const active = r.id === selectedResidentId
+      const title = apartmentDisplayTitle(r, lang)
+      const vacant = !(r.name.trim() || r.phone.trim())
+      return (
+        <button
+          key={r.id}
+          type="button"
+          className={`resident-pick ${active ? 'active' : ''}`}
+          onClick={() => setSelectedResidentId(r.id)}
+        >
+          <span>
+            <strong>{title}</strong>
+            <span className="meta">
+              {unit}
+              {!vacant && r.phone ? ` · ${r.phone}` : vacant ? ` · ${tr('vacantUnit')}` : ''}
+              {showFinancialMeta && (
+                <>
+                  <br />
+                  {lang === 'ar' ? `الاستحقاق: يوم ${r.rentDueDay}` : `Due day: ${r.rentDueDay}`}
+                  {' · '}
+                  {rentScheduleLabel(r.rentSchedule, lang)}
+                  {' · '}
+                  {lang === 'ar' ? 'متبقي' : 'left'}{' '}
+                  {formatMoney(remainingBalance(r), r.currency)}
+                </>
+              )}
+            </span>
+          </span>
+          {r.status && r.status !== 'active' && <Badge lang={lang} status={r.status} />}
+        </button>
+      )
+    }
+
     return (
       <div className="building-unit-groups">
         {byBuilding.map(({ building, units }) => (
@@ -448,44 +488,17 @@ export default function AdminPortal() {
               {buildingLabel(building.letter, lang)} · {units.length}{' '}
               {lang === 'ar' ? 'وحدات' : 'units'}
             </h3>
-            <div className="list">
-              {units.map((r) => {
-                const unit = unitCodeLabel(r)
-                const active = r.id === selectedResidentId
-                const title = apartmentDisplayTitle(r, lang)
-                const vacant = !(r.name.trim() || r.phone.trim())
-                return (
-                  <button
-                    key={r.id}
-                    type="button"
-                    className={`resident-pick ${active ? 'active' : ''}`}
-                    onClick={() => setSelectedResidentId(r.id)}
-                  >
-                    <span>
-                      <strong>{title}</strong>
-                      <span className="meta">
-                        {unit}
-                        {!vacant && r.phone ? ` · ${r.phone}` : vacant ? ` · ${tr('vacantUnit')}` : ''}
-                        {showFinancialMeta && (
-                          <>
-                            <br />
-                            {lang === 'ar' ? `الاستحقاق: يوم ${r.rentDueDay}` : `Due day: ${r.rentDueDay}`}
-                            {' · '}
-                            {rentScheduleLabel(r.rentSchedule, lang)}
-                            {' · '}
-                            {lang === 'ar' ? 'متبقي' : 'left'}{' '}
-                            {formatMoney(remainingBalance(r), r.currency)}
-                          </>
-                        )}
-                      </span>
-                    </span>
-                    {r.status && r.status !== 'active' && <Badge lang={lang} status={r.status} />}
-                  </button>
-                )
-              })}
-            </div>
+            <div className="list">{units.map(renderUnitButton)}</div>
           </div>
         ))}
+        {extraUnits.length > 0 && (
+          <div className="building-unit-group">
+            <h3 className="section-label building-group-label">
+              {tr('extraApartments')} · {extraUnits.length}
+            </h3>
+            <div className="list">{extraUnits.map(renderUnitButton)}</div>
+          </div>
+        )}
       </div>
     )
   }
@@ -1719,6 +1732,17 @@ export default function AdminPortal() {
                     </div>
                     {canManageListings && (
                     <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        type="button"
+                        title={tr('addListingToRosterHelp')}
+                        onClick={() => {
+                          addApartmentFromListing(apt.id)
+                          setTab('info')
+                        }}
+                      >
+                        {tr('addListingToRoster')}
+                      </button>
                       <button
                         className="btn btn-ghost btn-sm"
                         type="button"

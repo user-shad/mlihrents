@@ -31,8 +31,12 @@ import {
   isValidBankReference,
   normalizeBankReferenceDigits,
   buildInstallmentInvoice,
+  buildResidentFromListing,
   canCollectRent,
+  findVacantUnitForListing,
   formatMoney,
+  isUnitOccupied,
+  normalizeUnitCode,
   remainingBalance,
   unitCodeLabel,
   RentSchedule,
@@ -121,7 +125,8 @@ function stripLegacyTestData(parsed: PortalOps): PortalOps {
 
 function ensureSeedApartments(list: Resident[]): Resident[] {
   const byId = new Map(list.map((r) => [r.id, r]))
-  return apartmentUnits.map((seed) => {
+  const seedIds = new Set(apartmentUnits.map((u) => u.id))
+  const seeded = apartmentUnits.map((seed) => {
     const saved = byId.get(seed.id)
     if (!saved) return seed
     return {
@@ -133,6 +138,8 @@ function ensureSeedApartments(list: Resident[]): Resident[] {
       id: seed.id,
     }
   })
+  const extras = list.filter((r) => !seedIds.has(r.id))
+  return [...seeded, ...extras]
 }
 
 function ensureSeedInvoices(map: Record<string, Invoice[]>): Record<string, Invoice[]> {
@@ -280,6 +287,7 @@ interface DataContextValue {
   addAvailableListing: (input: Omit<AvailableApartment, 'id'>) => void
   updateAvailableListing: (id: string, input: Partial<AvailableApartment>) => void
   removeAvailableListing: (id: string) => void
+  addApartmentFromListing: (listingId: string) => void
   bankSettings: BankAccountSettings
   bankConfigured: boolean
   saveBankSettings: (settings: BankAccountSettings) => void
@@ -1451,6 +1459,40 @@ export function DataProvider({
     showToast(tr('listingRemoved'))
   }
 
+  function addApartmentFromListing(listingId: string) {
+    if (denyStaff('manage_listings')) return
+    const listing = listings.find((item) => item.id === listingId)
+    if (!listing) return
+    if (!listing.apartment.trim()) {
+      showToast(tr('listingApartmentRequired'))
+      return
+    }
+
+    const code = normalizeUnitCode(listing.apartment)
+    const matched = residentList.find((r) => normalizeUnitCode(r.apartment) === code)
+    if (matched && isUnitOccupied(matched)) {
+      showToast(tr('listingUnitOccupied'))
+      return
+    }
+
+    const vacant = findVacantUnitForListing(listing, residentList)
+    let next = buildResidentFromListing(listing, vacant ?? matched)
+
+    if (vacant || matched) {
+      setResidentList((prev) => prev.map((r) => (r.id === next.id ? next : r)))
+    } else {
+      if (residentList.some((r) => r.id === next.id)) {
+        next = { ...next, id: `apt-extra-${Date.now()}` }
+      }
+      setResidentList((prev) => [...prev, next])
+      setInvoiceMap((prev) => ({ ...prev, [next.id]: prev[next.id] ?? [] }))
+      setTicketMap((prev) => ({ ...prev, [next.id]: prev[next.id] ?? [] }))
+    }
+
+    setSelectedResidentId(next.id)
+    showToast(tr('listingAddedToRoster'))
+  }
+
   return (
     <DataContext.Provider
       value={{
@@ -1532,6 +1574,7 @@ export function DataProvider({
         addAvailableListing,
         updateAvailableListing,
         removeAvailableListing,
+        addApartmentFromListing,
         bankSettings,
         bankConfigured: isBankConfigured(bankSettings),
         saveBankSettings,
