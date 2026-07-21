@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { requireSyncAuth } from './syncAuth'
+import { requireSyncAuth } from '../lib/syncAuth.js'
 import { createClient } from '@supabase/supabase-js'
 import { get, head, list, put } from '@vercel/blob'
 import { sql } from '@vercel/postgres'

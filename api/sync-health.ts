@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { requireSyncAuth } from './syncAuth'
+import { requireSyncAuth } from '../lib/syncAuth.js'
 
 function hasBlob() {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN)
