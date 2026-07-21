@@ -795,6 +795,15 @@ export function normalizeUnitCode(code: string) {
   return code.replace(/[\s-]/g, '').toUpperCase()
 }
 
+/** Find a resident record by unit code (D6, d-6, etc.). */
+export function findResidentByUnitCode(residents: Resident[], code: string) {
+  const norm = normalizeUnitCode(code)
+  if (!norm) return undefined
+  return residents.find(
+    (r) => normalizeUnitCode(r.apartment) === norm || normalizeUnitCode(unitCodeLabel(r)) === norm,
+  )
+}
+
 export function isUnitOccupied(resident: Resident) {
   return !!(resident.name.trim() || resident.phone.trim())
 }

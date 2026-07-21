@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState, useMemo } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   apartmentBuildingLetter,
   apartmentDisplayTitle,
@@ -13,6 +13,7 @@ import {
   buildingLabel,
   buildRentReminderWhatsAppMessage,
   buildPaymentStatusWhatsAppMessage,
+  findResidentByUnitCode,
   formatMoney,
   paymentMethodLabel,
   type PaymentNotifyKind,
@@ -30,12 +31,14 @@ import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
 import { siteLegal } from '../legal/siteLegal'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
+import AdminUnitLink from '../components/AdminUnitLink'
+import { adminPortalHref, adminUnitHref, parseAdminPortalTab, type AdminPortalTab } from '../lib/adminUnitLink'
 import { bankSummary, BANK_EDIT_PASSWORD, isBankConfigured } from '../config/paymentSettings'
 import { fetchSyncHealth, getSyncMode, getSyncStatus } from '../lib/cloudSync'
 import { exportAllApartmentsExcel, exportApartmentExcel } from '../lib/exportApartmentExcel'
 import { isBuildingAdmin, staffCan } from '../lib/staffPermissions'
 
-type Tab = 'info' | 'income' | 'payments' | 'available' | 'chat'
+type Tab = AdminPortalTab
 
 const emptyListingForm = {
   building: '',
@@ -123,6 +126,8 @@ const UNIT_TYPE_OPTIONS = ['Studio', '1BR'] as const
 
 export default function AdminPortal() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const detailRef = useRef<HTMLElement>(null)
   const { logout, session } = useAuth()
   const { lang, tr } = useLang()
   const {
@@ -178,7 +183,9 @@ export default function AdminPortal() {
 
   const [apartmentSearch, setApartmentSearch] = useState('')
   const [apartmentEditorOpen, setApartmentEditorOpen] = useState(false)
-  const [tab, setTab] = useState<Tab>('info')
+  const [tab, setTab] = useState<Tab>(() => parseAdminPortalTab(searchParams.get('tab')) ?? 'info')
+  const unitFromUrl = searchParams.get('unit')?.trim() ?? ''
+  const unitFocus = Boolean(unitFromUrl) && tab === 'info' && !apartmentEditorOpen
   const canEditBank = staffCan(session, 'bank_settings')
   const canClearApartment = staffCan(session, 'clear_apartment')
   const canDeletePayment = staffCan(session, 'delete_payment')
@@ -281,6 +288,35 @@ export default function AdminPortal() {
     if (!selectedResident.id) return
     setApartmentForm(residentToApartmentForm(selectedResident))
   }, [selectedResident, apartmentEditorOpen])
+
+  useEffect(() => {
+    const tabParam = parseAdminPortalTab(searchParams.get('tab'))
+    if (tabParam && tabParam !== tab) setTab(tabParam)
+
+    const unitParam = searchParams.get('unit')?.trim()
+    if (!unitParam) return
+    const found = findResidentByUnitCode(residentList, unitParam)
+    if (found && found.id !== selectedResidentId) {
+      setSelectedResidentId(found.id)
+      setApartmentEditorOpen(false)
+    }
+  }, [searchParams, residentList, selectedResidentId, tab])
+
+  useEffect(() => {
+    if (!unitFromUrl || tab !== 'info' || apartmentEditorOpen) return
+    detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [unitFromUrl, tab, selectedResidentId, apartmentEditorOpen])
+
+  function currentUnitCode() {
+    const code = unitCodeLabel(selectedResident)
+    return code !== '—' ? code : unitFromUrl
+  }
+
+  function goToTab(nextTab: Tab) {
+    setTab(nextTab)
+    const code = currentUnitCode()
+    navigate(adminPortalHref(code || undefined, nextTab), { replace: true })
+  }
 
   function handleLogout() {
     resetHumanMode()
@@ -743,14 +779,11 @@ export default function AdminPortal() {
       const title = apartmentDisplayTitle(r, lang)
       const vacant = !(r.name.trim() || r.phone.trim())
       return (
-        <button
+        <Link
           key={r.id}
-          type="button"
+          to={adminUnitHref(unit)}
           className={`resident-pick ${active ? 'active' : ''}`}
-          onClick={() => {
-            setSelectedResidentId(r.id)
-            setApartmentEditorOpen(false)
-          }}
+          onClick={() => setApartmentEditorOpen(false)}
         >
           <span>
             <strong>{title}</strong>
@@ -779,7 +812,7 @@ export default function AdminPortal() {
             </span>
           </span>
           {r.status && r.status !== 'active' && <Badge lang={lang} status={r.status} />}
-        </button>
+        </Link>
       )
     }
 
@@ -820,35 +853,35 @@ export default function AdminPortal() {
           <button
             type="button"
             className={`side-link ${tab === 'info' ? 'active' : ''}`}
-            onClick={() => setTab('info')}
+            onClick={() => goToTab('info')}
           >
             {tr('adminInfoTab')}
           </button>
           <button
             type="button"
             className={`side-link ${tab === 'income' ? 'active' : ''}`}
-            onClick={() => setTab('income')}
+            onClick={() => goToTab('income')}
           >
             {tr('adminIncomeTab')}
           </button>
           <button
             type="button"
             className={`side-link ${tab === 'payments' ? 'active' : ''}`}
-            onClick={() => setTab('payments')}
+            onClick={() => goToTab('payments')}
           >
             {tr('adminPaymentsTab')}
           </button>
           <button
             type="button"
             className={`side-link ${tab === 'available' ? 'active' : ''}`}
-            onClick={() => setTab('available')}
+            onClick={() => goToTab('available')}
           >
             {tr('adminAvailableTab')}
           </button>
           <button
             type="button"
             className={`side-link ${tab === 'chat' ? 'active' : ''}`}
-            onClick={() => setTab('chat')}
+            onClick={() => goToTab('chat')}
           >
             {tr('inbox')}
           </button>
@@ -1081,7 +1114,7 @@ export default function AdminPortal() {
               )}
             </details>
 
-            <div className="admin-split" style={{ marginTop: '1rem' }}>
+            <div className={`admin-split ${unitFocus ? 'unit-focused' : ''}`} style={{ marginTop: '1rem' }}>
               <section className="panel resident-directory">
                 <div className="file-head">
                   <div>
@@ -1110,7 +1143,7 @@ export default function AdminPortal() {
                 </div>
               </section>
 
-              <section className="panel resident-file">
+              <section className="panel resident-file" ref={detailRef}>
                 {apartmentEditorOpen && canManageApartments ? (
                   <>
                     <h2 style={{ marginBottom: '0.25rem' }}>{tr('addApartment')}</h2>
@@ -1129,13 +1162,18 @@ export default function AdminPortal() {
                   </>
                 ) : (
                   <>
+                    {unitFocus && (
+                      <Link to="/admin" className="btn btn-ghost btn-sm" style={{ marginBottom: '0.75rem' }}>
+                        {tr('allUnits')}
+                      </Link>
+                    )}
                     <div className="file-head">
                       <div>
                         <h2 style={{ marginBottom: '0.25rem' }}>
                           {apartmentDisplayTitle(selectedResident, lang)}
                         </h2>
                         <p className="meta" style={{ margin: 0 }}>
-                          {unitCodeLabel(selectedResident)}
+                          <AdminUnitLink unit={unitCodeLabel(selectedResident)} />
                           {selectedResident.building ? ` · ${selectedResident.building}` : ''}
                           {selectedResident.unitType ? ` · ${selectedResident.unitType}` : ''}
                           {selectedResident.nationality ? (
@@ -1161,7 +1199,7 @@ export default function AdminPortal() {
                           type="button"
                           onClick={() => {
                             setSelectedResidentId(selectedResident.id)
-                            setTab('chat')
+                            goToTab('chat')
                             showToast(
                               lang === 'ar'
                                 ? `تم فتح محادثة الدعم لـ ${apartmentDisplayTitle(selectedResident, lang)}`
@@ -1288,7 +1326,7 @@ export default function AdminPortal() {
                       className="btn btn-ghost btn-sm"
                       type="button"
                       style={{ marginTop: '0.75rem' }}
-                      onClick={() => setTab('chat')}
+                      onClick={() => goToTab('chat')}
                     >
                       {tr('continueInbox')}
                     </button>
@@ -1365,7 +1403,7 @@ export default function AdminPortal() {
                 <tbody>
                   {arrearsList.map((row) => (
                     <tr key={row.unit}>
-                      <td>{row.unit}</td>
+                      <td><AdminUnitLink unit={row.unit} /></td>
                       <td>{formatMoney(row.amount)}</td>
                       <td>{row.days}</td>
                     </tr>
@@ -1388,7 +1426,7 @@ export default function AdminPortal() {
                         +{formatMoney(p.confirmedAmount ?? p.amount)} · {p.residentName || p.unit}
                       </strong>
                       <div className="meta">
-                        {p.unit} · {paymentMethodLabel(p.method)} · {p.paidAt}
+                        <AdminUnitLink unit={p.unit} /> · {paymentMethodLabel(p.method)} · {p.paidAt}
                       </div>
                       {p.transferProof?.dataUrl && (
                         <a
@@ -1638,7 +1676,7 @@ export default function AdminPortal() {
                         {formatMoney(p.amount)} · {p.residentName || p.unit}
                       </strong>
                       <div className="meta">
-                        {p.unit} · {p.paidAt}
+                        <AdminUnitLink unit={p.unit} /> · {p.paidAt}
                         {p.bankReference ? (
                           <>
                             <br />
@@ -2140,7 +2178,7 @@ export default function AdminPortal() {
                     : `Viewing ${apartmentDisplayTitle(selectedResident, lang)} · ${unitCodeLabel(selectedResident)} — full apartment context available.`}
                 </p>
               </div>
-              <button className="btn btn-ghost" type="button" onClick={() => setTab('info')}>
+              <button className="btn btn-ghost" type="button" onClick={() => goToTab('info')}>
                 {tr('backToFile')}
               </button>
             </header>
@@ -2242,7 +2280,7 @@ export default function AdminPortal() {
             key={item.id}
             type="button"
             className={tab === item.id ? 'active' : ''}
-            onClick={() => setTab(item.id)}
+            onClick={() => goToTab(item.id as Tab)}
           >
             <NavIcon id={item.icon} />
             {tr(item.labelKey)}

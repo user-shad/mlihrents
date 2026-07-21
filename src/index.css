@@ -1223,6 +1223,30 @@ img {
   transform: rotate(90deg);
 }
 
+.admin-split.unit-focused {
+  grid-template-columns: 1fr;
+}
+
+.admin-split.unit-focused .resident-directory {
+  display: none;
+}
+
+a.resident-pick,
+a.resident-pick:visited {
+  text-decoration: none;
+  color: inherit;
+}
+
+.unit-link {
+  color: var(--accent, #1a6b5c);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.unit-link:hover {
+  text-decoration: underline;
+}
+
 .resident-directory .info-scroll-list {
   max-height: min(62vh, 640px);
   overflow-y: auto;
