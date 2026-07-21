@@ -68,12 +68,15 @@ import {
   bankRefsMatch,
 } from '../lib/transferProofOcr'
 import {
+  flushCloudSaveNow,
   markLocalMutation,
   onCloudOps,
   queueCloudOps,
   type PortalOps,
   writeLocalOps,
 } from '../lib/cloudSync'
+import { attachProofsToOps, readLocalProofs } from '../lib/localProofStore'
+import { uploadPaymentProof } from '../lib/paymentProofApi'
 
 const LEGACY_A1_TEST_ID = 'apt-a1'
 const LEGACY_A1_TEST_INVOICE = 'INV-TEST-A1'
@@ -403,7 +406,7 @@ export function DataProvider({
 
   useEffect(() => {
     return onCloudOps((remote) => {
-      const next = normalizePersistedOps(remote)
+      const next = attachProofsToOps(normalizePersistedOps(remote), readLocalProofs())
       setResidentList(next.residentList)
       setListings(next.listings)
       setPayments(next.payments)
@@ -1292,7 +1295,9 @@ export function DataProvider({
         reviewNote: reviewFlags.length > 0 ? reviewFlags.join(' · ') : undefined,
         transferProof: bankProof,
       }
+      await uploadPaymentProof(record.id, bankProof)
       setPayments((prev) => [record, ...prev])
+      void flushCloudSaveNow()
 
       setPaying(false)
       setCheckoutInvoiceId(null)

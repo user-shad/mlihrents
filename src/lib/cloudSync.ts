@@ -843,6 +843,15 @@ export function queueCloudOps(ops: PortalOps) {
   scheduleCloudSave()
 }
 
+/** Push pending cloud changes immediately (e.g. after uploading a transfer screenshot). */
+export async function flushCloudSaveNow() {
+  if (flushTimer) {
+    clearTimeout(flushTimer)
+    flushTimer = null
+  }
+  await flushCloudSave()
+}
+
 export async function forceSyncNow(): Promise<SyncStatus> {
   await fetchSyncHealth()
   const localAccounts = readLocalAccounts() ?? []

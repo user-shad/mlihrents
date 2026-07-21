@@ -49,7 +49,9 @@ import { bankSummary, BANK_EDIT_PASSWORD, isBankConfigured } from '../config/pay
 import { fetchSyncHealth, getSyncMode, getSyncStatus } from '../lib/cloudSync'
 import { exportAllApartmentsExcel, exportApartmentExcel } from '../lib/exportApartmentExcel'
 import { StaffPaymentAssistant } from '../components/StaffPaymentAssistant'
+import { PaymentProofThumb } from '../components/PaymentProofThumb'
 import { isBuildingAdmin, staffCan } from '../lib/staffPermissions'
+import { fetchPaymentProof } from '../lib/paymentProofApi'
 import { analyzePaymentReference } from '../lib/transferProofOcr'
 
 type Tab = AdminPortalTab
@@ -379,13 +381,19 @@ export default function AdminPortal() {
   }
 
   async function checkPaymentReference(payment: PaymentRecord) {
-    if (!payment.transferProof?.dataUrl) {
+    let proof = payment.transferProof?.dataUrl
+      ? payment.transferProof
+      : await fetchPaymentProof(payment.id)
+    if (!proof?.dataUrl) {
       showToast(tr('noTransferProof'))
       return
     }
     setPaymentRefScans((prev) => ({ ...prev, [payment.id]: { loading: true } }))
     try {
-      const result = await analyzePaymentReference(payment, lang)
+      const result = await analyzePaymentReference(
+        { ...payment, transferProof: proof },
+        lang,
+      )
       setPaymentRefScans((prev) => ({ ...prev, [payment.id]: { loading: false, result } }))
     } catch {
       setPaymentRefScans((prev) => ({
@@ -1547,17 +1555,7 @@ export default function AdminPortal() {
                           </>
                         ) : null}
                       </div>
-                      {p.transferProof?.dataUrl && (
-                        <a
-                          className="proof-thumb"
-                          href={p.transferProof.dataUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <img src={p.transferProof.dataUrl} alt={p.transferProof.name} />
-                          <span>{tr('viewProof')}</span>
-                        </a>
-                      )}
+                      <PaymentProofThumb payment={p} />
                       {(() => {
                         const kind = paymentNotifyKind(p)
                         return kind ? renderPaymentNotifyActions(p, kind) : null
@@ -1857,22 +1855,11 @@ export default function AdminPortal() {
                           {p.reviewNote}
                         </p>
                       )}
-                      {p.transferProof?.dataUrl ? (
-                        <a
-                          className="proof-thumb"
-                          href={p.transferProof.dataUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{ marginTop: '0.65rem' }}
-                        >
-                          <img src={p.transferProof.dataUrl} alt={p.transferProof.name} />
-                          <span>{tr('viewProof')}</span>
-                        </a>
-                      ) : (
-                        <p className="meta" style={{ marginTop: '0.5rem' }}>
-                          {tr('noTransferProof')}
-                        </p>
-                      )}
+                      <PaymentProofThumb
+                        payment={p}
+                        showMissing
+                        style={{ marginTop: '0.65rem' }}
+                      />
                       <div
                         style={{
                           display: 'flex',
@@ -1881,7 +1868,7 @@ export default function AdminPortal() {
                           marginTop: '0.75rem',
                         }}
                       >
-                        {p.transferProof?.dataUrl && (
+                        {p.status === 'pending_review' && (
                           <button
                             className="btn btn-ghost btn-sm"
                             type="button"
@@ -2140,17 +2127,7 @@ export default function AdminPortal() {
                             </>
                           ) : null}
                         </div>
-                        {p.transferProof && (
-                          <a
-                            className="proof-thumb"
-                            href={p.transferProof.dataUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <img src={p.transferProof.dataUrl} alt={p.transferProof.name} />
-                            <span>{tr('viewProof')}</span>
-                          </a>
-                        )}
+                        <PaymentProofThumb payment={p} />
                         {(() => {
                           const kind = paymentNotifyKind(p)
                           return kind ? renderPaymentNotifyActions(p, kind) : null
