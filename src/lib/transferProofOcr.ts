@@ -1,5 +1,5 @@
 import Tesseract from 'tesseract.js'
-import { amountsMatch, formatMoney, type PaymentRecord } from '../data'
+import { amountsMatch, formatMoney, normalizeBankReference, type PaymentRecord } from '../data'
 
 export interface ScreenshotOcrResult {
   rawText: string
@@ -29,28 +29,29 @@ function parseAmountToken(token: string): number | null {
 
 function extractBankReferenceFromOcr(text: string): string | null {
   const compact = text.replace(/\r/g, '\n')
+  const refToken = '[A-Z0-9]{6,15}'
 
   const labeledPatterns = [
-    /reference\s*number[:\s]*(\d{6,15})/gi,
-    /reference\s*no\.?[:\s]*(\d{6,15})/gi,
-    /ref(?:erence)?[:\s#-]*(\d{6,15})/gi,
-    /رقم\s*المرجع[:\s]*(\d{6,15})/gi,
+    new RegExp(`reference\\s*number[:\\s]*(${refToken})`, 'gi'),
+    new RegExp(`reference\\s*no\\.?[:\\s]*(${refToken})`, 'gi'),
+    new RegExp(`ref(?:erence)?[:\\s#-]*(${refToken})`, 'gi'),
+    new RegExp(`رقم\\s*المرجع[:\\s]*(${refToken})`, 'gi'),
   ]
   for (const pattern of labeledPatterns) {
     const match = pattern.exec(compact)
-    if (match?.[1]) return match[1]
+    if (match?.[1]) return match[1].toUpperCase()
   }
 
   const lines = compact.split('\n').map((l) => l.trim()).filter(Boolean)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (/reference|ref\s*no|رقم\s*المرجع/i.test(line)) {
-      const inline = line.match(/(\d{6,15})/)
-      if (inline) return inline[1]
+      const inline = line.match(new RegExp(`(${refToken})`, 'i'))
+      if (inline) return inline[1].toUpperCase()
       const next = lines[i + 1]
       if (next) {
-        const digits = next.match(/^(\d{6,15})$/)
-        if (digits) return digits[1]
+        const token = next.match(new RegExp(`^(${refToken})$`, 'i'))
+        if (token) return token[1].toUpperCase()
       }
     }
   }
@@ -116,12 +117,11 @@ export function parseTransferScreenshotText(text: string, expectedAmount?: numbe
   }
 }
 
-/** Compare bank reference numbers (digits only). */
+/** Compare bank reference values (letters and/or numbers). */
 export function bankRefsMatch(given: string | null, inScreenshot: string | null): boolean | null {
   if (!given || !inScreenshot) return null
-  const clean = (s: string) => s.replace(/\D/g, '')
-  const a = clean(given)
-  const b = clean(inScreenshot)
+  const a = normalizeBankReference(given)
+  const b = normalizeBankReference(inScreenshot)
   if (!a || !b) return null
   return a === b
 }

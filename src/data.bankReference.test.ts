@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   findDuplicateBankReference,
   isValidBankReference,
-  normalizeBankReferenceDigits,
+  normalizeBankReference,
   type PaymentRecord,
 } from './data'
 
@@ -24,13 +24,16 @@ function samplePayment(overrides: Partial<PaymentRecord> = {}): PaymentRecord {
 }
 
 describe('bank reference helpers', () => {
-  it('strips non-digits from bank references', () => {
-    expect(normalizeBankReferenceDigits('REF 12-34 5678')).toBe('12345678')
+  it('normalizes references to uppercase alphanumeric', () => {
+    expect(normalizeBankReference('ref 12-34 abc')).toBe('REF1234ABC')
+    expect(normalizeBankReference('1422869093')).toBe('1422869093')
   })
 
-  it('accepts references with 6–15 digits', () => {
+  it('accepts numeric and alphanumeric references with 6–15 characters', () => {
     expect(isValidBankReference('123456')).toBe(true)
-    expect(isValidBankReference('123456789012345')).toBe(true)
+    expect(isValidBankReference('1422869093')).toBe(true)
+    expect(isValidBankReference('REF123456')).toBe(true)
+    expect(isValidBankReference('A1B2C3')).toBe(true)
     expect(isValidBankReference('12345')).toBe(false)
     expect(isValidBankReference('1234567890123456')).toBe(false)
   })
@@ -38,9 +41,9 @@ describe('bank reference helpers', () => {
   it('finds duplicate references on active payments', () => {
     const payments = [
       samplePayment({ id: 'pay-1', bankReference: '987654321' }),
-      samplePayment({ id: 'pay-2', bankReference: '111222333', status: 'pending_review' }),
+      samplePayment({ id: 'pay-2', bankReference: 'REF111222', status: 'pending_review' }),
     ]
-    const dup = findDuplicateBankReference('111-222-333', payments)
+    const dup = findDuplicateBankReference('ref-111-222', payments)
     expect(dup?.id).toBe('pay-2')
   })
 

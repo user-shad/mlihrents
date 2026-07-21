@@ -68,6 +68,17 @@ describe('listing to apartment helpers', () => {
     expect(merged).toHaveLength(1)
     expect(merged[0].id).toBe('list-1')
   })
+
+  it('hides auto listings when a hidden manual suppressor exists for the unit', () => {
+    const vacant = buildEmptyApartment('A', 3)
+    const hidden = sampleListing({
+      id: 'hidden-a3',
+      apartment: 'A3',
+      hidden: true,
+    })
+    const merged = mergeAvailableListings([hidden], [vacant])
+    expect(merged).toHaveLength(0)
+  })
 })
 
 describe('ensureSeedApartments extras', () => {

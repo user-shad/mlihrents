@@ -28,9 +28,9 @@ import {
   PaymentRecord,
   amountsMatch,
   buildPaymentRef,
+  normalizeBankReference,
   findDuplicateBankReference,
   isValidBankReference,
-  normalizeBankReferenceDigits,
   buildInstallmentInvoice,
   canCollectRent,
   formatMoney,
@@ -324,6 +324,7 @@ interface DataContextValue {
   addAvailableListing: (input: Omit<AvailableApartment, 'id'>) => void
   updateAvailableListing: (id: string, input: Partial<AvailableApartment>) => void
   removeAvailableListing: (id: string) => void
+  suppressVacantListing: (listing: AvailableApartment) => void
   bankSettings: BankAccountSettings
   bankConfigured: boolean
   saveBankSettings: (settings: BankAccountSettings) => void
@@ -1239,7 +1240,7 @@ export function DataProvider({
       showToast(tr('bankReferenceInvalid'))
       return
     }
-    const bankReference = normalizeBankReferenceDigits(bankReferenceDraft)
+    const bankReference = normalizeBankReference(bankReferenceDraft)
     const duplicate = findDuplicateBankReference(bankReference, payments)
     if (duplicate) {
       showToast(tr('bankReferenceDuplicate'))
@@ -1733,6 +1734,19 @@ export function DataProvider({
     showToast(tr('listingRemoved'))
   }
 
+  function suppressVacantListing(listing: AvailableApartment) {
+    if (denyStaff('manage_listings')) return
+    const code = normalizeUnitCode(listing.apartment)
+    setListings((prev) => {
+      if (prev.some((item) => normalizeUnitCode(item.apartment) === code && item.hidden)) {
+        return prev
+      }
+      const { id: _id, ...rest } = listing
+      return [...prev, { ...rest, id: `avail-${Date.now()}`, hidden: true }]
+    })
+    showToast(tr('listingRemoved'))
+  }
+
   return (
     <DataContext.Provider
       value={{
@@ -1814,6 +1828,7 @@ export function DataProvider({
         addAvailableListing,
         updateAvailableListing,
         removeAvailableListing,
+        suppressVacantListing,
         saveApartmentRecord,
         removeApartment,
         markAllRentPaidThroughJuly,

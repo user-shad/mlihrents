@@ -4,6 +4,7 @@ import {
   buildPaymentDueAnnouncements,
   formatDueDateFromDay,
   formatMoney,
+  isValidBankReference,
   paymentMethodLabel,
   remainingBalance,
   rentScheduleLabel,
@@ -420,10 +421,12 @@ export default function ResidentPortal() {
                           id="bankReference"
                           value={bankReferenceDraft}
                           onChange={(e) =>
-                            setBankReferenceDraft(e.target.value.replace(/\D/g, '').slice(0, 15))
+                            setBankReferenceDraft(
+                              e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 15),
+                            )
                           }
-                          inputMode="numeric"
-                          placeholder="1422869093"
+                          inputMode="text"
+                          placeholder="1422869093 or REF123456"
                           autoComplete="off"
                         />
                         <span className="meta" style={{ marginTop: '0.35rem' }}>
@@ -500,9 +503,7 @@ export default function ResidentPortal() {
                       <button
                         className="btn btn-accent btn-block"
                         type="submit"
-                        disabled={
-                          paying || !bankProof || bankReferenceDraft.replace(/\D/g, '').length < 6
-                        }
+                        disabled={paying || !bankProof || !isValidBankReference(bankReferenceDraft)}
                       >
                         {paying
                           ? tr('processing')

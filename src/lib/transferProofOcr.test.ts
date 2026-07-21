@@ -11,6 +11,14 @@ describe('transferProofOcr', () => {
     expect(ocr.extractedBankRef).toBe('1422869093')
   })
 
+  it('extracts alphanumeric bank reference from screenshot text', () => {
+    const ocr = parseTransferScreenshotText(
+      'Transfer successful\nReference number\nREF123456789\nAmount AED 2,400.00',
+      2400,
+    )
+    expect(ocr.extractedBankRef).toBe('REF123456789')
+  })
+
   it('reports when reference is present and matches resident input', () => {
     const payment: PaymentRecord = {
       id: 'PAY-1',

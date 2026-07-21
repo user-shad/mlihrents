@@ -305,13 +305,22 @@ export function buildPaymentRef(_unit: string, invoiceId: string) {
   return invoiceId.trim()
 }
 
+export function normalizeBankReference(ref: string) {
+  return ref
+    .trim()
+    .toUpperCase()
+    .replace(/[\s\-_]/g, '')
+    .replace(/[^A-Z0-9]/g, '')
+}
+
+/** @deprecated Use normalizeBankReference — kept for older call sites. */
 export function normalizeBankReferenceDigits(ref: string) {
-  return ref.replace(/\D/g, '')
+  return normalizeBankReference(ref)
 }
 
 export function isValidBankReference(ref: string) {
-  const digits = normalizeBankReferenceDigits(ref)
-  return digits.length >= 6 && digits.length <= 15
+  const normalized = normalizeBankReference(ref)
+  return normalized.length >= 6 && normalized.length <= 15
 }
 
 /** Block re-using a bank reference already tied to another payment. */
@@ -320,14 +329,14 @@ export function findDuplicateBankReference(
   payments: PaymentRecord[],
   excludePaymentId?: string,
 ): PaymentRecord | null {
-  const digits = normalizeBankReferenceDigits(ref)
-  if (!digits) return null
+  const normalized = normalizeBankReference(ref)
+  if (!normalized) return null
   return (
     payments.find((p) => {
       if (excludePaymentId && p.id === excludePaymentId) return false
       if (p.status === 'rejected' || p.status === 'deleted') return false
-      const existing = p.bankReference ? normalizeBankReferenceDigits(p.bankReference) : ''
-      return existing.length > 0 && existing === digits
+      const existing = p.bankReference ? normalizeBankReference(p.bankReference) : ''
+      return existing.length > 0 && existing === normalized
     }) ?? null
   )
 }
@@ -363,16 +372,17 @@ export function extractInvoiceReference(input: string): string | null {
   return null
 }
 
-/** Extract bank reference number from admin text (e.g. Wio "Reference number" 1422869093). */
+/** Extract bank reference from admin text (e.g. Wio "Reference number" 1422869093 or REF123456). */
 export function extractBankReference(input: string): string | null {
+  const refToken = '[A-Z0-9]{6,15}'
   const labeled = input.match(
-    /(?:reference|ref(?:erence)?|bank\s*ref|رقم(?:\s*ال)?مرجع)[:\s#-]*(\d{6,15})/i,
+    new RegExp(`(?:reference|ref(?:erence)?|bank\\s*ref|رقم(?:\\s*ال)?مرجع)[:\\s#-]*(${refToken})`, 'i'),
   )
-  if (labeled) return labeled[1]
+  if (labeled) return normalizeBankReference(labeled[1])
 
   if (/(?:compare|match|verify|check|قارن|تحقق|مطابقة|مرجع)/i.test(input)) {
-    const digits = input.match(/\b(\d{6,15})\b/)
-    if (digits) return digits[1]
+    const token = input.match(new RegExp(`\\b(${refToken})\\b`, 'i'))
+    if (token) return normalizeBankReference(token[1])
   }
 
   return null
@@ -768,6 +778,8 @@ export interface AvailableApartment {
   parking: boolean
   highlight: string
   highlightAr: string
+  /** When true, listing is kept out of the public Available page. */
+  hidden?: boolean
   /** Optional listing photo (data URL or remote URL) */
   photoDataUrl?: string
 }
@@ -914,12 +926,13 @@ export function mergeAvailableListings(
   const manualCodes = new Set(
     manualListings.map((listing) => normalizeUnitCode(listing.apartment)).filter(Boolean),
   )
+  const visibleManual = manualListings.filter((listing) => !listing.hidden)
   const autoListings = residents
     .filter((resident) => !isUnitOccupied(resident) && resident.apartment.trim())
     .filter((resident) => !manualCodes.has(normalizeUnitCode(resident.apartment)))
     .map(listingFromVacantResident)
 
-  return [...manualListings, ...autoListings].sort(
+  return [...visibleManual, ...autoListings].sort(
     (a, b) => apartmentSortKey(a.apartment) - apartmentSortKey(b.apartment),
   )
 }

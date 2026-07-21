@@ -204,8 +204,8 @@ const en: Dict = {
   paymentRefCopied: 'Reference copied',
   bankReferenceLabel: 'Bank reference number',
   bankReferenceHint:
-    'Enter the “Reference number” from your bank transfer (6–15 digits). Each reference can only be used once.',
-  bankReferenceInvalid: 'Enter the bank reference number from your transfer (6–15 digits)',
+    'Enter the “Reference number” from your bank transfer (6–15 letters and/or numbers). Each reference can only be used once.',
+  bankReferenceInvalid: 'Enter the bank reference from your transfer (6–15 letters and/or numbers)',
   bankReferenceDuplicate: 'This bank reference was already submitted — check for a duplicate transfer',
   bankReferenceShort: 'Bank ref',
   paymentSubmittedWithFlags:
@@ -653,8 +653,8 @@ const ar: Dict = {
   paymentRefCopied: 'تم نسخ المرجع',
   bankReferenceLabel: 'رقم مرجع التحويل البنكي',
   bankReferenceHint:
-    'أدخل «رقم المرجع» من إيصال التحويل (6–15 رقم). لا يمكن استخدام نفس المرجع مرتين.',
-  bankReferenceInvalid: 'أدخل رقم المرجع من التحويل البنكي (6–15 رقم)',
+    'أدخل «رقم المرجع» من إيصال التحويل (6–15 حرفاً أو رقماً). لا يمكن استخدام نفس المرجع مرتين.',
+  bankReferenceInvalid: 'أدخل مرجع التحويل (6–15 حرفاً أو رقماً)',
   bankReferenceDuplicate: 'تم إرسال هذا المرجع مسبقاً — تحقق من تكرار التحويل',
   bankReferenceShort: 'مرجع البنك',
   paymentSubmittedWithFlags: 'تم إرسال الإثبات — يوجد تعارض في المبلغ أو المرجع للمراجعة',

@@ -187,9 +187,9 @@ export default function AdminPortal() {
     addAvailableListing,
     updateAvailableListing,
     removeAvailableListing,
+    suppressVacantListing,
     saveApartmentRecord,
     removeApartment,
-    markAllRentPaidThroughJuly,
     bankSettings,
     saveBankSettings,
     serviceDirectory,
@@ -838,7 +838,11 @@ export default function AdminPortal() {
       photoDataUrl: listingForm.photoDataUrl || undefined,
     }
     if (editingListingId) {
-      updateAvailableListing(editingListingId, payload)
+      if (isVacantAutoListing({ id: editingListingId })) {
+        addAvailableListing(payload)
+      } else {
+        updateAvailableListing(editingListingId, payload)
+      }
     } else {
       addAvailableListing(payload)
     }
@@ -1590,18 +1594,6 @@ export default function AdminPortal() {
                 <h1>{tr('adminPaymentsTab')}</h1>
                 <p>{tr('adminPaymentsLead')}</p>
               </div>
-              {canManageApartments && (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  type="button"
-                  onClick={() => {
-                    if (!window.confirm(tr('markPaidThroughJulyConfirm'))) return
-                    markAllRentPaidThroughJuly()
-                  }}
-                >
-                  {tr('markPaidThroughJuly')}
-                </button>
-              )}
             </header>
 
             <section className="panel" style={{ marginTop: '1rem' }}>
@@ -2210,7 +2202,7 @@ export default function AdminPortal() {
                         {lang === 'ar' ? apt.highlightAr : apt.highlight}
                       </div>
                     </div>
-                    {canManageListings && !autoVacant && (
+                    {canManageListings && (
                     <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                       <button
                         className="btn btn-ghost btn-sm"
@@ -2223,7 +2215,11 @@ export default function AdminPortal() {
                         className="btn btn-ghost btn-sm"
                         type="button"
                         onClick={() => {
-                          removeAvailableListing(apt.id)
+                          if (autoVacant) {
+                            suppressVacantListing(apt)
+                          } else {
+                            removeAvailableListing(apt.id)
+                          }
                           if (editingListingId === apt.id) resetListingForm()
                         }}
                       >
