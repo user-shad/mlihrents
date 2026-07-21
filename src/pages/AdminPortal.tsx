@@ -187,6 +187,7 @@ export default function AdminPortal() {
     removeAvailableListing,
     saveApartmentRecord,
     removeApartment,
+    markAllRentPaidThroughJuly,
     bankSettings,
     saveBankSettings,
     serviceDirectory,
@@ -1591,6 +1592,18 @@ export default function AdminPortal() {
                 <h1>{tr('adminPaymentsTab')}</h1>
                 <p>{tr('adminPaymentsLead')}</p>
               </div>
+              {canManageApartments && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  onClick={() => {
+                    if (!window.confirm(tr('markPaidThroughJulyConfirm'))) return
+                    markAllRentPaidThroughJuly()
+                  }}
+                >
+                  {tr('markPaidThroughJuly')}
+                </button>
+              )}
             </header>
 
             <section className="panel" style={{ marginTop: '1rem' }}>

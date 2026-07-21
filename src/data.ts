@@ -1173,6 +1173,102 @@ export function canCollectRent(resident: Resident) {
   return hasRentPlan(resident) && remainingBalance(resident) > 0
 }
 
+/** Parse lease start dates saved as “1 Nov 2025” or “25/11/2025”. */
+export function parseLeaseStartDate(leaseStart?: string): Date | null {
+  const raw = leaseStart?.trim()
+  if (!raw) return null
+  const dmy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmy) {
+    const d = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]))
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  const d = new Date(raw)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+/** Count rent installments due from lease start through a calendar month (inclusive). */
+export function installmentCountThroughMonth(
+  resident: Resident,
+  throughYear: number,
+  throughMonth: number,
+): number {
+  const start = parseLeaseStartDate(resident.leaseStart)
+  if (!start || !hasRentPlan(resident)) return 0
+  const intervalMonths = normalizeRentSchedule(resident.rentSchedule)
+  const end = new Date(throughYear, throughMonth, 0)
+  if (start > end) return 0
+
+  let count = 0
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1)
+  const through = new Date(throughYear, throughMonth - 1, 1)
+  while (cursor <= through) {
+    count += 1
+    cursor.setMonth(cursor.getMonth() + intervalMonths)
+  }
+  return count
+}
+
+/** Total rent owed through the end of a calendar month. */
+export function amountDueThroughMonth(
+  resident: Resident,
+  throughYear: number,
+  throughMonth: number,
+): number {
+  const count = installmentCountThroughMonth(resident, throughYear, throughMonth)
+  if (count <= 0) return 0
+  return Math.min(resident.contractTotal, count * resident.rentAmount)
+}
+
+/** Mark rent and invoices as paid through a calendar month for occupied units. */
+export function applyRentPaidThroughMonth(
+  residentList: Resident[],
+  invoiceMap: Record<string, Invoice[]>,
+  paidIds: string[],
+  throughYear: number,
+  throughMonth: number,
+) {
+  const throughIso = `${throughYear}-${String(throughMonth).padStart(2, '0')}-31`
+  const throughKey = `${throughYear}-${String(throughMonth).padStart(2, '0')}`
+
+  const nextResidents = residentList.map((resident) => {
+    if (!isUnitOccupied(resident) || !hasRentPlan(resident)) return resident
+    const targetPaid = amountDueThroughMonth(resident, throughYear, throughMonth)
+    if (targetPaid <= 0) return resident
+    const amountPaid = Math.min(resident.contractTotal, Math.max(resident.amountPaid, targetPaid))
+    const caughtUp = amountPaid >= targetPaid
+    return {
+      ...resident,
+      amountPaid,
+      status:
+        resident.status === 'notice'
+          ? resident.status
+          : caughtUp && resident.status === 'arrears'
+            ? 'active'
+            : resident.status ?? 'active',
+    }
+  })
+
+  const paidSet = new Set(paidIds)
+  const nextInvoiceMap: Record<string, Invoice[]> = {}
+  for (const [residentId, invoices] of Object.entries(invoiceMap)) {
+    nextInvoiceMap[residentId] = invoices.map((inv) => {
+      const dueKey = inv.dueDateIso?.slice(0, 7)
+      const shouldMarkPaid =
+        (inv.dueDateIso && inv.dueDateIso <= throughIso) ||
+        (dueKey && dueKey <= throughKey)
+      if (!shouldMarkPaid || inv.status === 'paid') return inv
+      paidSet.add(inv.id)
+      return { ...inv, status: 'paid' as const }
+    })
+  }
+
+  return {
+    residentList: nextResidents,
+    invoiceMap: nextInvoiceMap,
+    paidIds: [...paidSet],
+  }
+}
+
 /** Normalize installment amount to a monthly figure for income summaries. */
 export function monthlyRentEquivalent(resident: Resident) {
   const amount = Math.max(0, resident.rentAmount)
