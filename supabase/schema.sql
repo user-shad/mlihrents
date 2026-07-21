@@ -10,6 +10,13 @@ insert into public.portal_sync (id, accounts, ops)
 values ('main', '[]'::jsonb, '{}'::jsonb)
 on conflict (id) do nothing;
 
+create table if not exists public.portal_proofs (
+  payment_id text primary key,
+  name text not null,
+  data_url text not null,
+  updated_at timestamptz not null default now()
+);
+
 alter table public.portal_sync enable row level security;
 
 drop policy if exists "portal_sync_public_rw" on public.portal_sync;

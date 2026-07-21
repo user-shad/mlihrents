@@ -1,5 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { requireSyncAuth } from '../lib/syncAuth.js'
+import {
+  detachProofsFromPayload,
+  normalizeLoadedPayload,
+  type ProofStore,
+} from '../lib/syncProofStore.js'
 import { createClient } from '@supabase/supabase-js'
 import { get, head, list, put } from '@vercel/blob'
 import { sql } from '@vercel/postgres'
@@ -8,7 +13,9 @@ import { Redis } from '@upstash/redis'
 const SYNC_ID = 'main'
 const BLOB_PATH = 'portal-sync.json'
 const REDIS_KEY = 'portal-sync'
+const REDIS_PROOFS_KEY = 'portal-sync-proofs'
 const GIST_FILENAME = 'portal-sync.json'
+const PROOFS_GIST_FILENAME = 'portal-sync-proofs.json'
 
 /**
  * Public Blob base URL for this project.
@@ -127,19 +134,63 @@ async function ensurePostgresTable() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `
+  await sql`
+    CREATE TABLE IF NOT EXISTS portal_proofs (
+      payment_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      data_url TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
   postgresReady = true
 }
 
 async function loadFromRedis(): Promise<SyncPayload | null> {
   const redis = getRedis()
   if (!redis) return null
-  return (await redis.get<SyncPayload>(REDIS_KEY)) ?? null
+  const main = await redis.get<SyncPayload>(REDIS_KEY)
+  if (!main) return null
+  const proofs = (await redis.get<ProofStore>(REDIS_PROOFS_KEY)) ?? {}
+  return normalizeLoadedPayload(main, proofs)
 }
 
 async function saveToRedis(payload: SyncPayload) {
   const redis = getRedis()
   if (!redis) throw new Error('redis_unavailable')
-  await redis.set(REDIS_KEY, payload)
+  const { payload: main, proofs } = detachProofsFromPayload(payload)
+  await redis.set(REDIS_KEY, main)
+  await redis.set(REDIS_PROOFS_KEY, proofs)
+}
+
+async function loadProofsFromPostgres(): Promise<ProofStore> {
+  await ensurePostgresTable()
+  const result = await sql`
+    SELECT payment_id, name, data_url
+    FROM portal_proofs
+  `
+  const proofs: ProofStore = {}
+  for (const row of result.rows) {
+    proofs[row.payment_id as string] = {
+      name: row.name as string,
+      dataUrl: row.data_url as string,
+    }
+  }
+  return proofs
+}
+
+async function saveProofsToPostgres(proofs: ProofStore) {
+  await ensurePostgresTable()
+  await sql`DELETE FROM portal_proofs`
+  for (const [paymentId, proof] of Object.entries(proofs)) {
+    await sql`
+      INSERT INTO portal_proofs (payment_id, name, data_url)
+      VALUES (${paymentId}, ${proof.name}, ${proof.dataUrl})
+      ON CONFLICT (payment_id) DO UPDATE SET
+        name = EXCLUDED.name,
+        data_url = EXCLUDED.data_url,
+        updated_at = NOW()
+    `
+  }
 }
 
 async function loadFromPostgres(): Promise<SyncPayload | null> {
@@ -153,23 +204,26 @@ async function loadFromPostgres(): Promise<SyncPayload | null> {
   `
   const row = result.rows[0]
   if (!row) return null
-  return {
+  const main: SyncPayload = {
     accounts: row.accounts,
     ops: row.ops,
     updated_at: row.updated_at ? new Date(row.updated_at as string).toISOString() : undefined,
   }
+  const proofs = await loadProofsFromPostgres()
+  return normalizeLoadedPayload(main, proofs)
 }
 
 async function saveToPostgres(payload: SyncPayload) {
   if (!hasPostgres()) throw new Error('postgres_unavailable')
+  const { payload: main, proofs } = detachProofsFromPayload(payload)
   await ensurePostgresTable()
-  const updatedAt = payload.updated_at ?? new Date().toISOString()
+  const updatedAt = main.updated_at ?? new Date().toISOString()
   await sql`
     INSERT INTO portal_sync (id, accounts, ops, updated_at)
     VALUES (
       ${SYNC_ID},
-      ${payload.accounts as never},
-      ${payload.ops as never},
+      ${main.accounts as never},
+      ${main.ops as never},
       ${updatedAt}
     )
     ON CONFLICT (id) DO UPDATE SET
@@ -177,6 +231,7 @@ async function saveToPostgres(payload: SyncPayload) {
       ops = EXCLUDED.ops,
       updated_at = EXCLUDED.updated_at
   `
+  await saveProofsToPostgres(proofs)
 }
 
 let lastBlobDebug: string | null = null
@@ -300,12 +355,30 @@ async function saveToSupabase(payload: SyncPayload) {
   if (error) throw error
 }
 
+async function readGistFileText(
+  file: { content?: string; truncated?: boolean; raw_url?: string } | undefined,
+  auth: string,
+): Promise<string> {
+  if (!file) return ''
+  let text = file.content ?? ''
+  if ((!text || file.truncated) && file.raw_url) {
+    const raw = await fetch(file.raw_url, {
+      headers: { Authorization: `Bearer ${auth}` },
+      cache: 'no-store',
+    })
+    if (!raw.ok) throw new Error(`github_raw_${raw.status}`)
+    text = await raw.text()
+  }
+  return text
+}
+
 async function loadFromGithub(): Promise<SyncPayload | null> {
   if (!hasGithub()) return null
+  const auth = githubAuth()
   const res = await fetch(`https://api.github.com/gists/${githubGistId()}`, {
     headers: {
       Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${githubAuth()}`,
+      Authorization: `Bearer ${auth}`,
       'X-GitHub-Api-Version': '2022-11-28',
     },
     cache: 'no-store',
@@ -314,23 +387,28 @@ async function loadFromGithub(): Promise<SyncPayload | null> {
   const gist = (await res.json()) as {
     files?: Record<string, { content?: string; truncated?: boolean; raw_url?: string }>
   }
-  const file = gist.files?.[GIST_FILENAME] ?? Object.values(gist.files ?? {})[0]
-  if (!file) return null
-  let text = file.content ?? ''
-  if ((!text || file.truncated) && file.raw_url) {
-    const raw = await fetch(file.raw_url, {
-      headers: { Authorization: `Bearer ${githubAuth()}` },
-      cache: 'no-store',
-    })
-    if (!raw.ok) throw new Error(`github_raw_${raw.status}`)
-    text = await raw.text()
+  const mainFile = gist.files?.[GIST_FILENAME] ?? Object.values(gist.files ?? {})[0]
+  const mainText = await readGistFileText(mainFile, auth)
+  if (!mainText) return null
+  const main = JSON.parse(mainText) as SyncPayload
+
+  let proofs: ProofStore = {}
+  const proofsFile = gist.files?.[PROOFS_GIST_FILENAME]
+  const proofsText = await readGistFileText(proofsFile, auth)
+  if (proofsText) {
+    try {
+      proofs = JSON.parse(proofsText) as ProofStore
+    } catch {
+      proofs = {}
+    }
   }
-  if (!text) return null
-  return JSON.parse(text) as SyncPayload
+
+  return normalizeLoadedPayload(main, proofs)
 }
 
 async function saveToGithub(payload: SyncPayload) {
   if (!hasGithub()) throw new Error('github_unavailable')
+  const { payload: main, proofs } = detachProofsFromPayload(payload)
   const res = await fetch(`https://api.github.com/gists/${githubGistId()}`, {
     method: 'PATCH',
     headers: {
@@ -341,7 +419,8 @@ async function saveToGithub(payload: SyncPayload) {
     },
     body: JSON.stringify({
       files: {
-        [GIST_FILENAME]: { content: JSON.stringify(payload) },
+        [GIST_FILENAME]: { content: JSON.stringify(main) },
+        [PROOFS_GIST_FILENAME]: { content: JSON.stringify(proofs) },
       },
     }),
   })

@@ -14,6 +14,8 @@ The sync API is protected by a shared token so random visitors cannot read or ov
 
 Keep this secret private. Anyone with the token can sync data (same as before, but no longer public to the whole internet).
 
+**Storage layout:** Main building data lives in `portal-sync.json`. Pending payment screenshots are stored separately in `portal-sync-proofs.json` (GitHub gist) or `portal_proofs` (Postgres) so the main sync file stays small.
+
 ## Option A — Vercel Blob (easiest, recommended)
 
 1. Open [vercel.com](https://vercel.com) → your **mlihrents** project
