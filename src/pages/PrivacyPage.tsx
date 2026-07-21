@@ -27,7 +27,7 @@ export default function PrivacyPage() {
         )}
         <br />
         {ar ? 'للتواصل بشأن حماية البيانات' : 'Data protection contact'}:{' '}
-        <a href={`mailto:${siteLegal.dataProtectionContact}`}>{siteLegal.dataProtectionContact}</a>
+        <a href={`tel:${siteLegal.phone.replace(/\s/g, '')}`}>{siteLegal.phone}</a>
       </p>
 
       <h2>{ar ? '2. الإطار القانوني في الإمارات' : '2. UAE legal framework'}</h2>
@@ -41,8 +41,8 @@ export default function PrivacyPage() {
       <ul>
         <li>
           {ar
-            ? 'بيانات الحساب: الاسم، رقم الهاتف، كلمة مرور الدخول المكوّنة من 4 أرقام التي يُنشئها المدير، والبريد الإلكتروني إن وُجد.'
-            : 'Account data: name, phone number, admin-issued 4-digit login password, and email if provided.'}
+            ? 'بيانات الحساب: الاسم، رقم الهاتف، وكلمة مرور الدخول المكوّنة من 4 أرقام التي يُنشئها المدير.'
+            : 'Account data: name, phone number, and admin-issued 4-digit login password.'}
         </li>
         <li>
           {ar
@@ -88,7 +88,7 @@ export default function PrivacyPage() {
         {ar
           ? 'وفقاً لـ PDPL، يمكنك طلب الوصول إلى بياناتك أو تصحيحها أو محوها أو تقييد معالجتها، والاعتراض في الحالات المقررة، وتقديم شكوى للجهة المختصة. تواصل عبر'
           : 'Under the PDPL you may request access, correction, erasure, or restriction of processing, object where applicable, and lodge a complaint with the competent UAE authority. Contact'}{' '}
-        <a href={`mailto:${siteLegal.dataProtectionContact}`}>{siteLegal.dataProtectionContact}</a>.
+        <a href={`tel:${siteLegal.phone.replace(/\s/g, '')}`}>{siteLegal.phone}</a>.
       </p>
 
       <h2>{ar ? '8. الاحتفاظ والأمان' : '8. Retention and security'}</h2>

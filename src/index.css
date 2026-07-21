@@ -1198,6 +1198,46 @@ img {
   }
 }
 
+.collapsible-section summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1.05rem;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.collapsible-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-section summary::before {
+  content: '▸';
+  font-size: 0.85rem;
+  opacity: 0.6;
+  transition: transform 0.15s ease;
+}
+
+.collapsible-section[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.resident-directory .info-scroll-list {
+  max-height: min(62vh, 640px);
+  overflow-y: auto;
+  margin-top: 0.75rem;
+  padding-inline-end: 0.25rem;
+}
+
+.resident-directory .info-scroll-list .building-unit-groups {
+  margin-top: 0;
+}
+
+.resident-file .collapsible-section summary {
+  font-size: 0.95rem;
+}
+
 .resident-pick {
   width: 100%;
   display: flex;

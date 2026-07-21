@@ -21,6 +21,8 @@ export interface Resident {
   floor: number
   parking: string
   leaseEnd: string
+  /** Lease start date */
+  leaseStart?: string
   /** Amount due each installment period */
   rentAmount: number
   currency: string
@@ -32,8 +34,6 @@ export interface Resident {
   contractTotal: number
   /** How much of contractTotal has already been paid */
   amountPaid: number
-  email?: string
-  moveIn?: string
   occupants?: number
   /** Studio, 1BR, etc. */
   unitType?: string
@@ -62,6 +62,13 @@ export const blankResident: Resident = {
   contractTotal: 0,
   amountPaid: 0,
   status: 'active',
+}
+
+/** Map legacy moveIn field from older saved data. */
+export function migrateResident(r: Resident & { moveIn?: string }): Resident {
+  const leaseStart = r.leaseStart ?? r.moveIn
+  const { moveIn: _legacy, ...rest } = r
+  return leaseStart !== undefined ? { ...rest, leaseStart } : rest
 }
 
 /** Digits only for phone comparison (0545882666 and +971 54 588 2666 match). */
@@ -181,36 +188,6 @@ export function buildPaymentStatusWhatsAppMessage(
     detail = `We could not verify your transfer of AED ${expected.toLocaleString()} for unit ${unit}. Please submit a new proof or contact management.`
   }
   return `Hello ${name},\n\n${detail}\n\nReview your payment status on the resident portal:\n${portalUrl}\n\n${brandName}`
-}
-
-export function buildPaymentStatusEmailMessage(
-  payment: PaymentRecord,
-  kind: PaymentNotifyKind,
-  lang: 'en' | 'ar',
-  portalUrl: string,
-  brandName = 'MLIH Rents',
-) {
-  const body = buildPaymentStatusWhatsAppMessage(payment, kind, lang, portalUrl, brandName)
-  const unit = payment.unit
-  const subject =
-    lang === 'ar'
-      ? kind === 'approved'
-        ? `تمت الموافقة على الدفع — ${unit}`
-        : kind === 'partial'
-          ? `دفعة جزئية — ${unit}`
-          : `تحديث الدفع — ${unit}`
-      : kind === 'approved'
-        ? `Payment approved — ${unit}`
-        : kind === 'partial'
-          ? `Partial payment recorded — ${unit}`
-          : `Payment update — ${unit}`
-  return { subject: `${brandName}: ${subject}`, body }
-}
-
-export function mailtoUrl(email: string, subject: string, body: string) {
-  const trimmed = email.trim()
-  if (!trimmed) return ''
-  return `mailto:${trimmed}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }
 
 export function isValidPin(pin: string) {

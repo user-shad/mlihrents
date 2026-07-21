@@ -13,6 +13,7 @@ import {
   defaultServiceDirectory,
   invoicesByResident,
   residents,
+  migrateResident,
   seedPayments,
   ticketsByResident,
   type ServiceContact,
@@ -250,7 +251,7 @@ function normalizeCloudOps(raw: unknown): PortalOps {
   if (!raw || typeof raw !== 'object') return createDefaultOps()
   const ops = raw as PortalOps
   return {
-    residentList: ops.residentList ?? residents,
+    residentList: (ops.residentList ?? residents).map((r) => migrateResident(r)),
     listings: ops.listings ?? availableApartments,
     payments: ops.payments ?? seedPayments,
     invoiceMap: ops.invoiceMap ?? invoicesByResident,

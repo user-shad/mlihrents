@@ -181,6 +181,7 @@ function buildResidents(units, paidByUnit) {
       apartment: u.code,
       floor: u.floor,
       parking: '',
+      leaseStart: formatLeaseDate(u.start),
       leaseEnd: formatLeaseDate(u.end),
       rentAmount,
       currency: 'AED',

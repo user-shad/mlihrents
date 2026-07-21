@@ -39,7 +39,7 @@ export default function CookiesPage() {
 
       <h2>{ar ? '4. التواصل' : '4. Contact'}</h2>
       <p>
-        <a href={`mailto:${siteLegal.dataProtectionContact}`}>{siteLegal.dataProtectionContact}</a>
+        <a href={`tel:${siteLegal.phone.replace(/\s/g, '')}`}>{siteLegal.phone}</a>
       </p>
     </LegalLayout>
   )

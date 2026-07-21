@@ -12,10 +12,8 @@ import {
   expectedMonthlyIncome,
   buildingLabel,
   buildRentReminderWhatsAppMessage,
-  buildPaymentStatusEmailMessage,
   buildPaymentStatusWhatsAppMessage,
   formatMoney,
-  mailtoUrl,
   paymentMethodLabel,
   type PaymentNotifyKind,
   type PaymentRecord,
@@ -68,18 +66,64 @@ const emptyApartmentForm = {
   name: '',
   phone: '',
   pin: '',
-  email: '',
-  parking: '',
+  leaseStart: '',
   leaseEnd: '',
   unitType: '',
   nationality: '',
   idNumber: '',
+  occupants: '1',
   status: 'active' as 'active' | 'arrears' | 'notice',
 }
 
+function residentToApartmentForm(resident: {
+  buildingNumber: string
+  building: string
+  apartment: string
+  floor: number
+  contractTotal: number
+  amountPaid: number
+  rentAmount: number
+  rentSchedule: RentSchedule
+  rentDueDay: number
+  name: string
+  phone: string
+  pin: string
+  leaseStart?: string
+  leaseEnd: string
+  unitType?: string
+  nationality?: string
+  idNumber?: string
+  occupants?: number
+  status?: 'active' | 'arrears' | 'notice'
+}) {
+  return {
+    buildingNumber: resident.buildingNumber || apartmentBuildingLetter(resident.apartment) || 'A',
+    building: resident.building,
+    apartment: resident.apartment,
+    floor: String(resident.floor ?? 1),
+    contractTotal: String(resident.contractTotal),
+    amountPaid: String(resident.amountPaid),
+    rentAmount: String(resident.rentAmount),
+    rentSchedule: resident.rentSchedule,
+    rentDueDay: String(resident.rentDueDay),
+    name: resident.name,
+    phone: resident.phone,
+    pin: resident.pin,
+    leaseStart: resident.leaseStart ?? '',
+    leaseEnd: resident.leaseEnd,
+    unitType: resident.unitType ?? '',
+    nationality: resident.nationality ?? '',
+    idNumber: resident.idNumber ?? '',
+    occupants: String(resident.occupants ?? 1),
+    status: resident.status ?? 'active',
+  }
+}
+
+const UNIT_TYPE_OPTIONS = ['Studio', '1BR'] as const
+
 export default function AdminPortal() {
   const navigate = useNavigate()
-  const { logout, accounts, session } = useAuth()
+  const { logout, session } = useAuth()
   const { lang, tr } = useLang()
   const {
     residentList,
@@ -116,9 +160,6 @@ export default function AdminPortal() {
     showToast,
     sendChat,
     saveRentPlan,
-    saveResidentLoginPin,
-    clearResidentLogin,
-    updateResidentInfo,
     clearApartmentInfo,
     resetHumanMode,
     availableListings,
@@ -135,6 +176,8 @@ export default function AdminPortal() {
     removeServiceContact,
   } = useData()
 
+  const [apartmentSearch, setApartmentSearch] = useState('')
+  const [apartmentEditorOpen, setApartmentEditorOpen] = useState(false)
   const [tab, setTab] = useState<Tab>('info')
   const canEditBank = staffCan(session, 'bank_settings')
   const canClearApartment = staffCan(session, 'clear_apartment')
@@ -171,23 +214,8 @@ export default function AdminPortal() {
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
   const [serviceForm, setServiceForm] = useState(emptyServiceForm)
 
-  const [pinDraft, setPinDraft] = useState(selectedResident.pin)
-  const [phoneDraft, setPhoneDraft] = useState(selectedResident.phone)
-  const [editName, setEditName] = useState(selectedResident.name)
-  const [editPhone, setEditPhone] = useState(selectedResident.phone)
-  const [editEmail, setEditEmail] = useState(selectedResident.email ?? '')
-  const [editBuilding, setEditBuilding] = useState(selectedResident.building)
-  const [editApartment, setEditApartment] = useState(selectedResident.apartment)
-  const [editParking, setEditParking] = useState(selectedResident.parking)
-  const [editOccupants, setEditOccupants] = useState(String(selectedResident.occupants ?? 1))
-  const [editMoveIn, setEditMoveIn] = useState(selectedResident.moveIn ?? '')
-  const [editLeaseEnd, setEditLeaseEnd] = useState(selectedResident.leaseEnd)
-  const [editStatus, setEditStatus] = useState<'active' | 'arrears' | 'notice'>(
-    selectedResident.status ?? 'active',
-  )
   const [editingListingId, setEditingListingId] = useState<string | null>(null)
   const [listingForm, setListingForm] = useState(emptyListingForm)
-  const [editingApartmentId, setEditingApartmentId] = useState<string | null>(null)
   const [apartmentForm, setApartmentForm] = useState(emptyApartmentForm)
   const [bankDraft, setBankDraft] = useState(bankSettings)
   const [bankEditUnlocked, setBankEditUnlocked] = useState(false)
@@ -226,24 +254,33 @@ export default function AdminPortal() {
     () => payments.filter((p) => p.status !== 'pending_review' && p.status !== 'deleted'),
     [payments],
   )
+  const filteredApartments = useMemo(() => {
+    const q = apartmentSearch.trim().toLowerCase()
+    const sorted = [...residentList].sort(
+      (a, b) => apartmentSortKey(a.apartment) - apartmentSortKey(b.apartment),
+    )
+    if (!q) return sorted
+    return sorted.filter((r) => {
+      const haystack = [
+        r.apartment,
+        r.name,
+        r.phone,
+        r.unitType ?? '',
+        r.nationality ?? '',
+        r.idNumber ?? '',
+        r.building,
+      ]
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [residentList, apartmentSearch])
 
   useEffect(() => {
-    setPinDraft(selectedResident.pin)
-    setPhoneDraft(selectedResident.phone)
-    setEditName(selectedResident.name)
-    setEditPhone(selectedResident.phone)
-    setEditEmail(selectedResident.email ?? '')
-    setEditBuilding(selectedResident.building)
-    setEditApartment(selectedResident.apartment)
-    setEditParking(selectedResident.parking)
-    setEditOccupants(String(selectedResident.occupants ?? 1))
-    setEditMoveIn(selectedResident.moveIn ?? '')
-    setEditLeaseEnd(selectedResident.leaseEnd)
-    setEditStatus(selectedResident.status ?? 'active')
-  }, [selectedResident])
-
-  const accountPin =
-    accounts.find((a) => a.residentId === selectedResident.id)?.pin ?? selectedResident.pin
+    if (apartmentEditorOpen) return
+    if (!selectedResident.id) return
+    setApartmentForm(residentToApartmentForm(selectedResident))
+  }, [selectedResident, apartmentEditorOpen])
 
   function handleLogout() {
     resetHumanMode()
@@ -252,37 +289,17 @@ export default function AdminPortal() {
   }
 
   function resetApartmentForm() {
-    setEditingApartmentId(null)
     setApartmentForm(emptyApartmentForm)
+    setApartmentEditorOpen(false)
   }
 
-  function loadApartmentForm(resident: (typeof residentList)[number]) {
-    setEditingApartmentId(resident.id)
-    setSelectedResidentId(resident.id)
-    setApartmentForm({
-      buildingNumber: resident.buildingNumber || apartmentBuildingLetter(resident.apartment) || 'A',
-      building: resident.building,
-      apartment: resident.apartment,
-      floor: String(resident.floor ?? 1),
-      contractTotal: String(resident.contractTotal),
-      amountPaid: String(resident.amountPaid),
-      rentAmount: String(resident.rentAmount),
-      rentSchedule: resident.rentSchedule,
-      rentDueDay: String(resident.rentDueDay),
-      name: resident.name,
-      phone: resident.phone,
-      pin: resident.pin,
-      email: resident.email ?? '',
-      parking: resident.parking,
-      leaseEnd: resident.leaseEnd,
-      unitType: resident.unitType ?? '',
-      nationality: resident.nationality ?? '',
-      idNumber: resident.idNumber ?? '',
-      status: resident.status ?? 'active',
-    })
+  function startAddApartment() {
+    setApartmentForm(emptyApartmentForm)
+    setApartmentEditorOpen(true)
   }
 
   function submitApartmentForm() {
+    const isAdding = apartmentEditorOpen
     saveApartmentRecord(
       {
         buildingNumber: apartmentForm.buildingNumber,
@@ -297,21 +314,229 @@ export default function AdminPortal() {
         name: apartmentForm.name,
         phone: apartmentForm.phone,
         pin: apartmentForm.pin,
-        email: apartmentForm.email,
-        parking: apartmentForm.parking,
+        parking: '',
+        leaseStart: apartmentForm.leaseStart,
         leaseEnd: apartmentForm.leaseEnd,
         unitType: apartmentForm.unitType,
         nationality: apartmentForm.nationality,
         idNumber: apartmentForm.idNumber,
+        occupants: Number(apartmentForm.occupants) || 1,
         status: apartmentForm.status,
       },
-      editingApartmentId ?? undefined,
+      isAdding ? undefined : selectedResidentId,
     )
-    resetApartmentForm()
+    if (isAdding) resetApartmentForm()
+  }
+
+  function renderApartmentFormFields(apartmentCodeReadOnly: boolean) {
+    return (
+      <div className="rent-plan-editor">
+        <div className="form-row">
+          <label htmlFor="aptBuildingNum">{tr('buildingLetter')}</label>
+          <input
+            id="aptBuildingNum"
+            value={apartmentForm.buildingNumber}
+            onChange={(e) =>
+              setApartmentForm((f) => ({ ...f, buildingNumber: e.target.value.toUpperCase() }))
+            }
+            placeholder="A"
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptBuildingName">{tr('building')}</label>
+          <input
+            id="aptBuildingName"
+            value={apartmentForm.building}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, building: e.target.value }))}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptCode">{tr('apartment')}</label>
+          <input
+            id="aptCode"
+            value={apartmentForm.apartment}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, apartment: e.target.value }))}
+            placeholder="A5"
+            readOnly={apartmentCodeReadOnly}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptFloor">{tr('floor')}</label>
+          <input
+            id="aptFloor"
+            type="number"
+            value={apartmentForm.floor}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, floor: e.target.value }))}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptContract">{tr('contractTotal')}</label>
+          <input
+            id="aptContract"
+            type="number"
+            min={0}
+            value={apartmentForm.contractTotal}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, contractTotal: e.target.value }))}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptPaid">{tr('amountPaid')}</label>
+          <input
+            id="aptPaid"
+            type="number"
+            min={0}
+            value={apartmentForm.amountPaid}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, amountPaid: e.target.value }))}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptRent">{tr('installment')}</label>
+          <input
+            id="aptRent"
+            type="number"
+            min={0}
+            value={apartmentForm.rentAmount}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, rentAmount: e.target.value }))}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptSchedule">{tr('rentSchedule')}</label>
+          <select
+            id="aptSchedule"
+            value={apartmentForm.rentSchedule}
+            onChange={(e) =>
+              setApartmentForm((f) => ({
+                ...f,
+                rentSchedule: e.target.value as RentSchedule,
+              }))
+            }
+          >
+            <option value="monthly">{rentScheduleLabel('monthly', lang)}</option>
+            <option value="quarterly">{rentScheduleLabel('quarterly', lang)}</option>
+            <option value="semi_annual">{rentScheduleLabel('semi_annual', lang)}</option>
+            <option value="annual">{rentScheduleLabel('annual', lang)}</option>
+            <option value="full_lease">{rentScheduleLabel('full_lease', lang)}</option>
+          </select>
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptDueDay">{tr('rentDueDay')} (1–28)</label>
+          <input
+            id="aptDueDay"
+            type="number"
+            min={1}
+            max={28}
+            value={apartmentForm.rentDueDay}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, rentDueDay: e.target.value }))}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptUnitType">{tr('unitType')}</label>
+          <select
+            id="aptUnitType"
+            value={apartmentForm.unitType}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, unitType: e.target.value }))}
+          >
+            <option value="">{tr('selectUnitType')}</option>
+            {UNIT_TYPE_OPTIONS.map((type) => (
+              <option key={type} value={type}>
+                {type === 'Studio' ? tr('unitTypeStudio') : tr('unitType1Br')}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptName">{tr('fullName')}</label>
+          <input
+            id="aptName"
+            value={apartmentForm.name}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, name: e.target.value }))}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptPhone">{tr('phone')}</label>
+          <input
+            id="aptPhone"
+            value={apartmentForm.phone}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, phone: e.target.value }))}
+            inputMode="tel"
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptNationality">{tr('nationality')}</label>
+          <input
+            id="aptNationality"
+            value={apartmentForm.nationality}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, nationality: e.target.value }))}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptIdNumber">{tr('idNumber')}</label>
+          <input
+            id="aptIdNumber"
+            value={apartmentForm.idNumber}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, idNumber: e.target.value }))}
+            placeholder="784-XXXX-XXXXXXX-X"
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptPin">{tr('newPin')}</label>
+          <input
+            id="aptPin"
+            value={apartmentForm.pin}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, pin: e.target.value }))}
+            inputMode="numeric"
+            maxLength={4}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptLeaseStart">{tr('leaseStart')}</label>
+          <input
+            id="aptLeaseStart"
+            value={apartmentForm.leaseStart}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, leaseStart: e.target.value }))}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptLeaseEnd">{tr('leaseEnd')}</label>
+          <input
+            id="aptLeaseEnd"
+            value={apartmentForm.leaseEnd}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, leaseEnd: e.target.value }))}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptOccupants">{tr('occupants')}</label>
+          <input
+            id="aptOccupants"
+            type="number"
+            min={1}
+            value={apartmentForm.occupants}
+            onChange={(e) => setApartmentForm((f) => ({ ...f, occupants: e.target.value }))}
+          />
+        </div>
+        <div className="form-row">
+          <label htmlFor="aptStatus">{tr('accountStatus')}</label>
+          <select
+            id="aptStatus"
+            value={apartmentForm.status}
+            onChange={(e) =>
+              setApartmentForm((f) => ({
+                ...f,
+                status: e.target.value as 'active' | 'arrears' | 'notice',
+              }))
+            }
+          >
+            <option value="active">{statusLabel(lang, 'active')}</option>
+            <option value="arrears">{statusLabel(lang, 'arrears')}</option>
+            <option value="notice">{statusLabel(lang, 'notice')}</option>
+          </select>
+        </div>
+      </div>
+    )
   }
 
   function sendRentReminder() {
-    const phone = (editPhone || selectedResident.phone).trim()
+    const phone = (apartmentForm.phone || selectedResident.phone).trim()
     if (!phone) {
       showToast(tr('reminderNoPhone'))
       return
@@ -319,7 +544,7 @@ export default function AdminPortal() {
     const message = buildRentReminderWhatsAppMessage(
       {
         ...selectedResident,
-        name: editName.trim() || selectedResident.name,
+        name: apartmentForm.name.trim() || selectedResident.name,
         phone,
       },
       adminResidentInvoices,
@@ -367,28 +592,6 @@ export default function AdminPortal() {
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
-  function openPaymentStatusEmail(payment: PaymentRecord, kind: PaymentNotifyKind) {
-    const resident = residentForPayment(payment)
-    const email = (resident?.email ?? '').trim()
-    if (!email) {
-      showToast(tr('notifyPaymentNoEmail'))
-      return
-    }
-    const { subject, body } = buildPaymentStatusEmailMessage(
-      payment,
-      kind,
-      lang,
-      residentPortalUrl,
-      siteLegal.brandName,
-    )
-    const url = mailtoUrl(email, subject, body)
-    if (!url) {
-      showToast(tr('notifyPaymentNoEmail'))
-      return
-    }
-    window.location.href = url
-  }
-
   function paymentNotifyBannerKey(kind: PaymentNotifyKind) {
     if (kind === 'approved') return 'paymentApprovedNotifyBanner'
     if (kind === 'partial') return 'paymentPartialNotifyBanner'
@@ -415,13 +618,6 @@ export default function AdminPortal() {
           onClick={() => openPaymentStatusWhatsApp(payment, kind)}
         >
           {tr('notifyPaymentWhatsApp')}
-        </button>
-        <button
-          className="btn btn-ghost btn-sm"
-          type="button"
-          onClick={() => openPaymentStatusEmail(payment, kind)}
-        >
-          {tr('notifyPaymentEmail')}
         </button>
       </div>
     )
@@ -524,12 +720,12 @@ export default function AdminPortal() {
     resetListingForm()
   }
 
-  function renderResidentPicker(showFinancialMeta: boolean) {
-    if (residentList.length === 0) {
+  function renderResidentPicker(showFinancialMeta: boolean, residents = residentList) {
+    if (residents.length === 0) {
       return <p className="meta">{tr('noApartmentsYet')}</p>
     }
 
-    const sorted = [...residentList].sort(
+    const sorted = [...residents].sort(
       (a, b) => apartmentSortKey(a.apartment) - apartmentSortKey(b.apartment),
     )
 
@@ -551,13 +747,24 @@ export default function AdminPortal() {
           key={r.id}
           type="button"
           className={`resident-pick ${active ? 'active' : ''}`}
-          onClick={() => setSelectedResidentId(r.id)}
+          onClick={() => {
+            setSelectedResidentId(r.id)
+            setApartmentEditorOpen(false)
+          }}
         >
           <span>
             <strong>{title}</strong>
             <span className="meta">
               {unit}
+              {r.unitType ? ` · ${r.unitType}` : ''}
               {!vacant && r.phone ? ` · ${r.phone}` : vacant ? ` · ${tr('vacantUnit')}` : ''}
+              {(r.nationality || r.idNumber) && (
+                <>
+                  <br />
+                  {r.nationality}
+                  {r.idNumber ? ` · ${r.idNumber}` : ''}
+                </>
+              )}
               {showFinancialMeta && (
                 <>
                   <br />
@@ -721,9 +928,9 @@ export default function AdminPortal() {
               </section>
             </div>
 
-            <section className="panel" style={{ marginTop: '1rem' }}>
-              <h2>{tr('serviceDirectory')}</h2>
-              <p className="meta" style={{ marginTop: 0 }}>
+            <details className="panel collapsible-section" style={{ marginTop: '1rem' }}>
+              <summary>{tr('serviceDirectory')}</summary>
+              <p className="meta" style={{ marginTop: '0.75rem' }}>
                 {tr('serviceDirectoryLead')}
               </p>
               <div className="list">
@@ -872,525 +1079,157 @@ export default function AdminPortal() {
                   {tr('cancelEdit')}
                 </button>
               )}
-            </section>
-
-            <section className="panel" style={{ marginTop: '1rem' }}>
-              <h2>{tr('apartments')}</h2>
-              <p className="meta" style={{ marginTop: 0 }}>
-                {tr('apartmentListLead')}
-              </p>
-              <div className="list">
-                {[...residentList]
-                  .sort((a, b) => apartmentSortKey(a.apartment) - apartmentSortKey(b.apartment))
-                  .map((r) => {
-                    const vacant = !(r.name.trim() || r.phone.trim())
-                    const paymentCount = payments.filter(
-                      (p) => p.residentId === r.id && p.status !== 'deleted',
-                    ).length
-                    return (
-                      <div className="list-row" key={r.id} style={{ alignItems: 'flex-start' }}>
-                        <div style={{ flex: 1 }}>
-                          <strong>{apartmentDisplayTitle(r, lang)}</strong>
-                          <div className="meta">
-                            {unitCodeLabel(r)}
-                            {r.unitType ? ` · ${r.unitType}` : ''}
-                            {vacant ? ` · ${tr('vacantUnit')}` : ` · ${r.phone}`}
-                            {!vacant && r.nationality ? (
-                              <>
-                                <br />
-                                {r.nationality}
-                                {r.idNumber ? ` · ${r.idNumber}` : ''}
-                              </>
-                            ) : null}
-                            <br />
-                            {formatMoney(r.rentAmount, r.currency)} / {rentScheduleLabel(r.rentSchedule, lang)}
-                            {' · '}
-                            {tr('contractTotal')}: {formatMoney(r.contractTotal, r.currency)}
-                            {' · '}
-                            {paymentCount} {tr('settledPayments').toLowerCase()}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                          <button
-                            className={`btn btn-ghost btn-sm ${r.id === selectedResidentId ? 'active' : ''}`}
-                            type="button"
-                            onClick={() => loadApartmentForm(r)}
-                          >
-                            {tr('editApartment')}
-                          </button>
-                          {canManageApartments && (
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              type="button"
-                              onClick={() => {
-                                if (!window.confirm(tr('removeApartmentConfirm'))) return
-                                removeApartment(r.id)
-                                if (editingApartmentId === r.id) resetApartmentForm()
-                              }}
-                            >
-                              {tr('removeApartment')}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-              </div>
-
-              {canManageApartments && (
-                <>
-                  <h3 className="section-label" style={{ marginTop: '1.25rem' }}>
-                    {editingApartmentId ? tr('editApartment') : tr('addApartment')}
-                  </h3>
-                  <p className="meta" style={{ marginTop: 0 }}>
-                    {tr('apartmentFormHelp')}
-                  </p>
-                  <div className="rent-plan-editor">
-                    <div className="form-row">
-                      <label htmlFor="aptBuildingNum">{tr('buildingLetter')}</label>
-                      <input
-                        id="aptBuildingNum"
-                        value={apartmentForm.buildingNumber}
-                        onChange={(e) =>
-                          setApartmentForm((f) => ({ ...f, buildingNumber: e.target.value.toUpperCase() }))
-                        }
-                        placeholder="A"
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptBuildingName">{tr('building')}</label>
-                      <input
-                        id="aptBuildingName"
-                        value={apartmentForm.building}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, building: e.target.value }))}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptCode">{tr('apartment')}</label>
-                      <input
-                        id="aptCode"
-                        value={apartmentForm.apartment}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, apartment: e.target.value }))}
-                        placeholder="A5"
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptFloor">{tr('floor')}</label>
-                      <input
-                        id="aptFloor"
-                        type="number"
-                        value={apartmentForm.floor}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, floor: e.target.value }))}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptContract">{tr('contractTotal')}</label>
-                      <input
-                        id="aptContract"
-                        type="number"
-                        min={0}
-                        value={apartmentForm.contractTotal}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, contractTotal: e.target.value }))}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptPaid">{tr('amountPaid')}</label>
-                      <input
-                        id="aptPaid"
-                        type="number"
-                        min={0}
-                        value={apartmentForm.amountPaid}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, amountPaid: e.target.value }))}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptRent">{tr('installment')}</label>
-                      <input
-                        id="aptRent"
-                        type="number"
-                        min={0}
-                        value={apartmentForm.rentAmount}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, rentAmount: e.target.value }))}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptSchedule">{tr('rentSchedule')}</label>
-                      <select
-                        id="aptSchedule"
-                        value={apartmentForm.rentSchedule}
-                        onChange={(e) =>
-                          setApartmentForm((f) => ({
-                            ...f,
-                            rentSchedule: e.target.value as RentSchedule,
-                          }))
-                        }
-                      >
-                        <option value="monthly">{rentScheduleLabel('monthly', lang)}</option>
-                        <option value="quarterly">{rentScheduleLabel('quarterly', lang)}</option>
-                        <option value="semi_annual">{rentScheduleLabel('semi_annual', lang)}</option>
-                        <option value="annual">{rentScheduleLabel('annual', lang)}</option>
-                        <option value="full_lease">{rentScheduleLabel('full_lease', lang)}</option>
-                      </select>
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptDueDay">{tr('rentDueDay')} (1–28)</label>
-                      <input
-                        id="aptDueDay"
-                        type="number"
-                        min={1}
-                        max={28}
-                        value={apartmentForm.rentDueDay}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, rentDueDay: e.target.value }))}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptUnitType">{tr('unitType')}</label>
-                      <input
-                        id="aptUnitType"
-                        value={apartmentForm.unitType}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, unitType: e.target.value }))}
-                        placeholder="Studio, 1BR"
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptName">{tr('fullName')}</label>
-                      <input
-                        id="aptName"
-                        value={apartmentForm.name}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, name: e.target.value }))}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptPhone">{tr('phone')}</label>
-                      <input
-                        id="aptPhone"
-                        value={apartmentForm.phone}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, phone: e.target.value }))}
-                        inputMode="tel"
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptNationality">{tr('nationality')}</label>
-                      <input
-                        id="aptNationality"
-                        value={apartmentForm.nationality}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, nationality: e.target.value }))}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptIdNumber">{tr('idNumber')}</label>
-                      <input
-                        id="aptIdNumber"
-                        value={apartmentForm.idNumber}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, idNumber: e.target.value }))}
-                        placeholder="784-XXXX-XXXXXXX-X"
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptPin">{tr('newPin')}</label>
-                      <input
-                        id="aptPin"
-                        value={apartmentForm.pin}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, pin: e.target.value }))}
-                        inputMode="numeric"
-                        maxLength={4}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptParking">{tr('parking')}</label>
-                      <input
-                        id="aptParking"
-                        value={apartmentForm.parking}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, parking: e.target.value }))}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="aptLeaseEnd">{tr('leaseEnd')}</label>
-                      <input
-                        id="aptLeaseEnd"
-                        value={apartmentForm.leaseEnd}
-                        onChange={(e) => setApartmentForm((f) => ({ ...f, leaseEnd: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    type="button"
-                    style={{ marginTop: '0.75rem' }}
-                    onClick={submitApartmentForm}
-                  >
-                    {editingApartmentId ? tr('saveApartment') : tr('addApartment')}
-                  </button>
-                  {editingApartmentId && (
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      type="button"
-                      style={{ marginTop: '0.5rem', marginInlineStart: '0.5rem' }}
-                      onClick={resetApartmentForm}
-                    >
-                      {tr('cancelEdit')}
-                    </button>
-                  )}
-                </>
-              )}
-            </section>
+            </details>
 
             <div className="admin-split" style={{ marginTop: '1rem' }}>
               <section className="panel resident-directory">
-                <h2>{tr('selectApartment')}</h2>
-                <p className="meta" style={{ marginTop: 0, marginBottom: '0.85rem' }}>
-                  {tr('apartmentPickerHelp')}
-                </p>
-                {renderResidentPicker(false)}
+                <div className="file-head">
+                  <div>
+                    <h2 style={{ marginBottom: '0.25rem' }}>{tr('apartments')}</h2>
+                    <p className="meta" style={{ margin: 0 }}>
+                      {tr('apartmentListLead')}
+                    </p>
+                  </div>
+                  {canManageApartments && (
+                    <button className="btn btn-primary btn-sm" type="button" onClick={startAddApartment}>
+                      {tr('addApartment')}
+                    </button>
+                  )}
+                </div>
+                <div className="form-row" style={{ marginTop: '0.75rem' }}>
+                  <label htmlFor="aptSearch">{tr('searchApartments')}</label>
+                  <input
+                    id="aptSearch"
+                    value={apartmentSearch}
+                    onChange={(e) => setApartmentSearch(e.target.value)}
+                    placeholder={tr('searchApartmentsPlaceholder')}
+                  />
+                </div>
+                <div className="info-scroll-list">
+                  {renderResidentPicker(false, filteredApartments)}
+                </div>
               </section>
 
               <section className="panel resident-file">
-                <div className="file-head">
-                  <div>
-                    <h2 style={{ marginBottom: '0.25rem' }}>
-                      {apartmentDisplayTitle(selectedResident, lang)}
-                    </h2>
-                    <p className="meta" style={{ margin: 0 }}>
-                      {unitCodeLabel(selectedResident)}
-                      {selectedResident.building ? ` · ${selectedResident.building}` : ''}
+                {apartmentEditorOpen && canManageApartments ? (
+                  <>
+                    <h2 style={{ marginBottom: '0.25rem' }}>{tr('addApartment')}</h2>
+                    <p className="meta" style={{ marginTop: 0 }}>
+                      {tr('apartmentFormHelp')}
                     </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      type="button"
-                      title={tr('sendReminderHelp')}
-                      onClick={sendRentReminder}
-                    >
-                      {tr('sendReminder')}
-                    </button>
-                    <button
-                      className="btn btn-primary btn-sm"
-                      type="button"
-                      onClick={() => {
-                        setSelectedResidentId(selectedResident.id)
-                        setTab('chat')
-                        showToast(
-                          lang === 'ar'
-                            ? `تم فتح محادثة الدعم لـ ${apartmentDisplayTitle(selectedResident, lang)}`
-                            : `Opened support thread for ${apartmentDisplayTitle(selectedResident, lang)}`,
-                        )
-                      }}
-                    >
-                      {tr('openChat')}
-                    </button>
-                  </div>
-                </div>
+                    {renderApartmentFormFields(false)}
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+                      <button className="btn btn-primary btn-sm" type="button" onClick={submitApartmentForm}>
+                        {tr('addApartment')}
+                      </button>
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={resetApartmentForm}>
+                        {tr('cancelEdit')}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="file-head">
+                      <div>
+                        <h2 style={{ marginBottom: '0.25rem' }}>
+                          {apartmentDisplayTitle(selectedResident, lang)}
+                        </h2>
+                        <p className="meta" style={{ margin: 0 }}>
+                          {unitCodeLabel(selectedResident)}
+                          {selectedResident.building ? ` · ${selectedResident.building}` : ''}
+                          {selectedResident.unitType ? ` · ${selectedResident.unitType}` : ''}
+                          {selectedResident.nationality ? (
+                            <>
+                              <br />
+                              {selectedResident.nationality}
+                              {selectedResident.idNumber ? ` · ${selectedResident.idNumber}` : ''}
+                            </>
+                          ) : null}
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          title={tr('sendReminderHelp')}
+                          onClick={sendRentReminder}
+                        >
+                          {tr('sendReminder')}
+                        </button>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          type="button"
+                          onClick={() => {
+                            setSelectedResidentId(selectedResident.id)
+                            setTab('chat')
+                            showToast(
+                              lang === 'ar'
+                                ? `تم فتح محادثة الدعم لـ ${apartmentDisplayTitle(selectedResident, lang)}`
+                                : `Opened support thread for ${apartmentDisplayTitle(selectedResident, lang)}`,
+                            )
+                          }}
+                        >
+                          {tr('openChat')}
+                        </button>
+                      </div>
+                    </div>
 
-                <h3 className="section-label">{tr('editApartmentInfo')}</h3>
-                <p className="meta" style={{ marginTop: 0 }}>
-                  {tr('editApartmentHelp')}
-                </p>
-                <div className="rent-plan-editor">
-                  <div className="form-row">
-                    <label htmlFor="editName">{tr('fullName')}</label>
-                    <input id="editName" value={editName} onChange={(e) => setEditName(e.target.value)} />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="editPhone">{tr('phone')}</label>
-                    <input
-                      id="editPhone"
-                      value={editPhone}
-                      onChange={(e) => setEditPhone(e.target.value)}
-                      inputMode="tel"
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="editEmail">{tr('email')}</label>
-                    <input
-                      id="editEmail"
-                      value={editEmail}
-                      onChange={(e) => setEditEmail(e.target.value)}
-                      type="email"
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="editBuilding">{tr('building')}</label>
-                    <input
-                      id="editBuilding"
-                      value={editBuilding}
-                      onChange={(e) => setEditBuilding(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="editApartment">{tr('apartment')}</label>
-                    <input
-                      id="editApartment"
-                      value={editApartment}
-                      onChange={(e) => setEditApartment(e.target.value)}
-                      readOnly={selectedResident.id.startsWith('apt-')}
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="editParking">{tr('parking')}</label>
-                    <input
-                      id="editParking"
-                      value={editParking}
-                      onChange={(e) => setEditParking(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="editOccupants">{tr('occupants')}</label>
-                    <input
-                      id="editOccupants"
-                      type="number"
-                      min={1}
-                      value={editOccupants}
-                      onChange={(e) => setEditOccupants(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="editMoveIn">{tr('moveIn')}</label>
-                    <input
-                      id="editMoveIn"
-                      value={editMoveIn}
-                      onChange={(e) => setEditMoveIn(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="editLeaseEnd">{tr('leaseEnd')}</label>
-                    <input
-                      id="editLeaseEnd"
-                      value={editLeaseEnd}
-                      onChange={(e) => setEditLeaseEnd(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="editStatus">{tr('accountStatus')}</label>
-                    <select
-                      id="editStatus"
-                      value={editStatus}
-                      onChange={(e) => setEditStatus(e.target.value as 'active' | 'arrears' | 'notice')}
-                    >
-                      <option value="active">{statusLabel(lang, 'active')}</option>
-                      <option value="arrears">{statusLabel(lang, 'arrears')}</option>
-                      <option value="notice">{statusLabel(lang, 'notice')}</option>
-                    </select>
-                  </div>
-                  <div className="profile-item" style={{ margin: 0 }}>
-                    <span className="k">{tr('currentPin')}</span>
-                    <span className="v">{accountPin}</span>
-                  </div>
-                </div>
-                <button
-                  className="btn btn-primary btn-sm"
-                  type="button"
-                  style={{ marginTop: '0.75rem' }}
-                  onClick={() =>
-                    updateResidentInfo({
-                      name: editName,
-                      phone: editPhone,
-                      email: editEmail,
-                      building: editBuilding,
-                      buildingNumber: selectedResident.buildingNumber,
-                      apartment: editApartment,
-                      floor: selectedResident.floor,
-                      parking: editParking,
-                      occupants: Number(editOccupants) || 1,
-                      moveIn: editMoveIn,
-                      leaseEnd: editLeaseEnd,
-                      status: editStatus,
-                    })
-                  }
-                >
-                  {tr('saveApartmentInfo')}
-                </button>
+                    <h3 className="section-label">{tr('editApartmentInfo')}</h3>
+                    <p className="meta" style={{ marginTop: 0 }}>
+                      {tr('editApartmentHelp')}
+                    </p>
+                    {renderApartmentFormFields(selectedResident.id.startsWith('apt-'))}
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+                      {canManageApartments && (
+                        <button className="btn btn-primary btn-sm" type="button" onClick={submitApartmentForm}>
+                          {tr('saveApartmentInfo')}
+                        </button>
+                      )}
+                      {canManageApartments && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          onClick={() => {
+                            if (!window.confirm(tr('removeApartmentConfirm'))) return
+                            removeApartment(selectedResidentId)
+                          }}
+                        >
+                          {tr('removeApartment')}
+                        </button>
+                      )}
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={exportSelectedApartment}>
+                        {tr('exportApartmentExcel')}
+                      </button>
+                      {canClearApartment && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          onClick={() => {
+                            if (!window.confirm(tr('clearApartmentConfirm'))) return
+                            exportSelectedApartment()
+                            clearApartmentInfo()
+                            setApartmentForm({
+                              ...emptyApartmentForm,
+                              buildingNumber: selectedResident.buildingNumber,
+                              building: selectedResident.building,
+                              apartment: selectedResident.apartment,
+                              floor: String(selectedResident.floor ?? 1),
+                            })
+                            setContractDraft('0')
+                            setPaidDraft('0')
+                            setInstallmentDraft('0')
+                            setDueDayDraft('1')
+                            setScheduleDraft('monthly')
+                          }}
+                        >
+                          {tr('clearApartmentInfo')}
+                        </button>
+                      )}
+                    </div>
 
-                <h3 className="section-label" style={{ marginTop: '1.25rem' }}>
-                  {tr('setLoginPin')}
-                </h3>
-                <p className="meta" style={{ marginTop: 0 }}>
-                  {tr('setLoginPinHelp')}
-                </p>
-                <div className="rent-plan-editor">
-                  <div className="form-row">
-                    <label htmlFor="loginPhone">{tr('mobileNumber')}</label>
-                    <input
-                      id="loginPhone"
-                      value={phoneDraft}
-                      onChange={(e) => setPhoneDraft(e.target.value)}
-                      inputMode="tel"
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="loginPin">{tr('loginPin')}</label>
-                    <input
-                      id="loginPin"
-                      value={pinDraft}
-                      onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                      inputMode="numeric"
-                      maxLength={4}
-                      placeholder="1234"
-                    />
-                  </div>
-                </div>
-                <button
-                  className="btn btn-primary btn-sm"
-                  type="button"
-                  style={{ marginTop: '0.75rem' }}
-                  onClick={() => saveResidentLoginPin(phoneDraft, pinDraft)}
-                >
-                  {tr('saveLoginPin')}
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  type="button"
-                  style={{ marginTop: '0.5rem', marginInlineStart: '0.5rem' }}
-                  onClick={() => {
-                    if (!window.confirm(tr('clearLoginConfirm'))) return
-                    clearResidentLogin()
-                    setPhoneDraft('')
-                    setPinDraft('')
-                  }}
-                >
-                  {tr('clearLoginPin')}
-                </button>
-
-                <button
-                  className="btn btn-ghost btn-sm"
-                  type="button"
-                  style={{ marginTop: '0.5rem', marginInlineStart: '0.5rem' }}
-                  onClick={exportSelectedApartment}
-                >
-                  {tr('exportApartmentExcel')}
-                </button>
-                {canClearApartment && (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  type="button"
-                  style={{ marginTop: '0.5rem', marginInlineStart: '0.5rem' }}
-                  onClick={() => {
-                    if (!window.confirm(tr('clearApartmentConfirm'))) return
-                    exportSelectedApartment()
-                    clearApartmentInfo()
-                    setEditName('')
-                    setEditPhone('')
-                    setEditEmail('')
-                    setEditParking('')
-                    setEditOccupants('1')
-                    setEditMoveIn('')
-                    setEditLeaseEnd('')
-                    setEditStatus('active')
-                    setPhoneDraft('')
-                    setPinDraft('')
-                    setContractDraft('0')
-                    setPaidDraft('0')
-                    setInstallmentDraft('0')
-                    setDueDayDraft('1')
-                    setScheduleDraft('monthly')
-                  }}
-                >
-                  {tr('clearApartmentInfo')}
-                </button>
-                )}
-
-                <h3 className="section-label">{tr('maintenanceTickets')}</h3>
-                <div className="list">
+                <details className="collapsible-section" style={{ marginTop: '1.25rem' }}>
+                  <summary>{tr('maintenanceTickets')}</summary>
+                <div className="list" style={{ marginTop: '0.75rem' }}>
                   {adminResidentTickets.map((tkt) => (
                     <div className="list-row" key={tkt.id}>
                       <div>
@@ -1408,10 +1247,12 @@ export default function AdminPortal() {
                     <p className="meta">{tr('noTickets')}</p>
                   )}
                 </div>
+                </details>
 
-                <h3 className="section-label">{tr('chatContext')}</h3>
+                <details className="collapsible-section" style={{ marginTop: '0.75rem' }}>
+                  <summary>{tr('chatContext')}</summary>
                 {selectedResident.id ? (
-                  <div className="admin-chat-preview">
+                  <div className="admin-chat-preview" style={{ marginTop: '0.75rem' }}>
                     {messages.slice(-6).map((m) => (
                       <div
                         key={m.id}
@@ -1453,9 +1294,12 @@ export default function AdminPortal() {
                     </button>
                   </div>
                 ) : (
-                  <p className="meta" style={{ margin: 0 }}>
+                  <p className="meta" style={{ margin: '0.75rem 0 0' }}>
                     {tr('noChatHistory')}
                   </p>
+                )}
+                </details>
+                  </>
                 )}
               </section>
             </div>

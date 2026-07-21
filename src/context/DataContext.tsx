@@ -42,6 +42,7 @@ import {
   Resident,
   apartmentUnits,
   buildEmptyApartment,
+  migrateResident,
   suggestInstallment,
   Ticket,
   welcomeMessage,
@@ -77,8 +78,7 @@ function isLegacyTestTenantA1(resident: Resident): boolean {
   const phone = resident.phone.replace(/\D/g, '')
   return (
     resident.name === 'Test Tenant A1' ||
-    phone === '0501234567' ||
-    resident.email === 'a1-test@mlihrents.ae'
+    phone === '0501234567'
   )
 }
 
@@ -167,7 +167,9 @@ function pruneStaleOpenInvoices(
 
 function normalizePersistedOps(parsed: PortalOps): PortalOps {
   const cleaned = stripLegacyTestData(parsed)
-  const residentList = ensureSeedApartments(cleaned.residentList ?? [])
+  const residentList = ensureSeedApartments(
+    (cleaned.residentList ?? []).map((r) => migrateResident(r)),
+  )
   const paidIds = cleaned.paidIds ?? []
   return {
     ...cleaned,
@@ -268,14 +270,15 @@ interface DataContextValue {
   updateResidentInfo: (input: {
     name: string
     phone: string
-    email: string
     building: string
     buildingNumber: string
     apartment: string
     floor: number
-    parking: string
+    unitType: string
+    nationality: string
+    idNumber: string
     occupants: number
-    moveIn: string
+    leaseStart: string
     leaseEnd: string
     status: 'active' | 'arrears' | 'notice'
   }) => void
@@ -294,12 +297,13 @@ interface DataContextValue {
       name: string
       phone: string
       pin: string
-      email: string
       parking: string
+      leaseStart: string
       leaseEnd: string
       unitType: string
       nationality: string
       idNumber: string
+      occupants: number
       status: 'active' | 'arrears' | 'notice'
     },
     residentId?: string,
@@ -716,14 +720,15 @@ export function DataProvider({
   function updateResidentInfo(input: {
     name: string
     phone: string
-    email: string
     building: string
     buildingNumber: string
     apartment: string
     floor: number
-    parking: string
+    unitType: string
+    nationality: string
+    idNumber: string
     occupants: number
-    moveIn: string
+    leaseStart: string
     leaseEnd: string
     status: 'active' | 'arrears' | 'notice'
   }) {
@@ -743,14 +748,15 @@ export function DataProvider({
               ...r,
               name,
               phone,
-              email: input.email.trim() || undefined,
               building: input.building.trim() || r.building,
               buildingNumber: input.buildingNumber.trim() || r.buildingNumber,
               apartment: input.apartment.trim() || r.apartment,
               floor: Number.isFinite(input.floor) ? input.floor : r.floor,
-              parking: input.parking.trim() || r.parking,
+              unitType: input.unitType.trim() || undefined,
+              nationality: input.nationality.trim() || undefined,
+              idNumber: input.idNumber.trim() || undefined,
               occupants: Number.isFinite(input.occupants) ? input.occupants : r.occupants,
-              moveIn: input.moveIn.trim() || r.moveIn,
+              leaseStart: input.leaseStart.trim() || r.leaseStart,
               leaseEnd: input.leaseEnd.trim() || r.leaseEnd,
               status: input.status,
             }
@@ -774,10 +780,9 @@ export function DataProvider({
               name: '',
               phone: '',
               pin: '',
-              email: undefined,
               parking: '',
               occupants: undefined,
-              moveIn: undefined,
+              leaseStart: undefined,
               leaseEnd: '',
               rentAmount: 0,
               rentDueDay: 1,
@@ -819,12 +824,13 @@ export function DataProvider({
       name: string
       phone: string
       pin: string
-      email: string
       parking: string
+      leaseStart: string
       leaseEnd: string
       unitType: string
       nationality: string
       idNumber: string
+      occupants: number
       status: 'active' | 'arrears' | 'notice'
     },
     residentId?: string,
@@ -867,12 +873,13 @@ export function DataProvider({
       rentDueDay,
       name: input.name.trim(),
       phone: input.phone.trim(),
-      email: input.email.trim() || undefined,
       parking: input.parking.trim(),
+      leaseStart: input.leaseStart.trim() || undefined,
       leaseEnd: input.leaseEnd.trim(),
       unitType: input.unitType.trim() || undefined,
       nationality: input.nationality.trim() || undefined,
       idNumber: input.idNumber.trim() || undefined,
+      occupants: Number.isFinite(input.occupants) ? input.occupants : undefined,
       status: input.status,
     }
 

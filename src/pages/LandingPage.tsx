@@ -100,9 +100,7 @@ export default function LandingPage() {
                 </div>
                 <a
                   className="btn btn-primary btn-sm"
-                  href={`mailto:${siteLegal.supportEmail}?subject=${encodeURIComponent(
-                    `Inquiry: ${apt.apartment}`,
-                  )}`}
+                  href={`tel:${siteLegal.phone.replace(/\s/g, '')}`}
                 >
                   {tr('inquire')}
                 </a>

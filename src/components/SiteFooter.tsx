@@ -26,8 +26,6 @@ export default function SiteFooter() {
         </div>
         <div>
           <h4>{tr('contact')}</h4>
-          <a href={`mailto:${siteLegal.supportEmail}`}>{siteLegal.supportEmail}</a>
-          <a href={`mailto:${siteLegal.dataProtectionContact}`}>{siteLegal.dataProtectionContact}</a>
           <a href={`tel:${siteLegal.phone.replace(/\s/g, '')}`}>{siteLegal.phone}</a>
         </div>
         <div>

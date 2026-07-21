@@ -80,9 +80,7 @@ export default function TermsPage() {
 
       <h2>{ar ? '9. التواصل' : '9. Contact'}</h2>
       <p>
-        <a href={`mailto:${siteLegal.contactEmail}`}>{siteLegal.contactEmail}</a>
-        <br />
-        {siteLegal.phone}
+        <a href={`tel:${siteLegal.phone.replace(/\s/g, '')}`}>{siteLegal.phone}</a>
       </p>
     </LegalLayout>
   )
