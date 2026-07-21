@@ -562,7 +562,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'PUT' || req.method === 'POST') {
-    const body = (req.body ?? {}) as SyncPayload
+    const body = (req.body ?? {}) as SyncPayload & { fullReplace?: boolean }
     const incoming: SyncPayload = {
       accounts: body.accounts ?? [],
       ops: body.ops ?? {},
@@ -571,7 +571,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     try {
       const { payload: existing } = await loadBest()
-      const payload = mergeSyncPayload(existing, incoming)
+      const payload = body.fullReplace ? incoming : mergeSyncPayload(existing, incoming)
       const storage = await saveBest(payload)
       res.status(200).json({
         configured: true,
