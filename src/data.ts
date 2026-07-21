@@ -415,6 +415,13 @@ export function lookupPaymentRef(
   return { ref: ref.trim(), match, payment, invoice, resident, allPaymentsForRef }
 }
 
+export interface ResidentAiContext {
+  resident: Resident
+  invoices: Invoice[]
+  tickets: Ticket[]
+  payments: PaymentRecord[]
+}
+
 export interface StaffAiContext {
   payments: PaymentRecord[]
   pendingPayments: PaymentRecord[]
@@ -1188,11 +1195,12 @@ export function buildPaymentDueAnnouncements(
     })
 }
 
-/** AI replies keyed by simple intent matching */
+/** Automated assistant replies — keyword intents plus apartment context (no external AI API). */
 export function aiReply(
   input: string,
   lang: 'en' | 'ar' = 'en',
   directory: ServiceContact[] = defaultServiceDirectory,
+  ctx?: ResidentAiContext,
 ): {
   text: string
   escalate?: boolean
@@ -1201,62 +1209,10 @@ export function aiReply(
   const q = input.toLowerCase()
   const contact = findServiceContact(q, directory)
   const ar = lang === 'ar'
+  const unit = ctx ? unitCodeLabel(ctx.resident) : ''
+  const currency = ctx?.resident.currency ?? 'AED'
 
-  if (/rent|pay|invoice|due|إيجار|الايجار|ادفع|فاتورة|مستحق/.test(q)) {
-    return {
-      text: ar
-        ? 'يمكنك مراجعة فواتيرك والدفع عبر التحويل البنكي إلى حساب المبنى — أرفق إثبات التحويل بعد الدفع.'
-        : 'You can review invoices and pay by bank transfer to the building account — attach your transfer proof after paying.',
-    }
-  }
-
-  if (
-    contact &&
-    /ac|a\/c|air ?con|hvac|cool|heat|plumb|leak|faucet|drain|toilet|electric|power|outlet|light|security|lockout|noise|emergency|مكيف|تكييف|سباكة|تسريب|كهرباء|أمن|حراسة|طوارئ/.test(
-      q,
-    )
-  ) {
-    return {
-      text: ar
-        ? `لمشاكل ${contact.category} في وحدتك، اتصل مباشرة بـ${contact.role} المعتمد:\n\n${contact.name}\n${contact.phone}\n\nيمكنني أيضاً فتح تذكرة صيانة. قل «أنشئ تذكرة» إن رغبت.`
-        : `For ${contact.category.toLowerCase()} issues in your unit, call our approved ${contact.role.toLowerCase()} directly:\n\n${contact.name}\n${contact.phone}\n\nI can also open a maintenance ticket. Say “create ticket” if you want that.`,
-      contact,
-    }
-  }
-
-  if (/number|contact|phone|أرقام|رقم|خدمات|who.*(call|fix)|call.*(tech|ac|plumb|electric)/.test(q)) {
-    const lines = directory.map((c) => `• ${c.role}: ${c.name} — ${c.phone}`).join('\n')
-    return {
-      text: ar
-        ? `إليك قائمة أرقام الخدمات:\n\n${lines}\n\nصف المشكلة وسأرسل الرقم المناسب مع زر اتصال.`
-        : `Here’s the building service number list:\n\n${lines}\n\nTell me the problem and I’ll send the right number with a tap-to-call link.`,
-    }
-  }
-
-  if (/ticket|repair|broken|maintenance|create ticket|صيانة|عطل|تذكرة|لا يعمل/.test(q)) {
-    return {
-      text: ar
-        ? 'يمكنني إنشاء تذكرة صيانة مع بيانات وحدتك. صف المشكلة أو قل «أنشئ تذكرة»، أو استخدم تبويب التذاكر.'
-        : 'I can create a maintenance ticket with your unit details. Describe the issue, say “create ticket”, or use the Tickets tab.',
-      contact: directory.find((c) => /ac|hvac|cool/i.test(c.category + c.role)) ?? directory[0],
-    }
-  }
-  if (/visitor|guest|gate|qr|pass|زائر|ضيف/.test(q)) {
-    return {
-      text: ar
-        ? 'تصاريح الزوار من الملف الشخصي. لمشاكل الاستقبال، تواصل مع الأمن عبر أرقام الخدمات.'
-        : 'Guest passes are available from your Profile. For lobby access issues, contact security via the service numbers.',
-      contact: directory.find((c) => /secur/i.test(c.category + c.role)),
-    }
-  }
-  if (/amenit|gym|pool|parking|مسبح|جيم|موقف/.test(q)) {
-    return {
-      text: ar
-        ? 'تفاصيل المرافق والمواقف يحددها إدارة المبنى. اسأل عن موقفك من ملفك أو تواصل مع المدير.'
-        : 'Amenity hours and parking details are set by building management. Check your profile for your bay, or ask the manager.',
-    }
-  }
-  if (/human|agent|person|manager|speak|شخص|موظف|مدير|تحدث/.test(q)) {
+  if (/human|agent|person|manager|speak|talk to|شخص|موظف|مدير|تحدث|أريد التحدث/.test(q)) {
     return {
       text: ar
         ? 'سأوصلك بموظف دعم المبنى مع تمرير بيانات وحدتك وهذه المحادثة.'
@@ -1265,19 +1221,209 @@ export function aiReply(
       contact: directory.find((c) => /manag/i.test(c.category + c.role)) ?? directory[0],
     }
   }
-  if (/lease|contract|renew|عقد|تجديد/.test(q)) {
+
+  if (
+    ctx &&
+    /balance|owe|outstanding|remaining|how much|amount due|كم|متبقي|مستحق|رصيد|باقي/.test(q)
+  ) {
+    const balance = remainingBalance(ctx.resident)
+    const due =
+      ctx.invoices.find((inv) => inv.status === 'overdue') ??
+      ctx.invoices.find((inv) => inv.status === 'due')
+    if (balance <= 0 && !due) {
+      return {
+        text: ar
+          ? `لا يوجد رصيد مستحق على عقد الوحدة ${unit} حالياً.`
+          : `There is no outstanding balance on your lease for unit ${unit} right now.`,
+      }
+    }
+    let detail = ar
+      ? `المبلغ المتبقي على العقد: ${currency} ${balance.toLocaleString()}.`
+      : `Remaining lease balance: ${currency} ${balance.toLocaleString()}.`
+    if (due) {
+      detail += ar
+        ? `\nالفاتورة الحالية: ${due.period} — ${currency} ${due.amount.toLocaleString()} (${due.status === 'overdue' ? 'متأخرة' : 'مستحقة'} ${due.dueDate}).`
+        : `\nCurrent invoice: ${due.period} — ${currency} ${due.amount.toLocaleString()} (${due.status}, due ${due.dueDate}).`
+    }
+    detail += ar
+      ? '\n\nادفع من تبويب الدفع وارفق إثبات التحويل.'
+      : '\n\nPay from the Pay tab and attach your transfer proof.'
+    return { text: detail }
+  }
+
+  if (
+    ctx &&
+    /payment|proof|transfer|screenshot|review|status|paid|pending|reject|تحويل|دفع|إثبات|حالة|مراجعة|رفض/.test(
+      q,
+    )
+  ) {
+    const pending = ctx.payments.filter((p) => p.status === 'pending_review')
+    const rejected = [...ctx.payments].reverse().find((p) => p.status === 'rejected')
+    if (pending.length > 0) {
+      const latest = pending[pending.length - 1]
+      return {
+        text: ar
+          ? `لديك ${pending.length} تحويل قيد المراجعة.\n\nالأحدث: ${currency} ${latest.amount.toLocaleString()} · ${latest.paidAt}\n\nسيتم تحديث الفاتورة بعد موافقة الإدارة.`
+          : `You have ${pending.length} transfer(s) under review.\n\nLatest: ${currency} ${latest.amount.toLocaleString()} · ${latest.paidAt}\n\nYour invoice updates once management approves.`,
+      }
+    }
+    if (rejected && /reject|refus|رفض|مرفوض|fail|wrong/.test(q)) {
+      return {
+        text: ar
+          ? `آخر تحويل مرفوض: ${currency} ${rejected.amount.toLocaleString()} · ${rejected.paidAt}.\n\n${rejected.reviewNote ?? 'يرجى إرسال إثبات جديد من تبويب الدفع.'}`
+          : `Latest rejected transfer: ${currency} ${rejected.amount.toLocaleString()} · ${rejected.paidAt}.\n\n${rejected.reviewNote ?? 'Please submit a new proof from the Pay tab.'}`,
+      }
+    }
+    const settled = ctx.payments.filter((p) => p.status === 'settled' || p.status === 'partial')
+    if (settled.length > 0) {
+      const latest = settled[settled.length - 1]
+      return {
+        text: ar
+          ? `آخر دفعة معتمدة: ${currency} ${(latest.confirmedAmount ?? latest.amount).toLocaleString()} · ${latest.paidAt} (${latest.status === 'partial' ? 'جزئية' : 'مكتملة'}).`
+          : `Latest approved payment: ${currency} ${(latest.confirmedAmount ?? latest.amount).toLocaleString()} · ${latest.paidAt} (${latest.status}).`,
+      }
+    }
     return {
       text: ar
-        ? 'تفاصيل عقدك تظهر في ملفك. لأسئلة التجديد، يمكنني توصيلك بمدير المبنى.'
-        : 'Your lease details are on your Profile. For renewal questions, I can connect you to the building manager.',
+        ? 'لا توجد مدفوعات مسجلة بعد. ادفع من تبويب الدفع وارفق إثبات التحويل.'
+        : 'No payments on file yet. Pay from the Pay tab and attach your transfer proof.',
+    }
+  }
+
+  if (/rent|pay|invoice|due|إيجار|الايجار|ادفع|فاتورة|how do i pay/.test(q)) {
+    if (ctx) {
+      const due =
+        ctx.invoices.find((inv) => inv.status === 'overdue') ??
+        ctx.invoices.find((inv) => inv.status === 'due')
+      if (due) {
+        return {
+          text: ar
+            ? `الوحدة ${unit}: فاتورة ${due.period} بمبلغ ${currency} ${due.amount.toLocaleString()} (${due.status === 'overdue' ? 'متأخرة' : 'مستحقة'} ${due.dueDate}).\n\n1) حوّل إلى حساب المبنى\n2) ضع رقم الفاتورة في ملاحظة التحويل\n3) ارفع لقطة الشاشة من تبويب الدفع`
+            : `Unit ${unit}: ${due.period} invoice is ${currency} ${due.amount.toLocaleString()} (${due.status}, due ${due.dueDate}).\n\n1) Transfer to the building bank account\n2) Put the invoice number in the transfer note\n3) Upload your screenshot from the Pay tab`,
+        }
+      }
+      if (remainingBalance(ctx.resident) <= 0) {
+        return {
+          text: ar
+            ? `لا توجد فاتورة مفتوحة للوحدة ${unit}. رصيد العقد مسدّد حالياً.`
+            : `No open invoice for unit ${unit}. Your lease balance is clear.`,
+        }
+      }
+    }
+    return {
+      text: ar
+        ? 'يمكنك مراجعة فواتيرك والدفع عبر التحويل البنكي إلى حساب المبنى — أرفق إثبات التحويل بعد الدفع.'
+        : 'You can review invoices and pay by bank transfer to the building account — attach your transfer proof after paying.',
+    }
+  }
+
+  if (
+    ctx &&
+    /my ticket|ticket status|open ticket|any ticket|update on|تذكرتي|حالة التذكرة|تذاكر مفتوحة/.test(q)
+  ) {
+    const open = ctx.tickets.filter((t) => t.status !== 'resolved')
+    if (open.length === 0) {
+      return {
+        text: ar
+          ? 'لا توجد تذاكر صيانة مفتوحة. يمكنك فتح تذكرة من تبويب التذاكر أو وصف المشكلة هنا.'
+          : 'You have no open maintenance tickets. Open one from the Tickets tab or describe the issue here.',
+      }
+    }
+    const lines = open.map((t) => `• ${t.title} — ${t.status} (${t.created})`).join('\n')
+    return {
+      text: ar
+        ? `لديك ${open.length} تذكرة مفتوحة:\n\n${lines}`
+        : `You have ${open.length} open ticket(s):\n\n${lines}`,
+    }
+  }
+
+  if (
+    contact &&
+    /ac|a\/c|air ?con|hvac|cool|heat|plumb|leak|faucet|drain|toilet|electric|power|outlet|light|security|lockout|noise|emergency|مكيف|تكييف|سباكة|تسريب|كهرباء|أمن|حراسة|طوارئ|broken|fix|repair|لا يعمل/.test(
+      q,
+    )
+  ) {
+    return {
+      text: ar
+        ? `لمشاكل ${contact.category} في وحدتك ${unit}، اتصل مباشرة بـ${contact.role} المعتمد:\n\n${contact.name}\n${contact.phone}\n\nيمكنك أيضاً فتح تذكرة صيانة من تبويب التذاكر.`
+        : `For ${contact.category.toLowerCase()} issues in unit ${unit}, call our approved ${contact.role.toLowerCase()} directly:\n\n${contact.name}\n${contact.phone}\n\nYou can also open a maintenance ticket from the Tickets tab.`,
+      contact,
+    }
+  }
+
+  if (/number|contact|phone|أرقام|رقم|خدمات|who.*(call|fix)|call.*(tech|ac|plumb|electric)|show service/.test(q)) {
+    const lines = directory.map((c) => `• ${c.role}: ${c.name} — ${c.phone}`).join('\n')
+    return {
+      text: ar
+        ? `إليك قائمة أرقام الخدمات:\n\n${lines}\n\nصف المشكلة وسأرسل الرقم المناسب مع زر اتصال.`
+        : `Here’s the building service number list:\n\n${lines}\n\nTell me the problem and I’ll send the right number with a tap-to-call link.`,
+    }
+  }
+
+  if (/ticket|repair|broken|maintenance|create ticket|صيانة|عطل|تذكرة/.test(q)) {
+    return {
+      text: ar
+        ? `يمكنك فتح تذكرة صيانة لوحدة ${unit || 'الخاصة بك'} من تبويب التذاكر — سيتم إرفاق بيانات شقتك تلقائياً.`
+        : `Open a maintenance ticket for unit ${unit || 'your apartment'} from the Tickets tab — your unit details are attached automatically.`,
+      contact: directory.find((c) => /ac|hvac|cool/i.test(c.category + c.role)) ?? directory[0],
+    }
+  }
+
+  if (/visitor|guest|gate|qr|pass|زائر|ضيف/.test(q)) {
+    return {
+      text: ar
+        ? 'تصاريح الزوار من الملف الشخصي. لمشاكل الاستقبال، تواصل مع الأمن عبر أرقام الخدمات.'
+        : 'Guest passes are available from your Profile. For lobby access issues, contact security via the service numbers.',
+      contact: directory.find((c) => /secur/i.test(c.category + c.role)),
+    }
+  }
+
+  if (ctx?.resident.parking && /parking|موقف|bay|garage|car spot/.test(q)) {
+    return {
+      text: ar
+        ? `موقفك المسجل للوحدة ${unit}: ${ctx.resident.parking}.`
+        : `Your assigned parking for unit ${unit}: ${ctx.resident.parking}.`,
+    }
+  }
+
+  if (/amenit|gym|pool|parking|مسبح|جيم|مرافق/.test(q)) {
+    return {
+      text: ar
+        ? 'تفاصيل المرافق والمواقف يحددها إدارة المبنى. راجع ملفك الشخصي أو تواصل مع المدير.'
+        : 'Amenity hours and parking details are set by building management. Check your Profile or contact the manager.',
+    }
+  }
+
+  if (/lease|contract|renew|lease end|عقد|تجديد|نهاية العقد/.test(q)) {
+    const end = ctx?.resident.leaseEnd?.trim()
+    const extra = end
+      ? ar
+        ? `\n\nنهاية عقدك المسجل: ${end}.`
+        : `\n\nYour lease end date on file: ${end}.`
+      : ''
+    return {
+      text: ar
+        ? `تفاصيل عقدك تظهر في ملفك.${extra}\n\nلأسئلة التجديد، يمكنني توصيلك بمدير المبنى.`
+        : `Your lease details are on your Profile.${extra}\n\nFor renewal questions, I can connect you to the building manager.`,
       contact: directory.find((c) => /manag/i.test(c.category + c.role)) ?? directory[0],
     }
   }
 
+  const examples = ar
+    ? ['«كم المتبقي؟»', '«حالة الدفع»', '«المكيف لا يعمل»', '«أريد التحدث لشخص»']
+    : ['“What do I owe?”', '“Payment status”', '“My AC is broken”', '“Talk to a person”']
+  const hint = ctx
+    ? ar
+      ? `الوحدة ${unit}. جرّب: ${examples.join(' · ')}`
+      : `Unit ${unit}. Try: ${examples.join(' · ')}`
+    : ar
+      ? `جرّب: ${examples.join(' · ')}`
+      : `Try: ${examples.join(' · ')}`
+
   return {
     text: ar
-      ? 'يمكنني المساعدة في الإيجار والدفع والصيانة وأرقام الخدمات وتصاريح الزوار والعقد. مثال: «المكيف لا يعمل».'
-      : 'I can help with rent, payments, repairs, service numbers, visitor passes, and lease details. Example: “My AC is broken”.',
+      ? `لم أفهم سؤالك تماماً. أنا مساعد آلي — أستطيع المساعدة في الإيجار والدفع والصيانة وأرقام الخدمات.\n\n${hint}`
+      : `I didn’t quite catch that. I’m an automated assistant — I can help with rent, payments, repairs, and service numbers.\n\n${hint}`,
   }
 }
 
@@ -1285,6 +1431,6 @@ export function welcomeMessage(lang: 'en' | 'ar', firstName: string, apartment: 
   const name = firstName || (lang === 'ar' ? 'مرحباً' : 'there')
   const apt = apartment || '—'
   return lang === 'ar'
-    ? `مرحباً ${name} — أنا مليح، مساعد مليهرنتس لشقة ${apt}. اسأل عن الإيجار أو الصيانة أو الزوار، أو قل «أريد التحدث لشخص».`
-    : `Hi ${name} — I’m MLIH, your MLIHrent assistant for Apt ${apt}. Ask about rent, repairs, visitors, or say “talk to a person”.`
+    ? `مرحباً ${name} — أنا مليح، مساعد مليهرنتس الآلي لشقة ${apt}. اسأل عن الإيجار أو الدفع أو الصيانة، أو قل «أريد التحدث لشخص».`
+    : `Hi ${name} — I'm MLIH, your automated MLIHrent assistant for Apt ${apt}. Ask about rent, payments, or repairs — or say “talk to a person”.`
 }

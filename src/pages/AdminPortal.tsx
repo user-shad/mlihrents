@@ -1954,6 +1954,11 @@ export default function AdminPortal() {
                       ? tr('liveChat')
                       : `${tr('linkedTo')} ${unitCodeLabel(selectedResident)}`}
                   </span>
+                  {!humanMode && (
+                    <span className="meta" style={{ display: 'block', marginTop: '0.25rem', fontSize: '0.78rem' }}>
+                      {tr('chatAutomatedDisclaimer')}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="chat-stream">

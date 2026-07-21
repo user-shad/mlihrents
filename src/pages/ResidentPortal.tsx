@@ -727,6 +727,11 @@ export default function ResidentPortal() {
                       ? tr('liveChat')
                       : `${tr('linkedTo')} ${liveResident.apartment}`}
                   </span>
+                  {!humanMode && (
+                    <span className="meta" style={{ display: 'block', marginTop: '0.25rem', fontSize: '0.78rem' }}>
+                      {tr('chatAutomatedDisclaimer')}
+                    </span>
+                  )}
                 </div>
                 {!humanMode && (
                   <button className="btn btn-accent btn-sm" type="button" onClick={escalateToHuman}>
@@ -755,11 +760,13 @@ export default function ResidentPortal() {
               </div>
               {!humanMode && (
                 <div className="quick-prompts">
-                  {[tr('promptAc'), tr('promptNumbers'), tr('promptHuman')].map((q) => (
-                    <button key={q} className="chip" type="button" onClick={() => sendChat(q)}>
-                      {q}
-                    </button>
-                  ))}
+                  {(['promptPay', 'promptBalance', 'promptAc', 'promptNumbers', 'promptHuman'] as const).map(
+                    (key) => (
+                      <button key={key} className="chip" type="button" onClick={() => sendChat(tr(key))}>
+                        {tr(key)}
+                      </button>
+                    ),
+                  )}
                 </div>
               )}
               <form

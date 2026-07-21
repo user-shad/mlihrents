@@ -13,6 +13,7 @@ import { staffCan } from '../lib/staffPermissions'
 import {
   adminStats,
   aiReply,
+  type ResidentAiContext,
   staffAiReply,
   staffWelcomeMessage,
   resolveStaffOcrTargets,
@@ -1358,7 +1359,18 @@ export function DataProvider({
       return
     }
 
-    const reply = aiReply(trimmed, lang, serviceDirectory)
+    const replyResident = session?.role === 'admin' ? selectedResident : liveResident
+    const replyInvoices = session?.role === 'admin' ? adminResidentInvoices : visibleInvoices
+    const replyTickets = session?.role === 'admin' ? adminResidentTickets : tickets
+    const aiCtx: ResidentAiContext = {
+      resident: replyResident,
+      invoices: replyInvoices,
+      tickets: replyTickets,
+      payments: payments.filter(
+        (p) => p.residentId === replyResident.id && p.status !== 'deleted',
+      ),
+    }
+    const reply = aiReply(trimmed, lang, serviceDirectory, aiCtx)
     window.setTimeout(() => {
       setMessages((prev) => [
         ...prev,
