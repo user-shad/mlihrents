@@ -75,7 +75,7 @@ const emptyApartmentForm = {
   contractTotal: '0',
   amountPaid: '0',
   rentAmount: '0',
-  rentSchedule: 12 as RentSchedule,
+  rentSchedule: 1 as RentSchedule,
   rentDueDay: '1',
   name: '',
   phone: '',
@@ -506,7 +506,7 @@ export default function AdminPortal() {
           >
             {RENT_SCHEDULE_OPTIONS.map((n) => (
               <option key={n} value={n}>
-                {n}
+                {n} — {rentScheduleLabel(n, lang)}
               </option>
             ))}
           </select>
@@ -1328,7 +1328,7 @@ export default function AdminPortal() {
                             setPaidDraft('0')
                             setInstallmentDraft('0')
                             setDueDayDraft('1')
-                            setScheduleDraft(12)
+                            setScheduleDraft(1)
                           }}
                         >
                           {tr('clearApartmentInfo')}
@@ -1930,7 +1930,7 @@ export default function AdminPortal() {
                     >
                       {RENT_SCHEDULE_OPTIONS.map((n) => (
                         <option key={n} value={n}>
-                          {n}
+                          {n} — {rentScheduleLabel(n, lang)}
                         </option>
                       ))}
                     </select>

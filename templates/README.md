@@ -21,7 +21,7 @@ Use **`residents-sample.csv`** — open it in Excel, edit rows, then save as CSV
 | `status` | No | `active` · `arrears` · `notice` |
 | `rent_amount_aed` | Yes | Amount per installment |
 | `rent_due_day` | Yes | Day of month `1`–`28` |
-| `rent_schedule` | Yes | `1`–`12` payments per year (`12` = monthly, `4` = quarterly, `2` = every 6 months) |
+| `rent_schedule` | Yes | Month interval `1`–`12` (`1` = every month, `3` = every 3 months, `12` = once a year) |
 | `contract_total_aed` | Yes | Full lease rent total |
 | `amount_paid_aed` | No | Already paid toward contract (default `0`) |
 

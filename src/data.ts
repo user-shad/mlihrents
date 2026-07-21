@@ -2,20 +2,20 @@ export type Role = 'resident' | 'admin'
 
 export type TicketStatus = 'open' | 'in_progress' | 'resolved'
 
-/** Number of rent payments per year (1 = once a year, 12 = monthly). */
+/** Months between rent payments (1 = every month, 12 = once a year). */
 export type RentSchedule = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
 
 export const RENT_SCHEDULE_OPTIONS: RentSchedule[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
 const LEGACY_RENT_SCHEDULE: Record<string, RentSchedule> = {
-  monthly: 12,
-  quarterly: 4,
-  semi_annual: 2,
-  annual: 1,
-  full_lease: 1,
+  monthly: 1,
+  quarterly: 3,
+  semi_annual: 6,
+  annual: 12,
+  full_lease: 12,
 }
 
-/** Coerce saved values (legacy strings or numbers) to 1–12 payments per year. */
+/** Coerce saved values to a 1–12 month payment interval. */
 export function normalizeRentSchedule(value: unknown): RentSchedule {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return Math.min(12, Math.max(1, Math.round(value))) as RentSchedule
@@ -26,7 +26,20 @@ export function normalizeRentSchedule(value: unknown): RentSchedule {
     const n = Number(value)
     if (Number.isFinite(n)) return normalizeRentSchedule(n)
   }
-  return 12
+  return 1
+}
+
+/** Convert legacy “payments per year” storage to month interval (one-time migration). */
+export function paymentsPerYearToIntervalMonths(paymentsPerYear: number): RentSchedule {
+  const py = Math.min(12, Math.max(1, Math.round(paymentsPerYear)))
+  if (py === 12) return 1
+  if (12 % py === 0) return (12 / py) as RentSchedule
+  return Math.min(12, Math.max(1, Math.round(12 / py))) as RentSchedule
+}
+
+/** Payments per year for a month interval (e.g. 1 → 12, 3 → 4). */
+export function rentPaymentsPerYear(intervalMonths: RentSchedule | unknown): number {
+  return 12 / normalizeRentSchedule(intervalMonths)
 }
 
 export interface Resident {
@@ -48,7 +61,7 @@ export interface Resident {
   currency: string
   /** Day of month rent is due (1–28). Admin can change anytime. */
   rentDueDay: number
-  /** How many times rent is paid per year (1–12) */
+  /** Months between rent payments (1 = every month, 12 = once a year) */
   rentSchedule: RentSchedule
   /** Full rent obligation for the current lease term */
   contractTotal: number
@@ -78,7 +91,7 @@ export const blankResident: Resident = {
   rentAmount: 0,
   currency: 'AED',
   rentDueDay: 1,
-  rentSchedule: 12,
+  rentSchedule: 1,
   contractTotal: 0,
   amountPaid: 0,
   status: 'active',
@@ -790,7 +803,7 @@ export function buildEmptyApartment(buildingLetter: string, unitNumber: number):
     rentAmount: 0,
     currency: 'AED',
     rentDueDay: 1,
-    rentSchedule: 12,
+    rentSchedule: 1,
     contractTotal: 0,
     amountPaid: 0,
     status: 'active',
@@ -1109,8 +1122,8 @@ export function canCollectRent(resident: Resident) {
 export function monthlyRentEquivalent(resident: Resident) {
   const amount = Math.max(0, resident.rentAmount)
   if (amount <= 0) return 0
-  const paymentsPerYear = normalizeRentSchedule(resident.rentSchedule)
-  return (amount * paymentsPerYear) / 12
+  const intervalMonths = normalizeRentSchedule(resident.rentSchedule)
+  return amount / intervalMonths
 }
 
 export function expectedMonthlyIncome(residents: Resident[]) {
@@ -1182,14 +1195,18 @@ export function buildInstallmentInvoice(
   }
 }
 
-export function rentScheduleLabel(schedule: RentSchedule | unknown, _lang: 'en' | 'ar' = 'en') {
-  return String(normalizeRentSchedule(schedule))
+export function rentScheduleLabel(schedule: RentSchedule | unknown, lang: 'en' | 'ar' = 'en') {
+  const months = normalizeRentSchedule(schedule)
+  if (lang === 'ar') {
+    return months === 1 ? 'كل شهر' : `كل ${months} أشهر`
+  }
+  return months === 1 ? 'Every month' : `Every ${months} months`
 }
 
-/** Suggested installment amount when admin changes payments per year */
+/** Suggested installment amount when admin changes the payment interval */
 export function suggestInstallment(contractTotal: number, schedule: RentSchedule | unknown) {
-  const n = normalizeRentSchedule(schedule)
-  return Math.round(contractTotal / n)
+  const intervalMonths = normalizeRentSchedule(schedule)
+  return Math.round((contractTotal * intervalMonths) / 12)
 }
 
 export function nowLabel() {

@@ -5,6 +5,7 @@ import type {
   AvailableApartment,
   Invoice,
   PaymentRecord,
+  RentSchedule,
   Resident,
   Ticket,
 } from '../data'
@@ -14,6 +15,7 @@ import {
   invoicesByResident,
   residents,
   migrateResident,
+  paymentsPerYearToIntervalMonths,
   seedPayments,
   ticketsByResident,
   type ServiceContact,
@@ -59,6 +61,8 @@ export interface PortalOps {
   paidIds: string[]
   bankSettings: BankAccountSettings
   serviceDirectory: ServiceContact[]
+  /** Set after rent schedule values were migrated to month intervals. */
+  rentScheduleUsesIntervalMonths?: boolean
 }
 
 export interface BootstrapData {
@@ -247,11 +251,38 @@ function hasAccountsData(accounts: AccountRecord[]) {
   return accounts.some((a) => a.role === 'resident' && a.phone.trim())
 }
 
+function storedRentScheduleToInterval(value: unknown): RentSchedule {
+  if (typeof value === 'string') {
+    const legacyInterval: Record<string, RentSchedule> = {
+      monthly: 1,
+      quarterly: 3,
+      semi_annual: 6,
+      annual: 12,
+      full_lease: 12,
+    }
+    const direct = legacyInterval[value.trim()]
+    if (direct) return direct
+    const n = Number(value)
+    if (Number.isFinite(n)) return paymentsPerYearToIntervalMonths(n)
+    return 1
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return paymentsPerYearToIntervalMonths(value)
+  }
+  return 1
+}
+
 function normalizeCloudOps(raw: unknown): PortalOps {
   if (!raw || typeof raw !== 'object') return createDefaultOps()
   const ops = raw as PortalOps
+  const residentSource = ops.residentList ?? residents
+  const residentList = ops.rentScheduleUsesIntervalMonths
+    ? residentSource.map((r) => migrateResident(r))
+    : residentSource.map((r) =>
+        migrateResident({ ...r, rentSchedule: storedRentScheduleToInterval(r.rentSchedule) }),
+      )
   return {
-    residentList: (ops.residentList ?? residents).map((r) => migrateResident(r)),
+    residentList,
     listings: ops.listings ?? availableApartments,
     payments: ops.payments ?? seedPayments,
     invoiceMap: ops.invoiceMap ?? invoicesByResident,
@@ -263,6 +294,7 @@ function normalizeCloudOps(raw: unknown): PortalOps {
       Array.isArray(ops.serviceDirectory) && ops.serviceDirectory.length > 0
         ? ops.serviceDirectory
         : defaultServiceDirectory,
+    rentScheduleUsesIntervalMonths: true,
   }
 }
 
