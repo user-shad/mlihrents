@@ -8,6 +8,8 @@ import {
   useRef,
   useState,
 } from 'react'
+import type { StaffCapability } from '../lib/staffPermissions'
+import { staffCan } from '../lib/staffPermissions'
 import {
   adminStats,
   aiReply,
@@ -378,6 +380,12 @@ export function DataProvider({
     setToast(msg)
   }
 
+  function denyStaff(capability: StaffCapability) {
+    if (staffCan(session, capability)) return false
+    showToast(tr('staffPermissionDenied'))
+    return true
+  }
+
   const liveResident = useMemo(() => {
     if (session?.residentId) {
       const found = residentList.find((r) => r.id === session.residentId)
@@ -680,6 +688,7 @@ export function DataProvider({
   }
 
   function clearApartmentInfo() {
+    if (denyStaff('clear_apartment')) return
     const resident = residentList.find((r) => r.id === selectedResidentId)
     if (!resident) return
     const invoiceIds = (invoiceMap[selectedResidentId] ?? []).map((inv) => inv.id)
@@ -812,6 +821,7 @@ export function DataProvider({
   }
 
   function saveBankSettings(settings: BankAccountSettings) {
+    if (denyStaff('bank_settings')) return
     const next = normalizeBankSettings(settings)
     if (!isBankConfigured(next)) {
       showToast(tr('bankSettingsIncomplete'))
@@ -1067,6 +1077,7 @@ export function DataProvider({
   }
 
   function deletePayment(paymentId: string) {
+    if (denyStaff('delete_payment')) return
     const payment = payments.find((p) => p.id === paymentId)
     if (!payment || payment.status === 'deleted') return
 
@@ -1369,17 +1380,20 @@ export function DataProvider({
   }
 
   function addAvailableListing(input: Omit<AvailableApartment, 'id'>) {
+    if (denyStaff('manage_listings')) return
     const id = `avail-${Date.now()}`
     setListings((prev) => [...prev, { ...input, id }])
     showToast(tr('listingSaved'))
   }
 
   function updateAvailableListing(id: string, input: Partial<AvailableApartment>) {
+    if (denyStaff('manage_listings')) return
     setListings((prev) => prev.map((item) => (item.id === id ? { ...item, ...input } : item)))
     showToast(tr('listingSaved'))
   }
 
   function removeAvailableListing(id: string) {
+    if (denyStaff('manage_listings')) return
     setListings((prev) => prev.filter((item) => item.id !== id))
     showToast(tr('listingRemoved'))
   }

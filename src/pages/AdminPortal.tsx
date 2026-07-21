@@ -27,6 +27,7 @@ import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../c
 import { bankSummary, BANK_EDIT_PASSWORD, isBankConfigured } from '../config/paymentSettings'
 import { fetchSyncHealth, getSyncMode, getSyncStatus } from '../lib/cloudSync'
 import { exportAllApartmentsExcel, exportApartmentExcel } from '../lib/exportApartmentExcel'
+import { isBuildingAdmin, staffCan } from '../lib/staffPermissions'
 
 type Tab = 'info' | 'payments' | 'available' | 'chat'
 
@@ -103,7 +104,10 @@ export default function AdminPortal() {
   } = useData()
 
   const [tab, setTab] = useState<Tab>('info')
-  const isBuildingAdmin = session?.staffTier === 'admin'
+  const canEditBank = staffCan(session, 'bank_settings')
+  const canClearApartment = staffCan(session, 'clear_apartment')
+  const canDeletePayment = staffCan(session, 'delete_payment')
+  const canManageListings = staffCan(session, 'manage_listings')
   const [cloudSyncActive, setCloudSyncActive] = useState(() => getSyncMode() === 'cloud')
   const [syncHint, setSyncHint] = useState<string | null>(() => getSyncStatus().hint)
   const [syncError, setSyncError] = useState<string | null>(() => getSyncStatus().lastError)
@@ -410,7 +414,7 @@ export default function AdminPortal() {
 
         <div className="user-card">
           <strong>{session?.name ?? tr('buildingManager')}</strong>
-          <span>{isBuildingAdmin ? tr('staffRoleAdmin') : tr('staffRoleOps')}</span>
+          <span>{isBuildingAdmin(session) ? tr('staffRoleAdmin') : tr('staffRoleOps')}</span>
           <p
             className="meta"
             style={{
@@ -859,6 +863,7 @@ export default function AdminPortal() {
                 >
                   {tr('exportApartmentExcel')}
                 </button>
+                {canClearApartment && (
                 <button
                   className="btn btn-ghost btn-sm"
                   type="button"
@@ -886,6 +891,7 @@ export default function AdminPortal() {
                 >
                   {tr('clearApartmentInfo')}
                 </button>
+                )}
 
                 <h3 className="section-label">{tr('maintenanceTickets')}</h3>
                 <div className="list">
@@ -1014,7 +1020,11 @@ export default function AdminPortal() {
                 {tr('bankSettingsHelp')}
               </p>
 
-              {!bankEditUnlocked ? (
+              {!canEditBank ? (
+                <p className="meta" style={{ marginTop: '0.75rem' }}>
+                  {tr('staffOpsReadOnlyBank')}
+                </p>
+              ) : !bankEditUnlocked ? (
                 <div style={{ marginTop: '0.75rem' }}>
                   <p className="meta">{tr('bankEditLockedHelp')}</p>
                   <div className="rent-plan-editor" style={{ marginTop: '0.5rem', maxWidth: 280 }}>
@@ -1290,6 +1300,7 @@ export default function AdminPortal() {
                           <span>{tr('viewProof')}</span>
                         </a>
                       )}
+                      {canDeletePayment && (
                       <button
                         className="btn btn-ghost btn-sm"
                         type="button"
@@ -1301,6 +1312,7 @@ export default function AdminPortal() {
                       >
                         {tr('deletePayment')}
                       </button>
+                      )}
                     </div>
                     <Badge lang={lang} status={p.status === 'settled' ? 'paid' : p.status} />
                   </div>
@@ -1495,6 +1507,7 @@ export default function AdminPortal() {
                             <span>{tr('viewProof')}</span>
                           </a>
                         )}
+                        {canDeletePayment && (
                         <button
                           className="btn btn-ghost btn-sm"
                           type="button"
@@ -1506,6 +1519,7 @@ export default function AdminPortal() {
                         >
                           {tr('deletePayment')}
                         </button>
+                        )}
                       </div>
                       <Badge lang={lang} status={p.status === 'settled' ? 'paid' : p.status} />
                     </div>
@@ -1525,6 +1539,11 @@ export default function AdminPortal() {
               <div>
                 <h1>{tr('adminAvailableTab')}</h1>
                 <p>{tr('adminAvailableLead')}</p>
+                {!canManageListings && (
+                  <p className="meta" style={{ marginTop: '0.5rem' }}>
+                    {tr('staffOpsListingsReadOnly')}
+                  </p>
+                )}
               </div>
             </header>
 
@@ -1548,6 +1567,7 @@ export default function AdminPortal() {
                         {lang === 'ar' ? apt.highlightAr : apt.highlight}
                       </div>
                     </div>
+                    {canManageListings && (
                     <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                       <button
                         className="btn btn-ghost btn-sm"
@@ -1567,6 +1587,7 @@ export default function AdminPortal() {
                         {tr('removeListing')}
                       </button>
                     </div>
+                    )}
                   </div>
                 ))}
                 {availableListings.length === 0 && (
@@ -1575,6 +1596,7 @@ export default function AdminPortal() {
               </div>
             </section>
 
+            {canManageListings && (
             <section className="panel" style={{ marginTop: '1rem' }}>
               <h2>{editingListingId ? tr('editListing') : tr('addListing')}</h2>
               <div className="rent-plan-editor">
@@ -1725,6 +1747,7 @@ export default function AdminPortal() {
                 )}
               </div>
             </section>
+            )}
           </>
         )}
 
