@@ -1284,9 +1284,23 @@ export function DataProvider({
         reviewNote: reviewFlags.length > 0 ? reviewFlags.join(' · ') : undefined,
         transferProof: bankProof,
       }
+      markLocalMutation()
+      const nextPayments = [record, ...payments]
+      const ops: PortalOps = {
+        residentList,
+        listings,
+        payments: nextPayments,
+        invoiceMap,
+        ticketMap,
+        invoiceExtensions,
+        paidIds,
+        bankSettings,
+        serviceDirectory,
+      }
       await uploadPaymentProof(record.id, bankProof)
-      setPayments((prev) => [record, ...prev])
-      void flushCloudSaveNow()
+      writeLocalOps(ops)
+      setPayments(nextPayments)
+      await flushCloudSaveNow(ops)
 
       setPaying(false)
       setCheckoutInvoiceId(null)

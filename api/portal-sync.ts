@@ -5,7 +5,9 @@ import {
   mergeProofStores,
   normalizeLoadedPayload,
   type ProofStore,
+  type SyncPayload,
 } from '../lib/syncProofStore.js'
+import { mergeSyncPayload } from '../lib/syncMerge.js'
 import { createClient } from '@supabase/supabase-js'
 import { get, head, list, put } from '@vercel/blob'
 import { sql } from '@vercel/postgres'
@@ -561,13 +563,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'PUT' || req.method === 'POST') {
     const body = (req.body ?? {}) as SyncPayload
-    const payload: SyncPayload = {
+    const incoming: SyncPayload = {
       accounts: body.accounts ?? [],
       ops: body.ops ?? {},
       updated_at: new Date().toISOString(),
     }
 
     try {
+      const { payload: existing } = await loadBest()
+      const payload = mergeSyncPayload(existing, incoming)
       const storage = await saveBest(payload)
       res.status(200).json({
         configured: true,

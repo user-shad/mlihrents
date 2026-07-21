@@ -456,7 +456,6 @@ async function saveCloudRowViaApi(accounts: AccountRecord[], ops: PortalOps) {
 async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps) {
   suppressRemoteUntil = Date.now() + 3000
 
-  // Never wipe real cloud data with an empty/default payload
   const existing = await loadCloudRowViaApi()
   if (
     existing &&
@@ -468,11 +467,18 @@ async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps) {
     return
   }
 
-  if (await saveCloudRowViaApi(accounts, ops)) return
+  const mergedOps =
+    existing && hasOpsData(existing.ops) ? mergeOpsPreferringLocalProofs(existing.ops, ops) : ops
+  const mergedAccounts =
+    existing && hasAccountsData(existing.accounts)
+      ? mergeAccountsPreferringLocal(existing.accounts, accounts)
+      : accounts
+
+  if (await saveCloudRowViaApi(mergedAccounts, mergedOps)) return
 
   if (!supabase) return
-  const preparedAccounts = prepareStoredAccounts(accounts)
-  const slimOps = slimOpsForCloud(ops)
+  const preparedAccounts = prepareStoredAccounts(mergedAccounts)
+  const slimOps = slimOpsForCloud(mergedOps)
   const updated_at = new Date().toISOString()
   await supabase.from('portal_sync').upsert({
     id: SYNC_ROW_ID,
@@ -588,7 +594,7 @@ function mergePaymentRecord(
       ? existing.transferProof
       : incoming.transferProof ?? existing.transferProof
 
-  return transferProof?.dataUrl ? { ...merged, transferProof } : { ...merged, transferProof: undefined }
+  return { ...merged, transferProof }
 }
 
 function mergePaymentLists(
@@ -600,8 +606,7 @@ function mergePaymentLists(
   for (const payment of local ?? []) {
     const existing = map.get(payment.id)
     if (!existing) {
-      // Don't resurrect payments the other side soft-deleted; only keep in-flight pending
-      if (payment.status === 'pending_review') map.set(payment.id, payment)
+      map.set(payment.id, payment)
       continue
     }
     map.set(payment.id, mergePaymentRecord(existing, payment))
@@ -809,10 +814,10 @@ export function onCloudOps(listener: OpsListener) {
   }
 }
 
-async function flushCloudSave() {
+async function flushCloudSave(explicitOps?: PortalOps) {
   const accounts = pendingAccounts ?? readLocalAccounts() ?? []
   const ops = attachProofsToOps(
-    pendingOps ?? readLocalOps() ?? createDefaultOps(),
+    explicitOps ?? pendingOps ?? readLocalOps() ?? createDefaultOps(),
     readLocalProofs(),
   )
   pendingAccounts = undefined
@@ -844,12 +849,12 @@ export function queueCloudOps(ops: PortalOps) {
 }
 
 /** Push pending cloud changes immediately (e.g. after uploading a transfer screenshot). */
-export async function flushCloudSaveNow() {
+export async function flushCloudSaveNow(explicitOps?: PortalOps) {
   if (flushTimer) {
     clearTimeout(flushTimer)
     flushTimer = null
   }
-  await flushCloudSave()
+  await flushCloudSave(explicitOps)
 }
 
 export async function forceSyncNow(): Promise<SyncStatus> {
