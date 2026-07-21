@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { formatMoney } from '../data'
+import { formatMoney, isVacantAutoListing } from '../data'
 import { siteLegal } from '../legal/siteLegal'
 import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
@@ -83,9 +83,22 @@ export default function LandingPage() {
                 </h3>
                 <p className="meta">
                   {apt.bedrooms} {tr('bedrooms')} · {apt.bathrooms}{' '}
-                  {tr('bathrooms')} · {apt.sizeSqm} {tr('sqm')}
+                  {tr('bathrooms')}
+                  {apt.sizeSqm > 0 ? (
+                    <>
+                      {' '}
+                      · {apt.sizeSqm} {tr('sqm')}
+                    </>
+                  ) : null}
                 </p>
-                <p className="available-highlight">{lang === 'ar' ? apt.highlightAr : apt.highlight}</p>
+                <p className="available-highlight">
+                  {lang === 'ar' ? apt.highlightAr : apt.highlight}
+                  {isVacantAutoListing(apt) ? (
+                    <span className="meta" style={{ display: 'block', marginTop: '0.25rem' }}>
+                      {tr('vacantUnit')}
+                    </span>
+                  ) : null}
+                </p>
                 <p className="meta">
                   {tr('availableFrom')}{' '}
                   {apt.availableFrom === 'Now' && lang === 'ar' ? 'الآن' : apt.availableFrom}
@@ -95,8 +108,14 @@ export default function LandingPage() {
               </div>
               <div className="available-aside">
                 <div className="available-price">
-                  {formatMoney(apt.rentMonthly, apt.currency)}
-                  <span>{tr('perMonth')}</span>
+                  {apt.rentMonthly > 0 ? (
+                    <>
+                      {formatMoney(apt.rentMonthly, apt.currency)}
+                      <span>{tr('perMonth')}</span>
+                    </>
+                  ) : (
+                    <span>{tr('inquire')}</span>
+                  )}
                 </div>
                 <a
                   className="btn btn-primary btn-sm"

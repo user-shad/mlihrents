@@ -17,6 +17,7 @@ import {
   findPaymentById,
   findResidentByUnitCode,
   formatMoney,
+  isVacantAutoListing,
   normalizeRentSchedule,
   paymentMethodLabel,
   RENT_SCHEDULE_OPTIONS,
@@ -306,9 +307,9 @@ export default function AdminPortal() {
 
   useEffect(() => {
     if (apartmentEditorOpen) return
-    if (!selectedResident.id) return
+    if (!selectedResidentId) return
     setApartmentForm(residentToApartmentForm(selectedResident))
-  }, [selectedResident, apartmentEditorOpen])
+  }, [selectedResidentId, apartmentEditorOpen])
 
   useEffect(() => {
     const tabParam = parseAdminPortalTab(searchParams.get('tab'))
@@ -2184,7 +2185,9 @@ export default function AdminPortal() {
             <section className="panel">
               <h2>{tr('availableTitle')}</h2>
               <div className="list">
-                {availableListings.map((apt) => (
+                {availableListings.map((apt) => {
+                  const autoVacant = isVacantAutoListing(apt)
+                  return (
                   <div className="list-row" key={apt.id}>
                     {apt.photoDataUrl ? (
                       <img className="listing-thumb" src={apt.photoDataUrl} alt="" />
@@ -2192,16 +2195,32 @@ export default function AdminPortal() {
                     <div>
                       <strong>
                         {apt.building} · {apt.apartment}
+                        {autoVacant ? (
+                          <span className="meta" style={{ marginInlineStart: '0.5rem' }}>
+                            ({tr('vacantUnit')})
+                          </span>
+                        ) : null}
                       </strong>
                       <div className="meta">
                         {apt.bedrooms} {tr('bedrooms')} · {apt.bathrooms}{' '}
-                        {tr('bathrooms')} · {apt.sizeSqm} {tr('sqm')} ·{' '}
-                        {formatMoney(apt.rentMonthly, apt.currency)}
+                        {tr('bathrooms')}
+                        {apt.sizeSqm > 0 ? (
+                          <>
+                            {' '}
+                            · {apt.sizeSqm} {tr('sqm')}
+                          </>
+                        ) : null}
+                        {apt.rentMonthly > 0 ? (
+                          <>
+                            {' '}
+                            · {formatMoney(apt.rentMonthly, apt.currency)}
+                          </>
+                        ) : null}
                         <br />
                         {lang === 'ar' ? apt.highlightAr : apt.highlight}
                       </div>
                     </div>
-                    {canManageListings && (
+                    {canManageListings && !autoVacant && (
                     <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                       <button
                         className="btn btn-ghost btn-sm"
@@ -2223,7 +2242,8 @@ export default function AdminPortal() {
                     </div>
                     )}
                   </div>
-                ))}
+                  )
+                })}
                 {availableListings.length === 0 && (
                   <p className="meta">{tr('adminAvailableLead')}</p>
                 )}

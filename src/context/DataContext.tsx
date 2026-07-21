@@ -34,6 +34,7 @@ import {
   canCollectRent,
   formatMoney,
   isUnitOccupied,
+  mergeAvailableListings,
   normalizeUnitCode,
   apartmentBuildingLetter,
   remainingBalance,
@@ -44,6 +45,7 @@ import {
   buildEmptyApartment,
   migrateResident,
   normalizeRentSchedule,
+  normalizePhone,
   suggestInstallment,
   Ticket,
   welcomeMessage,
@@ -65,6 +67,7 @@ import {
   bankRefsMatch,
 } from '../lib/transferProofOcr'
 import {
+  markLocalMutation,
   onCloudOps,
   queueCloudOps,
   type PortalOps,
@@ -461,6 +464,11 @@ export function DataProvider({
 
   const selectedResident = residentList.find((r) => r.id === selectedResidentId) ?? blankResident
 
+  const availableListings = useMemo(
+    () => mergeAvailableListings(listings, residentList),
+    [listings, residentList],
+  )
+
   const tickets = ticketMap[liveResident.id] ?? []
 
   function syncWelcomeMessage() {
@@ -837,6 +845,7 @@ export function DataProvider({
     residentId?: string,
   ) {
     if (denyStaff('manage_apartments')) return
+    markLocalMutation()
 
     const apartmentCode = input.apartment.trim()
     if (!apartmentCode) {
@@ -873,7 +882,7 @@ export function DataProvider({
       rentSchedule: normalizeRentSchedule(input.rentSchedule),
       rentDueDay,
       name: input.name.trim(),
-      phone: input.phone.trim(),
+      phone: normalizePhone(input.phone.trim()) || input.phone.trim(),
       parking: input.parking.trim(),
       leaseStart: input.leaseStart.trim() || undefined,
       leaseEnd: input.leaseEnd.trim(),
@@ -935,16 +944,11 @@ export function DataProvider({
     const existing = residentList.find((r) => r.id === residentId)
     if (!existing) return
 
-    const phone = input.phone.trim()
+    const phone = baseFields.phone
     const pin = input.pin.trim()
-    if (phone && pin) {
-      const err = setResidentPin(residentId, phone, pin, baseFields.name || existing.name)
-      if (err) {
-        showToast(tr(err))
-        return
-      }
-    } else if (phone && existing.pin) {
-      const err = setResidentPin(residentId, phone, existing.pin, baseFields.name || existing.name)
+    const accountPin = pin || existing.pin
+    if (phone && accountPin) {
+      const err = setResidentPin(residentId, phone, accountPin, baseFields.name || existing.name)
       if (err) {
         showToast(tr(err))
         return
@@ -954,7 +958,7 @@ export function DataProvider({
     const updated: Resident = {
       ...existing,
       ...baseFields,
-      pin: pin || existing.pin,
+      pin: accountPin || existing.pin,
     }
     setResidentList((prev) => prev.map((r) => (r.id === residentId ? updated : r)))
 
@@ -1789,7 +1793,7 @@ export function DataProvider({
         clearApartmentInfo,
         resetHumanMode,
         syncWelcomeMessage,
-        availableListings: listings,
+        availableListings,
         addAvailableListing,
         updateAvailableListing,
         removeAvailableListing,

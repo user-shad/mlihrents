@@ -204,6 +204,16 @@ function touchLocalSyncMeta() {
   )
 }
 
+/** Call before local mutations so cloud pull cannot overwrite in-flight edits. */
+export function markLocalMutation() {
+  touchLocalSyncMeta()
+  suppressRemoteUntil = Date.now() + 5000
+}
+
+function hasPendingLocalSave() {
+  return Boolean(pendingOps || pendingAccounts || flushTimer)
+}
+
 function readLocalAccounts(): AccountRecord[] | null {
   try {
     const raw = localStorage.getItem(ACCOUNTS_KEY)
@@ -570,15 +580,78 @@ function mergePaymentLists(
   return [...map.values()].sort((a, b) => b.id.localeCompare(a.id))
 }
 
+function mergeResidentLists(
+  remote: PortalOps['residentList'],
+  local: PortalOps['residentList'] | undefined,
+): PortalOps['residentList'] {
+  if (!local?.length) return remote
+  const localById = new Map(local.map((r) => [r.id, r]))
+  const merged = remote.map((remoteResident) => {
+    const localResident = localById.get(remoteResident.id)
+    if (!localResident) return remoteResident
+    const localPhone = localResident.phone.trim()
+    const remotePhone = remoteResident.phone.trim()
+    const localEdited =
+      (localPhone && localPhone !== remotePhone) ||
+      (localResident.name.trim() && localResident.name.trim() !== remoteResident.name.trim()) ||
+      (localResident.pin && localResident.pin !== remoteResident.pin)
+    if (localEdited) {
+      return {
+        ...remoteResident,
+        ...localResident,
+        apartment: remoteResident.apartment,
+        id: remoteResident.id,
+        buildingNumber: localResident.buildingNumber?.trim()
+          ? localResident.buildingNumber
+          : remoteResident.buildingNumber,
+      }
+    }
+    return remoteResident
+  })
+  for (const localResident of local) {
+    if (!merged.some((r) => r.id === localResident.id)) merged.push(localResident)
+  }
+  return merged
+}
+
+function mergeAccountsPreferringLocal(
+  remote: AccountRecord[],
+  local: AccountRecord[] | null,
+): AccountRecord[] {
+  if (!local?.length) return remote
+  const localByResident = new Map(
+    local.filter((a) => a.role === 'resident' && a.residentId).map((a) => [a.residentId!, a]),
+  )
+  const localByPhone = new Map(
+    local.filter((a) => a.role === 'resident').map((a) => [a.phone, a]),
+  )
+  return remote.map((remoteAccount) => {
+    if (remoteAccount.role !== 'resident') return remoteAccount
+    const localAccount =
+      (remoteAccount.residentId ? localByResident.get(remoteAccount.residentId) : undefined) ??
+      localByPhone.get(remoteAccount.phone)
+    if (!localAccount) return remoteAccount
+    if (localAccount.phone !== remoteAccount.phone || localAccount.pin !== remoteAccount.pin) {
+      return { ...remoteAccount, ...localAccount }
+    }
+    return remoteAccount
+  })
+}
+
 function mergeOpsPreferringLocalProofs(remote: PortalOps, local: PortalOps | null): PortalOps {
   if (!local) return remote
   return {
     ...remote,
+    residentList: mergeResidentLists(remote.residentList, local.residentList),
     payments: mergePaymentLists(remote.payments, local.payments),
+    listings: local.listings?.length ? local.listings : remote.listings,
+    serviceDirectory: local.serviceDirectory?.length ? local.serviceDirectory : remote.serviceDirectory,
   }
 }
 
 function applyRemoteRow(row: CloudRow) {
+  if (hasPendingLocalSave()) return
+
   const localOps = readLocalOps()
   const localAccounts = readLocalAccounts()
   const remoteEmpty = !hasOpsData(row.ops) && !hasAccountsData(row.accounts)
@@ -587,11 +660,30 @@ function applyRemoteRow(row: CloudRow) {
     (localAccounts ? hasAccountsData(localAccounts) : false)
   if (remoteEmpty && localHas) return
 
+  const remoteTime = cloudTimestamp(row)
+  const localTime = localTimestamp()
+  if (localTime > remoteTime) {
+    const mergedOps = localOps
+      ? { ...row.ops, ...localOps, payments: mergePaymentLists(row.ops.payments, localOps.payments) }
+      : row.ops
+    const mergedAccounts = localAccounts ?? row.accounts
+    suppressCloudPush++
+    try {
+      accountsListener?.(prepareStoredAccounts(mergedAccounts))
+      opsListener?.(mergedOps)
+      lastCloudUpdatedAt = row.updated_at
+    } finally {
+      suppressCloudPush--
+    }
+    return
+  }
+
   const mergedOps = mergeOpsPreferringLocalProofs(row.ops, localOps)
+  const mergedAccounts = mergeAccountsPreferringLocal(row.accounts, localAccounts)
 
   suppressCloudPush++
   try {
-    accountsListener?.(row.accounts)
+    accountsListener?.(prepareStoredAccounts(mergedAccounts))
     opsListener?.(mergedOps)
     lastCloudUpdatedAt = row.updated_at
   } finally {
@@ -601,12 +693,13 @@ function applyRemoteRow(row: CloudRow) {
 
 function pullRemoteIfNewer() {
   if (Date.now() < suppressRemoteUntil) return
+  if (hasPendingLocalSave()) return
   void loadCloudRow().then((row) => {
     if (!row) return
     const remoteTime = cloudTimestamp(row)
     const localTime = localTimestamp()
     // Only apply when cloud is actually newer — never overwrite local with older remote
-    if (remoteTime >= localTime) {
+    if (remoteTime > localTime) {
       applyRemoteRow(row)
     }
   })
@@ -660,10 +753,7 @@ function startRealtimeSync() {
       'postgres_changes',
       { event: '*', schema: 'public', table: 'portal_sync', filter: `id=eq.${SYNC_ROW_ID}` },
       () => {
-        if (Date.now() < suppressRemoteUntil) return
-        void loadCloudRow().then((row) => {
-          if (row) applyRemoteRow(row)
-        })
+        pullRemoteIfNewer()
       },
     )
     .subscribe()

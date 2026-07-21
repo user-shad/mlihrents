@@ -869,6 +869,61 @@ export function isUnitOccupied(resident: Resident) {
   return !!(resident.name.trim() || resident.phone.trim())
 }
 
+export const VACANT_LISTING_ID_PREFIX = 'vacant-'
+
+export function isVacantAutoListing(listing: Pick<AvailableApartment, 'id'>) {
+  return listing.id.startsWith(VACANT_LISTING_ID_PREFIX)
+}
+
+function bedroomsFromUnitType(unitType?: string) {
+  const t = unitType?.trim().toLowerCase()
+  if (t === 'studio') return 0
+  if (t === '1br') return 1
+  const match = t?.match(/^(\d)\s*br/i)
+  if (match) return Number(match[1])
+  return 1
+}
+
+/** Build a public listing card from a vacant apartment record. */
+export function listingFromVacantResident(resident: Resident): AvailableApartment {
+  const letter = resident.buildingNumber?.trim() || apartmentBuildingLetter(resident.apartment) || 'A'
+  const bedrooms = bedroomsFromUnitType(resident.unitType)
+  return {
+    id: `${VACANT_LISTING_ID_PREFIX}${resident.id}`,
+    building: resident.building.trim() || buildingLabel(letter),
+    buildingNumber: letter,
+    apartment: resident.apartment,
+    floor: resident.floor ?? 0,
+    bedrooms,
+    bathrooms: bedrooms === 0 ? 1 : Math.max(1, bedrooms),
+    sizeSqm: 0,
+    rentMonthly: resident.rentAmount > 0 ? resident.rentAmount : 0,
+    currency: resident.currency || 'AED',
+    availableFrom: 'Now',
+    parking: /incl/i.test(resident.parking ?? ''),
+    highlight: 'Vacant unit — contact us to schedule a viewing.',
+    highlightAr: 'وحدة شاغرة — اتصل بنا لحجز معاينة.',
+  }
+}
+
+/** Manual available listings plus auto entries for every vacant apartment. */
+export function mergeAvailableListings(
+  manualListings: AvailableApartment[],
+  residents: Resident[],
+): AvailableApartment[] {
+  const manualCodes = new Set(
+    manualListings.map((listing) => normalizeUnitCode(listing.apartment)).filter(Boolean),
+  )
+  const autoListings = residents
+    .filter((resident) => !isUnitOccupied(resident) && resident.apartment.trim())
+    .filter((resident) => !manualCodes.has(normalizeUnitCode(resident.apartment)))
+    .map(listingFromVacantResident)
+
+  return [...manualListings, ...autoListings].sort(
+    (a, b) => apartmentSortKey(a.apartment) - apartmentSortKey(b.apartment),
+  )
+}
+
 /** Find a vacant inventory unit matching a public listing. */
 export function findVacantUnitForListing(listing: AvailableApartment, residents: Resident[]) {
   const code = normalizeUnitCode(listing.apartment)

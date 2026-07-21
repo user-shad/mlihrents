@@ -4,6 +4,9 @@ import {
   buildEmptyApartment,
   buildResidentFromListing,
   findVacantUnitForListing,
+  isVacantAutoListing,
+  listingFromVacantResident,
+  mergeAvailableListings,
   normalizeUnitCode,
   type AvailableApartment,
 } from './data'
@@ -44,6 +47,26 @@ describe('listing to apartment helpers', () => {
     expect(resident.apartment).toBe('A5')
     expect(resident.rentAmount).toBe(8500)
     expect(resident.parking).toBe('Included')
+  })
+
+  it('creates available listings from vacant apartments', () => {
+    const vacant = buildEmptyApartment('B', 4)
+    const occupied = { ...buildEmptyApartment('A', 6), name: 'Tenant', phone: '0501234567' }
+    const auto = listingFromVacantResident(vacant)
+    expect(isVacantAutoListing(auto)).toBe(true)
+    expect(auto.apartment).toBe('B4')
+
+    const merged = mergeAvailableListings([sampleListing()], [vacant, occupied])
+    expect(merged).toHaveLength(2)
+    expect(merged.some((item) => item.apartment === 'A5')).toBe(true)
+    expect(merged.some((item) => item.apartment === 'B4')).toBe(true)
+  })
+
+  it('skips auto listings when a manual listing already exists for the unit', () => {
+    const vacant = buildEmptyApartment('A', 5)
+    const merged = mergeAvailableListings([sampleListing()], [vacant])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].id).toBe('list-1')
   })
 })
 
