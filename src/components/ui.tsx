@@ -1,6 +1,6 @@
 import { residents } from '../data'
 import { Lang, statusLabel } from '../i18n'
-import { remainingBalance, paidPercent, rentScheduleLabel, formatMoney } from '../data'
+import { remainingBalance, paidPercent, rentScheduleLabel, formatMoney, hasRentPlan } from '../data'
 import { useLang } from '../context/LangContext'
 
 export function BrandMark() {
@@ -57,10 +57,17 @@ export function RentBalanceCard({
 }) {
   const remaining = remainingBalance(resident)
   const percent = paidPercent(resident)
-  const done = remaining <= 0
+  const planned = hasRentPlan(resident)
+  const done = planned && remaining <= 0
   return (
     <section className="panel balance-panel">
       <h2>{tr('paymentProgress')}</h2>
+      {!planned ? (
+        <p className="meta" style={{ margin: 0 }}>
+          {tr('noRentPlan')}
+        </p>
+      ) : (
+        <>
       <div className="balance-grid">
         <div>
           <span className="k">{tr('rentSchedule')}</span>
@@ -91,6 +98,8 @@ export function RentBalanceCard({
       <div className="progress-track" aria-hidden>
         <div className="progress-fill" style={{ width: `${percent}%` }} />
       </div>
+        </>
+      )}
     </section>
   )
 }

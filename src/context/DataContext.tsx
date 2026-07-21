@@ -31,6 +31,7 @@ import {
   isValidBankReference,
   normalizeBankReferenceDigits,
   buildInstallmentInvoice,
+  canCollectRent,
   formatMoney,
   remainingBalance,
   unitCodeLabel,
@@ -138,12 +139,39 @@ function ensureSeedInvoices(map: Record<string, Invoice[]>): Record<string, Invo
   return { ...map }
 }
 
+/** Drop open invoices when the apartment has no valid rent plan or nothing left to pay. */
+function pruneStaleOpenInvoices(
+  residentList: Resident[],
+  invoiceMap: Record<string, Invoice[]>,
+  paidIds: string[],
+): Record<string, Invoice[]> {
+  const byId = new Map(residentList.map((r) => [r.id, r]))
+  const next: Record<string, Invoice[]> = {}
+  for (const [residentId, invoices] of Object.entries(invoiceMap)) {
+    const resident = byId.get(residentId)
+    if (resident && canCollectRent(resident)) {
+      next[residentId] = invoices
+      continue
+    }
+    const kept = invoices.filter((inv) => inv.status === 'paid' || paidIds.includes(inv.id))
+    if (kept.length > 0) next[residentId] = kept
+  }
+  return next
+}
+
 function normalizePersistedOps(parsed: PortalOps): PortalOps {
   const cleaned = stripLegacyTestData(parsed)
+  const residentList = ensureSeedApartments(cleaned.residentList ?? [])
+  const paidIds = cleaned.paidIds ?? []
   return {
     ...cleaned,
-    residentList: ensureSeedApartments(cleaned.residentList ?? []),
-    invoiceMap: ensureSeedInvoices(cleaned.invoiceMap ?? {}),
+    residentList,
+    paidIds,
+    invoiceMap: pruneStaleOpenInvoices(
+      residentList,
+      ensureSeedInvoices(cleaned.invoiceMap ?? {}),
+      paidIds,
+    ),
     serviceDirectory:
       Array.isArray(cleaned.serviceDirectory) && cleaned.serviceDirectory.length > 0
         ? cleaned.serviceDirectory
@@ -427,7 +455,9 @@ export function DataProvider({
     return applyDueDayToInvoices(base, liveResident.rentDueDay, lang)
   }, [invoiceMap, liveResident.id, liveResident.rentDueDay, paidIds, invoiceExtensions, lang])
 
-  const dueInvoice = visibleInvoices.find((i) => i.status === 'due' || i.status === 'overdue')
+  const dueInvoice = canCollectRent(liveResident)
+    ? visibleInvoices.find((i) => i.status === 'due' || i.status === 'overdue')
+    : undefined
   const checkoutInvoice = visibleInvoices.find((i) => i.id === checkoutInvoiceId) ?? null
 
   // Auto-create installment invoice so residents always have a Pay button when rent remains
@@ -551,7 +581,18 @@ export function DataProvider({
     setResidentList((prev) =>
       prev.map((r) => (r.id === selectedResidentId ? updated : r)),
     )
-    ensureInstallmentInvoiceFor(updated)
+    if (!canCollectRent(updated)) {
+      setInvoiceMap((prev) => {
+        const existing = prev[selectedResidentId] ?? []
+        const kept = existing.filter((inv) => inv.status === 'paid' || paidIds.includes(inv.id))
+        const next = { ...prev }
+        if (kept.length > 0) next[selectedResidentId] = kept
+        else delete next[selectedResidentId]
+        return next
+      })
+    } else {
+      ensureInstallmentInvoiceFor(updated)
+    }
     showToast(tr('rentPlanSaved'))
   }
 

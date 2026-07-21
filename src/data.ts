@@ -1004,6 +1004,16 @@ export function remainingBalance(resident: Resident) {
   return Math.max(0, resident.contractTotal - resident.amountPaid)
 }
 
+/** Admin has set a contract and installment amount. */
+export function hasRentPlan(resident: Resident) {
+  return resident.contractTotal > 0 && resident.rentAmount > 0
+}
+
+/** Resident should see pay prompts and open invoices. */
+export function canCollectRent(resident: Resident) {
+  return hasRentPlan(resident) && remainingBalance(resident) > 0
+}
+
 export function paidPercent(resident: Resident) {
   if (resident.contractTotal <= 0) return 0
   return Math.min(100, Math.round((resident.amountPaid / resident.contractTotal) * 100))
