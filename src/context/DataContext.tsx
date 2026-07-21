@@ -1584,7 +1584,14 @@ export function DataProvider({
           for (const payment of ocrTargets) {
             if (!payment.transferProof) continue
             const ocr = await recognizeTransferProof(payment.transferProof.dataUrl, payment.amount)
-            scans.push(formatScreenshotAnalysis(ocr, payment, lang, givenBankRef))
+            scans.push(
+              formatScreenshotAnalysis(
+                ocr,
+                payment,
+                lang,
+                givenBankRef ?? payment.bankReference ?? null,
+              ),
+            )
           }
           if (scans.length > 0) {
             replyText += `\n\n${scans.join('\n\n')}`

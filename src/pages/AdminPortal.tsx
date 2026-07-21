@@ -47,7 +47,9 @@ import {
 import { bankSummary, BANK_EDIT_PASSWORD, isBankConfigured } from '../config/paymentSettings'
 import { fetchSyncHealth, getSyncMode, getSyncStatus } from '../lib/cloudSync'
 import { exportAllApartmentsExcel, exportApartmentExcel } from '../lib/exportApartmentExcel'
+import { StaffPaymentAssistant } from '../components/StaffPaymentAssistant'
 import { isBuildingAdmin, staffCan } from '../lib/staffPermissions'
+import { analyzePaymentReference } from '../lib/transferProofOcr'
 
 type Tab = AdminPortalTab
 
@@ -248,6 +250,9 @@ export default function AdminPortal() {
     payment: PaymentRecord
     kind: PaymentNotifyKind
   } | null>(null)
+  const [paymentRefScans, setPaymentRefScans] = useState<
+    Record<string, { loading?: boolean; result?: string }>
+  >({})
 
   const residentPortalUrl = `${siteLegal.publicUrl}/resident`
 
@@ -369,6 +374,23 @@ export default function AdminPortal() {
     setTab(nextTab)
     const code = currentUnitCode()
     navigate(adminPortalHref(code || undefined, nextTab), { replace: true })
+  }
+
+  async function checkPaymentReference(payment: PaymentRecord) {
+    if (!payment.transferProof?.dataUrl) {
+      showToast(tr('noTransferProof'))
+      return
+    }
+    setPaymentRefScans((prev) => ({ ...prev, [payment.id]: { loading: true } }))
+    try {
+      const result = await analyzePaymentReference(payment, lang)
+      setPaymentRefScans((prev) => ({ ...prev, [payment.id]: { loading: false, result } }))
+    } catch {
+      setPaymentRefScans((prev) => ({
+        ...prev,
+        [payment.id]: { loading: false, result: tr('staffScanFailed') },
+      }))
+    }
   }
 
   function handleLogout() {
@@ -1732,6 +1754,8 @@ export default function AdminPortal() {
 
             </section>
 
+            <StaffPaymentAssistant />
+
             <section className="panel" style={{ marginTop: '1rem' }}>
               <h2 style={{ marginBottom: '0.25rem' }}>
                 {tr('pendingPayments')}
@@ -1843,6 +1867,18 @@ export default function AdminPortal() {
                           marginTop: '0.75rem',
                         }}
                       >
+                        {p.transferProof?.dataUrl && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            type="button"
+                            disabled={paymentRefScans[p.id]?.loading}
+                            onClick={() => void checkPaymentReference(p)}
+                          >
+                            {paymentRefScans[p.id]?.loading
+                              ? tr('checkingReference')
+                              : tr('checkReferenceInPhoto')}
+                          </button>
+                        )}
                         <button
                           className="btn btn-primary btn-sm"
                           type="button"
@@ -1858,6 +1894,22 @@ export default function AdminPortal() {
                           {tr('rejectPayment')}
                         </button>
                       </div>
+                      {paymentRefScans[p.id]?.result && (
+                        <pre
+                          className="meta"
+                          style={{
+                            marginTop: '0.75rem',
+                            marginBottom: 0,
+                            whiteSpace: 'pre-wrap',
+                            fontFamily: 'inherit',
+                            background: 'var(--surface-elevated, rgba(0,0,0,0.03))',
+                            padding: '0.65rem 0.75rem',
+                            borderRadius: '8px',
+                          }}
+                        >
+                          {paymentRefScans[p.id]?.result}
+                        </pre>
+                      )}
                     </div>
                     <Badge lang={lang} status="pending_review" />
                   </div>

@@ -163,15 +163,16 @@ export function formatScreenshotAnalysis(
   givenBankRef?: string | null,
 ): string {
   const ar = lang === 'ar'
+  const expectedRef = (givenBankRef ?? payment.bankReference)?.trim() || null
   const screenshotRef = ocr.extractedBankRef
-  const refMatch = bankRefsMatch(givenBankRef ?? null, screenshotRef)
+  const refMatch = bankRefsMatch(expectedRef, screenshotRef)
 
   const lines: string[] = []
-  lines.push(ar ? '📷 مقارنة رقم المرجع في اللقطة' : '📷 Reference comparison (screenshot)')
+  lines.push(ar ? '📷 فحص رقم المرجع في اللقطة' : '📷 Reference check (screenshot)')
   lines.push(
     ar
-      ? `${payment.residentName} · ${payment.invoiceId} · ${formatMoney(payment.amount)}`
-      : `${payment.residentName} · ${payment.invoiceId} · ${formatMoney(payment.amount)}`,
+      ? `${payment.residentName} · ${payment.unit} · ${formatMoney(payment.amount)}`
+      : `${payment.residentName} · ${payment.unit} · ${formatMoney(payment.amount)}`,
   )
   lines.push('')
 
@@ -184,49 +185,50 @@ export function formatScreenshotAnalysis(
     return lines.join('\n')
   }
 
-  if (givenBankRef) {
-    lines.push(
-      ar ? `المرجع الذي أدخلته: ${givenBankRef}` : `Reference you provided: ${givenBankRef}`,
-    )
-  }
-
   if (screenshotRef) {
     lines.push(
-      ar ? `رقم المرجع في اللقطة: ${screenshotRef}` : `Reference number in screenshot: ${screenshotRef}`,
+      ar
+        ? `✅ رقم المرجع موجود في اللقطة: ${screenshotRef}`
+        : `✅ Reference found in screenshot: ${screenshotRef}`,
     )
   } else {
     lines.push(
       ar
-        ? '⚠️ لم أجد حقل «Reference number» في اللقطة — تأكد أن اللقطة تظهر رقم المرجع البنكي.'
-        : '⚠️ Could not find “Reference number” in the screenshot — ensure the bank reference field is visible.',
+        ? '❌ رقم المرجع غير موجود في اللقطة — تأكد أن حقل Reference number ظاهر.'
+        : '❌ Reference not found in screenshot — ensure the bank “Reference number” field is visible.',
     )
   }
 
-  lines.push('')
-
-  if (givenBankRef && refMatch === true) {
+  if (expectedRef) {
     lines.push(
-      ar
-        ? '✅ المرجع متطابق — رقم المرجع في اللقطة يطابق ما أدخلته.'
-        : '✅ Reference matches — the screenshot reference number matches what you provided.',
+      ar ? `المرجع المُدخل من الساكن: ${expectedRef}` : `Reference submitted by resident: ${expectedRef}`,
     )
-  } else if (givenBankRef && refMatch === false) {
-    lines.push(
-      ar
-        ? '❌ المرجع غير متطابق — رقم المرجع في اللقطة لا يطابق ما أدخلته. لا تؤكد الدفعة.'
-        : '❌ Reference mismatch — the screenshot reference does not match what you provided. Do not confirm this payment.',
-    )
-  } else if (givenBankRef && refMatch === null) {
-    lines.push(
-      ar
-        ? '⚠️ تعذرت المقارنة — راجع رقم المرجع يدوياً في اللقطة.'
-        : '⚠️ Could not compare — check the reference number manually in the screenshot.',
-    )
+    lines.push('')
+    if (screenshotRef && refMatch === true) {
+      lines.push(
+        ar
+          ? '✅ متطابق — رقم المرجع في اللقطة يطابق ما أدخله الساكن.'
+          : '✅ Match — the screenshot reference matches what the resident submitted.',
+      )
+    } else if (screenshotRef && refMatch === false) {
+      lines.push(
+        ar
+          ? '❌ غير متطابق — رقم المرجع في اللقطة لا يطابق ما أدخله الساكن. لا تؤكد الدفعة.'
+          : '❌ Mismatch — the screenshot reference does not match what the resident submitted. Do not approve.',
+      )
+    } else if (!screenshotRef) {
+      lines.push(
+        ar
+          ? '⚠️ لا يمكن التأكيد — المرجع المُدخل غير ظاهر في اللقطة.'
+          : '⚠️ Cannot verify — the submitted reference is not visible in the screenshot.',
+      )
+    }
   } else if (screenshotRef) {
+    lines.push('')
     lines.push(
       ar
-        ? 'ℹ️ أدخل رقم المرجع من كشف الحساب للمقارنة، مثل: «قارن المرجع 1422869093»'
-        : 'ℹ️ Enter the reference from your bank statement to compare, e.g. “Compare reference 1422869093”',
+        ? 'ℹ️ لم يُدخل الساكن رقم مرجع — راجع يدوياً أو قارن مع كشف الحساب.'
+        : 'ℹ️ Resident did not enter a reference — review manually or compare with your bank statement.',
     )
   }
 
@@ -236,7 +238,7 @@ export function formatScreenshotAnalysis(
     lines.push(
       ar
         ? `مرجع الفاتورة في الوصف: ${ocr.extractedInvoiceRef}`
-        : `Invoice ref in description: ${ocr.extractedInvoiceRef}`,
+        : `Invoice ref in transfer description: ${ocr.extractedInvoiceRef}`,
     )
     if (invOk === true) {
       lines.push(ar ? '✓ يطابق رقم الفاتورة المتوقع' : '✓ Matches expected invoice number')
@@ -246,4 +248,16 @@ export function formatScreenshotAnalysis(
   }
 
   return lines.join('\n')
+}
+
+/** OCR a pending payment screenshot and summarize whether the bank reference is present. */
+export async function analyzePaymentReference(
+  payment: PaymentRecord,
+  lang: 'en' | 'ar',
+): Promise<string> {
+  if (!payment.transferProof?.dataUrl) {
+    return lang === 'ar' ? '⚠️ لا توجد لقطة تحويل مرفقة.' : '⚠️ No transfer screenshot attached.'
+  }
+  const ocr = await recognizeTransferProof(payment.transferProof.dataUrl, payment.amount)
+  return formatScreenshotAnalysis(ocr, payment, lang, payment.bankReference ?? null)
 }
