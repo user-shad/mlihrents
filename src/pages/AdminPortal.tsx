@@ -9,8 +9,13 @@ import {
   BUILDING_INVENTORY,
   buildingLabel,
   buildRentReminderWhatsAppMessage,
+  buildPaymentStatusEmailMessage,
+  buildPaymentStatusWhatsAppMessage,
   formatMoney,
+  mailtoUrl,
   paymentMethodLabel,
+  type PaymentNotifyKind,
+  type PaymentRecord,
   remainingBalance,
   rentScheduleLabel,
   RentSchedule,
@@ -158,6 +163,12 @@ export default function AdminPortal() {
   const [bankEditUnlocked, setBankEditUnlocked] = useState(false)
   const [bankUnlockDraft, setBankUnlockDraft] = useState('')
   const [bankUnlockError, setBankUnlockError] = useState<string | null>(null)
+  const [paymentNotifyPrompt, setPaymentNotifyPrompt] = useState<{
+    payment: PaymentRecord
+    kind: PaymentNotifyKind
+  } | null>(null)
+
+  const residentPortalUrl = `${siteLegal.publicUrl}/resident`
 
   useEffect(() => {
     setBankDraft(bankSettings)
@@ -224,6 +235,115 @@ export default function AdminPortal() {
       return
     }
     window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  function residentForPayment(payment: PaymentRecord) {
+    return residentList.find((r) => r.id === payment.residentId)
+  }
+
+  function paymentNotifyKind(payment: PaymentRecord): PaymentNotifyKind | null {
+    if (payment.status === 'settled') return 'approved'
+    if (payment.status === 'partial') return 'partial'
+    if (payment.status === 'rejected') return 'rejected'
+    return null
+  }
+
+  function openPaymentStatusWhatsApp(payment: PaymentRecord, kind: PaymentNotifyKind) {
+    const resident = residentForPayment(payment)
+    const phone = (resident?.phone ?? '').trim()
+    if (!phone) {
+      showToast(tr('notifyPaymentNoPhone'))
+      return
+    }
+    const message = buildPaymentStatusWhatsAppMessage(
+      payment,
+      kind,
+      lang,
+      residentPortalUrl,
+      siteLegal.brandName,
+    )
+    const url = whatsappChatUrl(phone, message)
+    if (!url) {
+      showToast(tr('notifyPaymentNoPhone'))
+      return
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  function openPaymentStatusEmail(payment: PaymentRecord, kind: PaymentNotifyKind) {
+    const resident = residentForPayment(payment)
+    const email = (resident?.email ?? '').trim()
+    if (!email) {
+      showToast(tr('notifyPaymentNoEmail'))
+      return
+    }
+    const { subject, body } = buildPaymentStatusEmailMessage(
+      payment,
+      kind,
+      lang,
+      residentPortalUrl,
+      siteLegal.brandName,
+    )
+    const url = mailtoUrl(email, subject, body)
+    if (!url) {
+      showToast(tr('notifyPaymentNoEmail'))
+      return
+    }
+    window.location.href = url
+  }
+
+  function paymentNotifyBannerKey(kind: PaymentNotifyKind) {
+    if (kind === 'approved') return 'paymentApprovedNotifyBanner'
+    if (kind === 'partial') return 'paymentPartialNotifyBanner'
+    return 'paymentRejectedNotifyBanner'
+  }
+
+  function renderPaymentNotifyActions(
+    payment: PaymentRecord,
+    kind: PaymentNotifyKind,
+    marginTop = '0.5rem',
+  ) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.4rem',
+          marginTop,
+        }}
+      >
+        <button
+          className="btn btn-ghost btn-sm"
+          type="button"
+          onClick={() => openPaymentStatusWhatsApp(payment, kind)}
+        >
+          {tr('notifyPaymentWhatsApp')}
+        </button>
+        <button
+          className="btn btn-ghost btn-sm"
+          type="button"
+          onClick={() => openPaymentStatusEmail(payment, kind)}
+        >
+          {tr('notifyPaymentEmail')}
+        </button>
+      </div>
+    )
+  }
+
+  function handleApprovePayment(payment: PaymentRecord) {
+    confirmBankPayment(payment.id, payment.amount, false)
+    setPaymentNotifyPrompt({
+      payment: { ...payment, status: 'settled', confirmedAmount: payment.amount },
+      kind: 'approved',
+    })
+  }
+
+  function handleRejectPayment(payment: PaymentRecord) {
+    rejectBankPayment(payment.id)
+    setPaymentNotifyPrompt({
+      payment: { ...payment, status: 'rejected' },
+      kind: 'rejected',
+    })
   }
 
   function bundleForResident(residentId: string) {
@@ -1182,6 +1302,29 @@ export default function AdminPortal() {
               <p className="meta" style={{ marginTop: 0 }}>
                 {tr('pendingPaymentsLead')}
               </p>
+              {paymentNotifyPrompt && (
+                <section
+                  className="panel"
+                  style={{
+                    marginBottom: '1rem',
+                    padding: '0.85rem 1rem',
+                    background: 'var(--surface-elevated, rgba(0,0,0,0.03))',
+                  }}
+                >
+                  <p className="meta" style={{ margin: 0, fontWeight: 600 }}>
+                    {tr(paymentNotifyBannerKey(paymentNotifyPrompt.kind))}
+                  </p>
+                  {renderPaymentNotifyActions(paymentNotifyPrompt.payment, paymentNotifyPrompt.kind)}
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    type="button"
+                    style={{ marginTop: '0.5rem' }}
+                    onClick={() => setPaymentNotifyPrompt(null)}
+                  >
+                    {tr('notifyPaymentDismiss')}
+                  </button>
+                </section>
+              )}
               <div className="list" style={{ marginBottom: '1.25rem' }}>
                 {pendingPayments.map((p) => (
                   <div className="list-row" key={p.id} style={{ alignItems: 'flex-start' }}>
@@ -1252,14 +1395,14 @@ export default function AdminPortal() {
                         <button
                           className="btn btn-primary btn-sm"
                           type="button"
-                          onClick={() => confirmBankPayment(p.id, p.amount, false)}
+                          onClick={() => handleApprovePayment(p)}
                         >
                           {tr('approvePayment')}
                         </button>
                         <button
                           className="btn btn-ghost btn-sm"
                           type="button"
-                          onClick={() => rejectBankPayment(p.id)}
+                          onClick={() => handleRejectPayment(p)}
                         >
                           {tr('rejectPayment')}
                         </button>
@@ -1300,6 +1443,10 @@ export default function AdminPortal() {
                           <span>{tr('viewProof')}</span>
                         </a>
                       )}
+                      {(() => {
+                        const kind = paymentNotifyKind(p)
+                        return kind ? renderPaymentNotifyActions(p, kind) : null
+                      })()}
                       {canDeletePayment && (
                       <button
                         className="btn btn-ghost btn-sm"
@@ -1507,6 +1654,10 @@ export default function AdminPortal() {
                             <span>{tr('viewProof')}</span>
                           </a>
                         )}
+                        {(() => {
+                          const kind = paymentNotifyKind(p)
+                          return kind ? renderPaymentNotifyActions(p, kind) : null
+                        })()}
                         {canDeletePayment && (
                         <button
                           className="btn btn-ghost btn-sm"

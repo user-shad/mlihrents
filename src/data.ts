@@ -128,6 +128,74 @@ export function buildRentReminderWhatsAppMessage(
   return `Hello ${name},\n\nThis is a rent reminder from ${brandName} for unit ${unit}.\n${detail}\n\nPay via the resident portal:\n${portalUrl}\n\nThank you.`
 }
 
+export type PaymentNotifyKind = 'approved' | 'partial' | 'rejected'
+
+/** Pre-filled WhatsApp message after admin approves or rejects a payment. */
+export function buildPaymentStatusWhatsAppMessage(
+  payment: PaymentRecord,
+  kind: PaymentNotifyKind,
+  lang: 'en' | 'ar',
+  portalUrl: string,
+  brandName = 'MLIH Rents',
+) {
+  const name = payment.residentName.trim() || (lang === 'ar' ? 'الساكن' : 'Resident')
+  const unit = payment.unit
+  const amount = payment.confirmedAmount ?? payment.amount
+  const expected = payment.amount
+
+  if (lang === 'ar') {
+    let detail = ''
+    if (kind === 'approved') {
+      detail = `تمت الموافقة على دفعتك بمبلغ ${amount.toLocaleString()} درهم للوحدة ${unit}. تم تحديث الفاتورة كمدفوعة.`
+    } else if (kind === 'partial') {
+      detail = `استلمنا ${amount.toLocaleString()} درهم من أصل ${expected.toLocaleString()} درهم للوحدة ${unit}. الفاتورة ما زالت مستحقة للرصيد المتبقي.`
+    } else {
+      detail = `تعذّر التحقق من تحويلك بمبلغ ${expected.toLocaleString()} درهم للوحدة ${unit}. يرجى إرسال إثبات جديد أو التواصل مع الإدارة.`
+    }
+    return `مرحباً ${name}،\n\n${detail}\n\nراجع حالة الدفع في بوابة السكان:\n${portalUrl}\n\n${brandName}`
+  }
+
+  let detail = ''
+  if (kind === 'approved') {
+    detail = `Your payment of AED ${amount.toLocaleString()} for unit ${unit} has been approved. Your invoice is now marked paid.`
+  } else if (kind === 'partial') {
+    detail = `We received AED ${amount.toLocaleString()} toward your invoice of AED ${expected.toLocaleString()} for unit ${unit}. The invoice remains due for the balance.`
+  } else {
+    detail = `We could not verify your transfer of AED ${expected.toLocaleString()} for unit ${unit}. Please submit a new proof or contact management.`
+  }
+  return `Hello ${name},\n\n${detail}\n\nReview your payment status on the resident portal:\n${portalUrl}\n\n${brandName}`
+}
+
+export function buildPaymentStatusEmailMessage(
+  payment: PaymentRecord,
+  kind: PaymentNotifyKind,
+  lang: 'en' | 'ar',
+  portalUrl: string,
+  brandName = 'MLIH Rents',
+) {
+  const body = buildPaymentStatusWhatsAppMessage(payment, kind, lang, portalUrl, brandName)
+  const unit = payment.unit
+  const subject =
+    lang === 'ar'
+      ? kind === 'approved'
+        ? `تمت الموافقة على الدفع — ${unit}`
+        : kind === 'partial'
+          ? `دفعة جزئية — ${unit}`
+          : `تحديث الدفع — ${unit}`
+      : kind === 'approved'
+        ? `Payment approved — ${unit}`
+        : kind === 'partial'
+          ? `Partial payment recorded — ${unit}`
+          : `Payment update — ${unit}`
+  return { subject: `${brandName}: ${subject}`, body }
+}
+
+export function mailtoUrl(email: string, subject: string, body: string) {
+  const trimmed = email.trim()
+  if (!trimmed) return ''
+  return `mailto:${trimmed}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+}
+
 export function isValidPin(pin: string) {
   return /^\d{4}$/.test(pin)
 }
