@@ -26,6 +26,26 @@ const LEGACY_OPS_KEYS = ['mlihrents_ops_v4']
 const SYNC_ROW_ID = 'main'
 const LOCAL_SYNC_META_KEY = 'mlihrents_sync_meta'
 
+function syncApiToken() {
+  return (import.meta.env.VITE_SYNC_API_TOKEN as string | undefined)?.trim() ?? ''
+}
+
+function syncApiHeaders(): HeadersInit {
+  const token = syncApiToken()
+  if (!token) return {}
+  return { Authorization: `Bearer ${token}` }
+}
+
+function syncApiAuthError(status: number): string | null {
+  if (status === 401) {
+    return 'Sync blocked — missing or invalid sync token (check VITE_SYNC_API_TOKEN on Vercel)'
+  }
+  if (status === 503) {
+    return 'Sync token not configured on server — set SYNC_API_TOKEN on Vercel and redeploy'
+  }
+  return null
+}
+
 export type SyncMode = 'cloud' | 'local'
 
 export interface PortalOps {
@@ -97,7 +117,12 @@ async function readJsonResponse<T>(res: Response): Promise<T | null> {
 
 export async function fetchSyncHealth(): Promise<SyncStatus['backends'] | null> {
   try {
-    const res = await fetch('/api/sync-health', { cache: 'no-store' })
+    const res = await fetch('/api/sync-health', { cache: 'no-store', headers: syncApiHeaders() })
+    const authErr = syncApiAuthError(res.status)
+    if (authErr) {
+      lastSyncError = authErr
+      return null
+    }
     if (!res.ok) return null
     const data = await readJsonResponse<{
       configured?: boolean
@@ -290,41 +315,37 @@ function parseCloudResponse(data: {
   }
 }
 
-async function loadCloudRowViaPublicBlob(): Promise<CloudRow | null> {
-  // Suspended/legacy Blob fallback removed — sync goes through /api/portal-sync (GitHub/Redis/etc.)
-  return null
-}
-
 function cloudRowHasData(row: CloudRow | null): boolean {
   if (!row) return false
   return hasOpsData(row.ops) || hasAccountsData(row.accounts)
 }
 
 async function loadCloudRowViaApi(): Promise<CloudRow | null> {
-  // Prefer public Blob in the browser — Vercel serverless often gets 403 reading the same URL.
-  const viaBlob = await loadCloudRowViaPublicBlob()
-  if (cloudRowHasData(viaBlob)) return viaBlob
-
   try {
     void fetchSyncHealth()
-    const res = await fetch('/api/portal-sync', { cache: 'no-store' })
+    const res = await fetch('/api/portal-sync', { cache: 'no-store', headers: syncApiHeaders() })
+    const authErr = syncApiAuthError(res.status)
+    if (authErr) {
+      lastSyncError = authErr
+      return null
+    }
     if (res.status === 503) {
       const data = await readJsonResponse<{ hint?: string }>(res)
       lastSyncError = data?.hint ?? 'Cloud storage not connected on Vercel'
-      return viaBlob
+      return null
     }
     if (!res.ok) {
       lastSyncError = `Sync API error (${res.status})`
-      return viaBlob
+      return null
     }
     const data = await readJsonResponse<Parameters<typeof parseCloudResponse>[0]>(res)
-    if (!data) return viaBlob
+    if (!data) return null
     const parsed = parseCloudResponse(data)
     if (cloudRowHasData(parsed)) return parsed
-    return viaBlob
+    return null
   } catch {
     lastSyncError = 'Could not reach sync API'
-    return viaBlob
+    return null
   }
 }
 
@@ -358,9 +379,13 @@ async function saveCloudRowViaApi(accounts: AccountRecord[], ops: PortalOps) {
   try {
     const res = await fetch('/api/portal-sync', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...syncApiHeaders() },
       body: JSON.stringify({ accounts: preparedAccounts, ops: slimOps }),
     })
+    if (res.status === 401 || res.status === 503) {
+      lastSyncError = syncApiAuthError(res.status) ?? `Save failed (${res.status})`
+      return false
+    }
     if (res.ok) {
       const data = (await res.json()) as { updated_at?: string; storage?: string }
       syncMode = 'cloud'

@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { requireSyncAuth } from './syncAuth'
 import { createClient } from '@supabase/supabase-js'
 import { get, head, list, put } from '@vercel/blob'
 import { sql } from '@vercel/postgres'
@@ -425,6 +426,8 @@ async function saveBest(payload: SyncPayload): Promise<StorageKind> {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store')
+
+  if (!requireSyncAuth(req, res)) return
 
   if (!isConfigured()) {
     res.status(503).json({

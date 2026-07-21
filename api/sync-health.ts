@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { requireSyncAuth } from './syncAuth'
 
 function hasBlob() {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN)
@@ -35,8 +36,9 @@ function hasGithub() {
   )
 }
 
-export default function handler(_req: VercelRequest, res: VercelResponse) {
+export default function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store')
+  if (!requireSyncAuth(req, res)) return
   const blob = hasBlob()
   const redis = hasRedis()
   const postgres = hasPostgres()
