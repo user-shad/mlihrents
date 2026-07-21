@@ -776,7 +776,6 @@ export default function AdminPortal() {
     const renderUnitButton = (r: (typeof sorted)[number]) => {
       const unit = unitCodeLabel(r)
       const active = r.id === selectedResidentId
-      const title = apartmentDisplayTitle(r, lang)
       const vacant = !(r.name.trim() || r.phone.trim())
       return (
         <Link
@@ -786,11 +785,11 @@ export default function AdminPortal() {
           onClick={() => setApartmentEditorOpen(false)}
         >
           <span>
-            <strong>{title}</strong>
+            <strong>{unit}</strong>
             <span className="meta">
-              {unit}
+              {vacant ? tr('vacantUnit') : r.name.trim()}
               {r.unitType ? ` · ${r.unitType}` : ''}
-              {!vacant && r.phone ? ` · ${r.phone}` : vacant ? ` · ${tr('vacantUnit')}` : ''}
+              {!vacant && r.phone ? ` · ${r.phone}` : ''}
               {(r.nationality || r.idNumber) && (
                 <>
                   <br />
