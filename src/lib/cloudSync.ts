@@ -791,11 +791,17 @@ function applyRemoteRow(row: CloudRow) {
   }
 }
 
-function paymentsSyncFingerprint(ops: PortalOps): string {
-  return ops.payments
+function opsSyncFingerprint(ops: PortalOps): string {
+  const paymentFp = ops.payments
     .map((p) => `${p.id}:${p.status}:${p.reviewedAt ?? ''}`)
     .sort()
     .join('|')
+  const residentFp = ops.residentList
+    .map((r) => `${r.id}:${r.amountPaid}:${r.contractTotal}:${r.nextDueDateIso ?? ''}`)
+    .sort()
+    .join('|')
+  const removedFp = (ops.removedInvoiceIds ?? []).slice().sort().join('|')
+  return `${paymentFp}::${residentFp}::${removedFp}`
 }
 
 function pollIntervalMs() {
@@ -826,7 +832,7 @@ function pullRemoteIfNewer() {
     const timestampUnchanged =
       Boolean(row.updated_at && lastCloudUpdatedAt && row.updated_at <= lastCloudUpdatedAt)
     if (timestampUnchanged && localOps) {
-      if (paymentsSyncFingerprint(row.ops) === paymentsSyncFingerprint(localOps)) return
+      if (opsSyncFingerprint(row.ops) === opsSyncFingerprint(localOps)) return
     }
     applyRemoteRow(row)
   })

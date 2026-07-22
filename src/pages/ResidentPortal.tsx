@@ -70,9 +70,9 @@ export default function ResidentPortal() {
   )
 
   useEffect(() => {
-    if (!awaitingPaymentReview) return
     pullCloudNow()
-    const id = window.setInterval(pullCloudNow, 8000)
+    const intervalMs = awaitingPaymentReview ? 8000 : 15000
+    const id = window.setInterval(pullCloudNow, intervalMs)
     return () => window.clearInterval(id)
   }, [awaitingPaymentReview, liveResident.id])
 
