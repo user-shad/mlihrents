@@ -1990,6 +1990,9 @@ export default function AdminPortal() {
                       value={dueDayDraft}
                       onChange={(e) => setDueDayDraft(e.target.value)}
                     />
+                    <p className="meta" style={{ marginTop: '0.35rem' }}>
+                      {tr('rentDueDayHelp')}
+                    </p>
                   </div>
                   <div className="form-row">
                     <label htmlFor="contractTotal">{tr('contractTotal')}</label>

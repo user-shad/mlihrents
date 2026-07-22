@@ -1333,6 +1333,75 @@ export function currentCalendarDueDateIso(dueDay: number, today = new Date()): s
   return calendarDueDateIso(today.getFullYear(), today.getMonth() + 1, dueDay)
 }
 
+/** True when a calendar month (1–12) is a rent month on the January-anchored grid. */
+export function isCalendarInstallmentMonth(month: number, intervalMonths: RentSchedule | unknown): boolean {
+  const n = normalizeRentSchedule(intervalMonths)
+  return (month - 1) % n === 0
+}
+
+/** ISO due date for installment k (0 = first slot in originYear), every N calendar months from January. */
+export function calendarInstallmentDueIso(
+  installmentIndex: number,
+  dueDay: number,
+  intervalMonths: RentSchedule | unknown,
+  originYear: number,
+): string {
+  const n = normalizeRentSchedule(intervalMonths)
+  const monthOffset = installmentIndex * n
+  const year = originYear + Math.floor(monthOffset / 12)
+  const month = (monthOffset % 12) + 1
+  return calendarDueDateIso(year, month, dueDay)
+}
+
+function calendarOriginYear(leaseStart?: string, today = new Date()): number {
+  return parseLeaseStartDate(leaseStart)?.getFullYear() ?? today.getFullYear()
+}
+
+/** First calendar installment index on or after lease start (January-anchored grid). */
+export function calendarScheduleStartIndex(
+  resident: Pick<Resident, 'leaseStart' | 'rentDueDay' | 'rentSchedule'>,
+): number {
+  const start = parseLeaseStartDate(resident.leaseStart)
+  const originYear = calendarOriginYear(resident.leaseStart)
+  const dueDay = resident.rentDueDay || 1
+  const n = normalizeRentSchedule(resident.rentSchedule)
+  const startIso = start?.toISOString().slice(0, 10)
+  for (let k = 0; k < 240; k += 1) {
+    const iso = calendarInstallmentDueIso(k, dueDay, n, originYear)
+    if (!startIso || iso >= startIso) return k
+  }
+  return 0
+}
+
+/** Index of the next unpaid installment on the calendar grid. */
+export function nextDueInstallmentIndex(
+  resident: Pick<Resident, 'leaseStart' | 'rentDueDay' | 'rentSchedule' | 'amountPaid' | 'rentAmount'>,
+): number {
+  return calendarScheduleStartIndex(resident) + openInstallmentIndex(resident)
+}
+
+/** ISO due date for the resident's next open installment. */
+export function nextCalendarInstallmentDueIso(
+  resident: Pick<Resident, 'leaseStart' | 'rentDueDay' | 'rentSchedule' | 'amountPaid' | 'rentAmount'>,
+): string {
+  const k = nextDueInstallmentIndex(resident)
+  return calendarInstallmentDueIso(
+    k,
+    resident.rentDueDay || 1,
+    resident.rentSchedule,
+    calendarOriginYear(resident.leaseStart),
+  )
+}
+
+function periodLabelFromIso(iso: string, lang: 'en' | 'ar'): string {
+  const d = new Date(`${iso}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return iso
+  if (lang === 'ar') {
+    return d.toLocaleDateString('ar-AE', { month: 'long', year: 'numeric' })
+  }
+  return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+}
+
 /** Index of the next installment still due (0 = first payment). */
 export function openInstallmentIndex(resident: Pick<Resident, 'amountPaid' | 'rentAmount'>): number {
   if (resident.rentAmount <= 0) return 0
@@ -1359,17 +1428,15 @@ export function buildInstallmentInvoice(
   const remaining = remainingBalance(resident)
   if (remaining <= 0 || resident.rentAmount <= 0) return null
 
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = now.getMonth() + 1
-  const dueDateIso = currentCalendarDueDateIso(resident.rentDueDay || 1, now)
+  const dueDateIso = nextCalendarInstallmentDueIso(resident)
+  const [y, m] = dueDateIso.split('-')
   const unit = (resident.apartment || resident.id).replace(/\s+/g, '')
-  const id = `INV-${unit}-${y}${String(m).padStart(2, '0')}`
+  const id = `INV-${unit}-${y}${m}`
   const amount = Math.min(resident.rentAmount, remaining)
 
   return {
     id,
-    period: currentPeriodLabel(lang),
+    period: periodLabelFromIso(dueDateIso, lang),
     amount,
     dueDateIso,
     dueDate: formatIsoDueDate(dueDateIso, lang),
@@ -1393,6 +1460,14 @@ export function suggestInstallment(contractTotal: number, schedule: RentSchedule
 
 export function nowLabel() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+/** Human-readable next installment due date on the calendar grid. */
+export function formatNextCalendarInstallmentDue(
+  resident: Pick<Resident, 'leaseStart' | 'rentDueDay' | 'rentSchedule' | 'amountPaid' | 'rentAmount'>,
+  lang: 'en' | 'ar' = 'en',
+): string {
+  return formatIsoDueDate(nextCalendarInstallmentDueIso(resident), lang)
 }
 
 /** Label for the due date in the current calendar month. */
@@ -1442,21 +1517,20 @@ export function isPastDue(iso?: string, today = new Date()) {
 
 export function applyDueDayToInvoices(
   list: Invoice[],
-  dueDay: number,
+  resident: Pick<Resident, 'leaseStart' | 'rentDueDay' | 'rentSchedule' | 'amountPaid' | 'rentAmount'>,
   lang: 'en' | 'ar' = 'en',
 ): Invoice[] {
-  const safeDay = Math.min(28, Math.max(1, Math.round(dueDay)))
-  const now = new Date()
+  const safeDay = Math.min(28, Math.max(1, Math.round(resident.rentDueDay || 1)))
+  const originYear = calendarOriginYear(resident.leaseStart)
+  const n = normalizeRentSchedule(resident.rentSchedule)
+  let openOffset = 0
   return list.map((inv) => {
     if (inv.status === 'paid') return inv
+    const installmentIndex = nextDueInstallmentIndex(resident) + openOffset
+    openOffset += 1
     const extensionDays = inv.extensionDays ?? 0
-    let baseIso = inv.dueDateIso
-    if (!baseIso) {
-      baseIso = currentCalendarDueDateIso(safeDay, now)
-    } else {
-      const [y, m] = baseIso.split('-')
-      baseIso = calendarDueDateIso(Number(y), Number(m), safeDay)
-    }
+    const baseIso =
+      calendarInstallmentDueIso(installmentIndex, safeDay, n, originYear)
     const effectiveIso = addDaysToIso(baseIso, extensionDays)
     const overdue = isPastDue(effectiveIso)
     return {

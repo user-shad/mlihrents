@@ -500,8 +500,8 @@ export function DataProvider({
       ...(paidIds.includes(inv.id) ? { ...inv, status: 'paid' as const } : inv),
       extensionDays: invoiceExtensions[inv.id] ?? inv.extensionDays ?? 0,
     }))
-    return applyDueDayToInvoices(base, liveResident.rentDueDay, lang)
-  }, [invoiceMap, liveResident.id, liveResident.rentDueDay, paidIds, invoiceExtensions, lang])
+    return applyDueDayToInvoices(base, liveResident, lang)
+  }, [invoiceMap, liveResident, paidIds, invoiceExtensions, lang])
 
   const dueInvoice = canCollectRent(liveResident)
     ? visibleInvoices.find((i) => i.status === 'due' || i.status === 'overdue')
@@ -565,8 +565,8 @@ export function DataProvider({
       ...(paidIds.includes(inv.id) ? { ...inv, status: 'paid' as const } : inv),
       extensionDays: invoiceExtensions[inv.id] ?? inv.extensionDays ?? 0,
     }))
-    return applyDueDayToInvoices(base, selectedResident.rentDueDay, lang)
-  }, [selectedResidentId, selectedResident.rentDueDay, invoiceMap, paidIds, invoiceExtensions, lang])
+    return applyDueDayToInvoices(base, selectedResident, lang)
+  }, [selectedResidentId, selectedResident, invoiceMap, paidIds, invoiceExtensions, lang])
 
   const adminResidentTickets = ticketMap[selectedResidentId] ?? []
 
