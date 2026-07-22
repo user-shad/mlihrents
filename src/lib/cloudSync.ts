@@ -633,7 +633,11 @@ function mergeBootstrap(
   let ops = cloud?.ops ?? createDefaultOps()
 
   if (cloudHasAccounts && localHasAccounts && localAccounts) {
-    accounts = mergeAccountsPreferringLocal(cloud!.accounts, localAccounts)
+    accounts = mergeAccountsPreferringLocal(
+      cloud!.accounts,
+      localAccounts,
+      localTime >= cloudTime,
+    )
   } else if (preferCloud && cloudHasAccounts) {
     accounts = cloud!.accounts
   } else if (localHasAccounts && localAccounts) {
@@ -707,9 +711,10 @@ async function doBootstrap(): Promise<BootstrapData> {
 function mergeAccountsPreferringLocal(
   remote: AccountRecord[],
   local: AccountRecord[] | null,
+  preferLocalResidents = true,
 ): AccountRecord[] {
   if (!local?.length) return remote
-  return mergeAccountLists(remote, local)
+  return mergeAccountLists(remote, local, !preferLocalResidents)
 }
 
 function mergeOpsPreferringLocalProofs(
@@ -757,7 +762,11 @@ function applyRemoteRow(row: CloudRow) {
 
   if (row.ops.paymentResetAt && row.ops.paymentResetAt > readPaymentResetAck()) {
     const mergedOps = applyPaymentResetFromCloud(row.ops, localOps)
-    let mergedAccounts = mergeAccountsPreferringLocal(row.accounts, localAccounts)
+    let mergedAccounts = mergeAccountsPreferringLocal(
+      row.accounts,
+      localAccounts,
+      preferLocalResidents,
+    )
     mergedAccounts = prepareStoredAccounts(
       syncLoginAccountsFromResidents(mergedAccounts, mergedOps.residentList),
     )
@@ -776,7 +785,11 @@ function applyRemoteRow(row: CloudRow) {
     ? mergeOpsPreferringLocalProofs(row.ops, localOps, preferLocalResidents)
     : row.ops
   ingestRemoteProofs(mergedOps)
-  let mergedAccounts = mergeAccountsPreferringLocal(row.accounts, localAccounts)
+  let mergedAccounts = mergeAccountsPreferringLocal(
+    row.accounts,
+    localAccounts,
+    preferLocalResidents,
+  )
   mergedAccounts = prepareStoredAccounts(
     syncLoginAccountsFromResidents(mergedAccounts, mergedOps.residentList),
   )

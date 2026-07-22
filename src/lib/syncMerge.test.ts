@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  mergeAccountLists,
   mergeInvoiceMaps,
   mergePaidIds,
   mergePaymentLists,
@@ -9,6 +10,18 @@ import {
 } from '../../lib/syncMerge'
 
 describe('syncMerge', () => {
+  it('drops local-only resident login when cloud removed it', () => {
+    const remote = [{ phone: '0501111111', pin: '1234', role: 'admin', name: 'Admin' }]
+    const local = [
+      { phone: '0501111111', pin: '1234', role: 'admin', name: 'Admin' },
+      { phone: '0502222222', pin: '5678', role: 'resident', name: 'Tenant', residentId: 'apt-a3' },
+    ]
+    const merged = mergeAccountLists(remote, local, true)
+    expect(merged.some((a) => a.role === 'resident' && (a as { residentId?: string }).residentId === 'apt-a3')).toBe(
+      false,
+    )
+  })
+
   it('prefers settled payment over stale pending_review from another device', () => {
     const remote = [{ id: 'PAY-1', status: 'settled', confirmedAmount: 5000 }]
     const local = [{ id: 'PAY-1', status: 'pending_review' }]

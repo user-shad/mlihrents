@@ -96,6 +96,20 @@ export function AuthProvider({
   }, [session])
 
   useEffect(() => {
+    if (!session || session.role !== 'resident') return
+    const account = accounts.find(
+      (a) => a.role === 'resident' && a.residentId === session.residentId,
+    )
+    if (!account) {
+      setSession(null)
+      return
+    }
+    if (normalizePhone(account.phone) !== normalizePhone(session.phone)) {
+      setSession(null)
+    }
+  }, [accounts, session])
+
+  useEffect(() => {
     writeLocalAccounts(accounts)
     queueCloudAccounts(accounts)
   }, [accounts])
@@ -161,7 +175,11 @@ export function AuthProvider({
   }
 
   function clearResidentCredentials(residentId: string) {
-    setAccounts((prev) => prev.filter((a) => !(a.role === 'resident' && a.residentId === residentId)))
+    setAccounts((prev) => {
+      const next = prev.filter((a) => !(a.role === 'resident' && a.residentId === residentId))
+      void flushCloudAccountsNow(next)
+      return next
+    })
   }
 
   function registerResidentAccount(input: {

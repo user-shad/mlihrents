@@ -54,7 +54,11 @@ function normalizePhoneDigits(phone: string): string {
 }
 
 /** Merge login accounts without dropping residents registered on another device. */
-export function mergeAccountLists<T extends AccountLike>(remote: T[], local: T[]): T[] {
+export function mergeAccountLists<T extends AccountLike>(
+  remote: T[],
+  local: T[],
+  dropLocalOnlyResidents = false,
+): T[] {
   if (!local.length) return remote
   if (!remote.length) return local
 
@@ -96,6 +100,7 @@ export function mergeAccountLists<T extends AccountLike>(remote: T[], local: T[]
           (phoneKey && normalizePhoneDigits(a.phone) === phoneKey)),
     )
     if (!alreadyMerged) {
+      if (dropLocalOnlyResidents) continue
       merged.push({ ...localAccount, phone: phoneKey || localAccount.phone } as T)
     }
   }
