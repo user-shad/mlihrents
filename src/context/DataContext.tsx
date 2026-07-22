@@ -462,6 +462,24 @@ export function DataProvider({
     setToast(msg)
   }
 
+  function pushOpsToCloud(overrides: Partial<PortalOps>) {
+    markLocalMutation()
+    const ops: PortalOps = {
+      residentList,
+      listings,
+      payments,
+      invoiceMap,
+      ticketMap,
+      invoiceExtensions,
+      paidIds,
+      bankSettings,
+      serviceDirectory,
+      ...overrides,
+    }
+    writeLocalOps(ops)
+    return flushCloudSaveNow(ops)
+  }
+
   function autoNotifyPaymentWhatsApp(payment: PaymentRecord, kind: PaymentNotifyKind) {
     const resident = residentList.find((r) => r.id === payment.residentId)
     const phone = resident?.phone?.trim() ?? ''
@@ -776,6 +794,14 @@ export function DataProvider({
     setInvoiceMap((prev) => ({ ...prev, [id]: [] }))
     setTicketMap((prev) => ({ ...prev, [id]: [] }))
     setSelectedResidentId(id)
+    const nextResidentList = [...residentList, next]
+    void pushOpsToCloud({
+      residentList: nextResidentList,
+      invoiceMap: { ...invoiceMap, [id]: [] },
+      ticketMap: { ...ticketMap, [id]: [] },
+    }).then((synced) => {
+      if (!synced) showToast(tr('paymentSyncFailed'))
+    })
     showToast(tr('registerSaved'))
   }
 
@@ -987,9 +1013,30 @@ export function DataProvider({
         setTicketMap((prev) => ({ ...prev, [next.id]: prev[next.id] ?? [] }))
       }
       setSelectedResidentId(next.id)
+      let nextResidentList = seed
+        ? residentList.map((r) => (r.id === next.id ? next : r))
+        : [...residentList, next]
+      let nextInvoiceMap = { ...invoiceMap, [next.id]: invoiceMap[next.id] ?? [] }
       if (canCollectRent(next)) {
-        ensureInstallmentInvoiceFor(next)
+        const existingInv = nextInvoiceMap[next.id] ?? []
+        const hasOpen = existingInv.some(
+          (inv) => inv.status !== 'paid' && !paidIds.includes(inv.id),
+        )
+        if (!hasOpen) {
+          const inv = buildInstallmentInvoice(next, lang)
+          if (inv && !existingInv.some((row) => row.id === inv.id)) {
+            nextInvoiceMap = { ...nextInvoiceMap, [next.id]: [inv, ...existingInv] }
+          }
+        }
       }
+      setInvoiceMap(nextInvoiceMap)
+      void pushOpsToCloud({
+        residentList: nextResidentList,
+        invoiceMap: nextInvoiceMap,
+        ticketMap: { ...ticketMap, [next.id]: ticketMap[next.id] ?? [] },
+      }).then((synced) => {
+        if (!synced) showToast(tr('paymentSyncFailed'))
+      })
       showToast(tr('apartmentAdded'))
       return
     }
@@ -1613,36 +1660,57 @@ export function DataProvider({
       reviewedAt: paidAt,
       reviewNote: lang === 'ar' ? 'سجّلته الإدارة' : 'Recorded by admin',
     }
-    setPayments((prev) => [record, ...prev])
-    setPaidIds((prev) => (prev.includes(invoiceId) ? prev : [...prev, invoiceId]))
-    setInvoiceMap((prev) => ({
-      ...prev,
-      [resident.id]: (prev[resident.id] ?? []).map((inv) =>
+    const nextPayments = [record, ...payments]
+    const nextPaidIds = paidIds.includes(invoiceId) ? paidIds : [...paidIds, invoiceId]
+    let nextInvoiceMap = {
+      ...invoiceMap,
+      [resident.id]: (invoiceMap[resident.id] ?? []).map((inv) =>
         inv.id === invoiceId ? { ...inv, status: 'paid' as const } : inv,
       ),
-    }))
-    setResidentList((prev) =>
-      prev.map((r) => {
-        if (r.id !== resident.id) return r
-        const withPaid = {
-          ...r,
-          amountPaid: Math.min(r.contractTotal, r.amountPaid + invoice.amount),
-        }
-        return residentAfterInstallmentPaid(withPaid)
-      }),
-    )
+    }
+    const nextResidentList = residentList.map((r) => {
+      if (r.id !== resident.id) return r
+      const withPaid = {
+        ...r,
+        amountPaid: Math.min(r.contractTotal, r.amountPaid + invoice.amount),
+      }
+      return residentAfterInstallmentPaid(withPaid)
+    })
     const advanced = residentAfterInstallmentPaid({
       ...resident,
       amountPaid: Math.min(resident.contractTotal, resident.amountPaid + invoice.amount),
     })
+    if (remainingBalance(advanced) > 0 && advanced.rentAmount > 0) {
+      const existing = nextInvoiceMap[advanced.id] ?? []
+      const hasOpen = existing.some(
+        (inv) => inv.status !== 'paid' && !nextPaidIds.includes(inv.id),
+      )
+      if (!hasOpen) {
+        const nextInv = buildInstallmentInvoice(advanced, lang)
+        if (nextInv && !existing.some((row) => row.id === nextInv.id)) {
+          nextInvoiceMap = { ...nextInvoiceMap, [advanced.id]: [nextInv, ...existing] }
+        }
+      }
+    }
+    setPayments(nextPayments)
+    setPaidIds(nextPaidIds)
+    setInvoiceMap(nextInvoiceMap)
+    setResidentList(nextResidentList)
     setNextDueDateDraft(advanced.nextDueDateIso ?? resolveNextDueDateIso(advanced))
-    ensureInstallmentInvoiceFor(advanced)
     setPaidDraft((prev) => {
       const next = Math.min(
         Number(contractDraft) || resident.contractTotal,
         (Number(prev) || 0) + invoice.amount,
       )
       return String(next)
+    })
+    void pushOpsToCloud({
+      residentList: nextResidentList,
+      payments: nextPayments,
+      invoiceMap: nextInvoiceMap,
+      paidIds: nextPaidIds,
+    }).then((synced) => {
+      if (!synced) showToast(tr('paymentSyncFailed'))
     })
     showToast(
       lang === 'ar'

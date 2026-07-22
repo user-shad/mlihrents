@@ -5,6 +5,7 @@ import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
 import { BrandMark, LanguageSwitch } from '../components/ui'
 import { siteLegal } from '../legal/siteLegal'
+import { pullCloudNow } from '../lib/cloudSync'
 import {
   clearSavedLogin,
   readSavedLogin,
@@ -41,6 +42,7 @@ export default function ResidentLoginPage() {
     } else {
       clearSavedLogin(RESIDENT_LOGIN_SAVE_KEY)
     }
+    pullCloudNow()
     showToast(tr('welcomeToast'))
     navigate('/app')
   }
