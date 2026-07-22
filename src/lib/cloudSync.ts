@@ -700,7 +700,14 @@ function mergeResidentLists(
     const localEdited =
       (localPhone && localPhone !== remotePhone) ||
       (localResident.name.trim() && localResident.name.trim() !== remoteResident.name.trim()) ||
-      (localResident.pin && localResident.pin !== remoteResident.pin)
+      (localResident.pin && localResident.pin !== remoteResident.pin) ||
+      localResident.amountPaid !== remoteResident.amountPaid ||
+      localResident.contractTotal !== remoteResident.contractTotal ||
+      localResident.rentAmount !== remoteResident.rentAmount ||
+      localResident.rentSchedule !== remoteResident.rentSchedule ||
+      localResident.rentDueDay !== remoteResident.rentDueDay ||
+      localResident.nextDueDateIso !== remoteResident.nextDueDateIso ||
+      Boolean(localResident.amountPaidManual) !== Boolean(remoteResident.amountPaidManual)
     if (localEdited) {
       return {
         ...remoteResident,

@@ -69,6 +69,8 @@ export interface Resident {
   contractTotal: number
   /** How much of contractTotal has already been paid */
   amountPaid: number
+  /** When true, bulk “paid through month” updates will not change amountPaid. */
+  amountPaidManual?: boolean
   occupants?: number
   /** Studio, 1BR, etc. */
   unitType?: string
@@ -1340,7 +1342,9 @@ export function applyRentPaidThroughMonth(
     if (!isUnitOccupied(resident) || !hasRentPlan(resident)) return resident
     const targetPaid = amountDueThroughMonth(resident, throughYear, throughMonth)
     if (targetPaid <= 0) return resident
-    const amountPaid = Math.min(resident.contractTotal, Math.max(resident.amountPaid, targetPaid))
+    const amountPaid = resident.amountPaidManual
+      ? resident.amountPaid
+      : Math.min(resident.contractTotal, Math.max(resident.amountPaid, targetPaid))
     const caughtUp = amountPaid >= targetPaid
     return {
       ...resident,

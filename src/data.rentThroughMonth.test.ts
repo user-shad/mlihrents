@@ -59,4 +59,10 @@ describe('rent paid through month', () => {
     expect(fixed.invoiceMap['apt-a1'][0].status).toBe('paid')
     expect(fixed.paidIds).toContain('INV-A1-202607')
   })
+
+  it('does not change amountPaid when amountPaidManual is set', () => {
+    const resident = sampleResident({ amountPaid: 5000, amountPaidManual: true })
+    const fixed = applyRentPaidThroughMonth([resident], {}, [], 2026, 7)
+    expect(fixed.residentList[0].amountPaid).toBe(5000)
+  })
 })

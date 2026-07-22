@@ -85,7 +85,9 @@ function applyRentPaidThroughMonth(residentList, invoiceMap, paidIds, throughYea
     if (!isUnitOccupied(resident) || !hasRentPlan(resident)) return resident
     const targetPaid = amountDueThroughMonth(resident, throughYear, throughMonth)
     if (targetPaid <= 0) return resident
-    const amountPaid = Math.min(resident.contractTotal, Math.max(resident.amountPaid, targetPaid))
+    const amountPaid = resident.amountPaidManual
+      ? resident.amountPaid
+      : Math.min(resident.contractTotal, Math.max(resident.amountPaid, targetPaid))
     const caughtUp = amountPaid >= targetPaid
     const dueDay = Math.min(28, Math.max(1, Number(resident.rentDueDay) || 1))
     const nextDueDateIso = calendarDueDateIso(nextDueYear, nextDueMonth, dueDay)
@@ -187,6 +189,10 @@ async function main() {
   console.log(`Next due month: Aug ${THROUGH_YEAR}`)
   console.log(`Occupied units with rent plan: ${fixed.residentList.filter((r) => isUnitOccupied(r) && hasRentPlan(r)).length}`)
   console.log(`Units with amountPaid updated: ${updatedUnits.length}`)
+  const manualSkipped = fixed.residentList.filter(
+    (r) => r.amountPaidManual && isUnitOccupied(r) && hasRentPlan(r),
+  ).length
+  if (manualSkipped > 0) console.log(`Units skipped (amountPaidManual): ${manualSkipped}`)
   console.log(`Total amountPaid: ${beforePaid.toLocaleString()} -> ${afterPaid.toLocaleString()} AED`)
   console.log(`Paid invoice ids: ${closedInvoices.paidIds.length}`)
 

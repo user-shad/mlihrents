@@ -653,6 +653,7 @@ export function DataProvider({
       rentSchedule: scheduleDraft,
       contractTotal,
       amountPaid,
+      amountPaidManual: true,
       rentAmount,
     }
     setResidentList((prev) =>
@@ -993,6 +994,7 @@ export function DataProvider({
       ...existing,
       ...baseFields,
       pin: accountPin || existing.pin,
+      amountPaidManual: true,
     }
     setResidentList((prev) => prev.map((r) => (r.id === residentId ? updated : r)))
 
