@@ -3,6 +3,7 @@ import {
   mergeInvoiceMaps,
   mergePaidIds,
   mergePaymentLists,
+  mergeResidentLists,
   mergeSyncPayload,
 } from '../../lib/syncMerge'
 
@@ -40,6 +41,30 @@ describe('syncMerge', () => {
 
   it('merges paid invoice ids from both devices', () => {
     expect(mergePaidIds(['INV-1'], ['INV-2', 'INV-1']).sort()).toEqual(['INV-1', 'INV-2'])
+  })
+
+  it('keeps contract total when cloud sync is newer but local has rent plan', () => {
+    const remote = [
+      {
+        id: 'apt-a1',
+        contractTotal: 0,
+        amountPaid: 0,
+        rentAmount: 0,
+      },
+    ]
+    const local = [
+      {
+        id: 'apt-a1',
+        contractTotal: 36_000,
+        amountPaid: 9_000,
+        rentAmount: 3_000,
+        amountPaidManual: true,
+      },
+    ]
+    const merged = mergeResidentLists(remote, local, false)
+    expect(merged[0]?.contractTotal).toBe(36_000)
+    expect(merged[0]?.rentAmount).toBe(3_000)
+    expect(merged[0]?.amountPaid).toBe(9_000)
   })
 
   it('merges sync payloads without dropping pending payments', () => {

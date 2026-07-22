@@ -120,6 +120,51 @@ function residentRentFieldsDiffer<T extends ResidentLike>(a: T, b: T): boolean {
   )
 }
 
+function mergeResidentRecord<T extends ResidentLike>(
+  remote: T,
+  local: T,
+  preferLocal: boolean,
+): T {
+  const remoteTotal = Number(remote.contractTotal) || 0
+  const localTotal = Number(local.contractTotal) || 0
+  const remoteRent = Number(remote.rentAmount) || 0
+  const localRent = Number(local.rentAmount) || 0
+  const remotePaid = Number(remote.amountPaid) || 0
+  const localPaid = Number(local.amountPaid) || 0
+  const base = preferLocal ? { ...remote, ...local } : { ...local, ...remote }
+
+  return {
+    ...base,
+    contractTotal: Math.max(remoteTotal, localTotal),
+    rentAmount: Math.max(remoteRent, localRent),
+    amountPaid: Math.max(remotePaid, localPaid),
+    amountPaidManual: Boolean(local.amountPaidManual || remote.amountPaidManual),
+    rentSchedule:
+      localRent > 0 && remoteRent === 0
+        ? local.rentSchedule
+        : remoteRent > 0 && localRent === 0
+          ? remote.rentSchedule
+          : preferLocal
+            ? (local.rentSchedule ?? remote.rentSchedule)
+            : (remote.rentSchedule ?? local.rentSchedule),
+    rentDueDay:
+      Math.max(Number(local.rentDueDay) || 0, Number(remote.rentDueDay) || 0) ||
+      remote.rentDueDay ||
+      local.rentDueDay,
+    nextDueDateIso: preferLocal
+      ? local.nextDueDateIso || remote.nextDueDateIso
+      : remote.nextDueDateIso || local.nextDueDateIso,
+    phone: (local.phone ?? '').trim() || remote.phone,
+    pin: local.pin || remote.pin,
+    name: (local.name ?? '').trim() || remote.name,
+    apartment: remote.apartment,
+    id: remote.id,
+    buildingNumber: (local.buildingNumber ?? '').trim()
+      ? local.buildingNumber
+      : remote.buildingNumber,
+  } as T
+}
+
 /** Merge residents field-wise; preferIncoming=false applies fresher cloud data on pull. */
 export function mergeResidentLists<T extends ResidentLike>(
   remote: T[],
@@ -132,27 +177,7 @@ export function mergeResidentLists<T extends ResidentLike>(
     const localResident = localById.get(remoteResident.id)
     if (!localResident) return remoteResident
     if (!residentRentFieldsDiffer(localResident, remoteResident)) return remoteResident
-
-    if (!preferIncoming) {
-      if (localResident.amountPaidManual) {
-        return {
-          ...remoteResident,
-          amountPaid: localResident.amountPaid,
-          amountPaidManual: true,
-        } as T
-      }
-      return remoteResident
-    }
-
-    return {
-      ...remoteResident,
-      ...localResident,
-      apartment: remoteResident.apartment,
-      id: remoteResident.id,
-      buildingNumber: (localResident.buildingNumber ?? '').trim()
-        ? localResident.buildingNumber
-        : remoteResident.buildingNumber,
-    } as T
+    return mergeResidentRecord(remoteResident, localResident, preferIncoming)
   })
   for (const localResident of local) {
     if (!merged.some((r) => r.id === localResident.id)) merged.push(localResident)

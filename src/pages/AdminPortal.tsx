@@ -388,7 +388,25 @@ export default function AdminPortal() {
     if (apartmentEditorOpen) return
     if (!selectedResidentId) return
     setApartmentForm(residentToApartmentForm(selectedResident))
-  }, [selectedResidentId, apartmentEditorOpen])
+  }, [
+    selectedResidentId,
+    apartmentEditorOpen,
+    selectedResident.contractTotal,
+    selectedResident.amountPaid,
+    selectedResident.rentAmount,
+    selectedResident.rentSchedule,
+    selectedResident.rentDueDay,
+    selectedResident.name,
+    selectedResident.phone,
+    selectedResident.pin,
+    selectedResident.leaseStart,
+    selectedResident.leaseEnd,
+    selectedResident.unitType,
+    selectedResident.nationality,
+    selectedResident.idNumber,
+    selectedResident.occupants,
+    selectedResident.status,
+  ])
 
   useEffect(() => {
     const tabParam = parseAdminPortalTab(searchParams.get('tab'))
@@ -1504,6 +1522,10 @@ export default function AdminPortal() {
                           {tr('openChat')}
                         </button>
                       </div>
+                    </div>
+
+                    <div style={{ marginTop: '1rem' }}>
+                      <RentBalanceCard resident={selectedResident} lang={lang} tr={tr} />
                     </div>
 
                     <h3 className="section-label">{tr('editApartmentInfo')}</h3>
