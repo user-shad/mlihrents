@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   buildPaymentDueAnnouncements,
-  formatNextCalendarInstallmentDue,
+  formatNextDueDate,
   formatMoney,
   isValidBankReference,
   paymentMethodLabel,
@@ -205,9 +205,9 @@ export default function ResidentPortal() {
                   </div>
                   <div className="list-row">
                     <div>
-                      <strong>{tr('rentDueDay')}</strong>
+                      <strong>{tr('nextDueDate')}</strong>
                       <div className="meta">
-                        {formatNextCalendarInstallmentDue(liveResident, lang)}
+                        {formatNextDueDate(liveResident, lang)}
                         {' · '}
                         {rentScheduleLabel(liveResident.rentSchedule, lang)}
                       </div>
@@ -830,16 +830,8 @@ export default function ResidentPortal() {
                   <span className="v">{liveResident.leaseEnd}</span>
                 </div>
                 <div className="profile-item">
-                  <span className="k">{tr('rentDueDay')}</span>
-                  <span className="v">
-                    {lang === 'ar'
-                      ? `يوم ${liveResident.rentDueDay} · ${rentScheduleLabel(liveResident.rentSchedule, lang)}`
-                      : `Day ${liveResident.rentDueDay} · ${rentScheduleLabel(liveResident.rentSchedule, lang)}`}
-                  </span>
-                </div>
-                <div className="profile-item">
                   <span className="k">{tr('nextDueDate')}</span>
-                  <span className="v">{formatNextCalendarInstallmentDue(liveResident, lang)}</span>
+                  <span className="v">{formatNextDueDate(liveResident, lang)}</span>
                 </div>
                 <div className="profile-item">
                   <span className="k">{tr('rentSchedule')}</span>

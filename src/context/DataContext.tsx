@@ -22,9 +22,16 @@ import {
   AvailableApartment,
   blankResident,
   ChatMessage,
+  formatIsoDueDate,
   Invoice,
+  isPastDue,
+  isValidIsoDate,
   nowLabel,
   PaymentRecord,
+  periodLabelFromIso,
+  rentDueDayFromIso,
+  residentAfterInstallmentPaid,
+  resolveNextDueDateIso,
   amountsMatch,
   buildPaymentRef,
   normalizeBankReference,
@@ -203,8 +210,8 @@ interface DataContextValue {
   humanMode: boolean
   selectedResidentId: string
   setSelectedResidentId: (id: string) => void
-  dueDayDraft: string
-  setDueDayDraft: (v: string) => void
+  nextDueDateDraft: string
+  setNextDueDateDraft: (v: string) => void
   scheduleDraft: RentSchedule
   setScheduleDraft: (v: RentSchedule) => void
   contractDraft: string
@@ -361,7 +368,7 @@ export function DataProvider({
   )
   const [invoiceMap, setInvoiceMap] = useState<Record<string, Invoice[]>>(() => bootOps.invoiceMap)
   const [ticketMap, setTicketMap] = useState<Record<string, Ticket[]>>(() => bootOps.ticketMap)
-  const [dueDayDraft, setDueDayDraft] = useState(String(blankResident.rentDueDay))
+  const [nextDueDateDraft, setNextDueDateDraft] = useState('')
   const [scheduleDraft, setScheduleDraft] = useState<RentSchedule>(blankResident.rentSchedule)
   const [contractDraft, setContractDraft] = useState(String(blankResident.contractTotal))
   const [paidDraft, setPaidDraft] = useState(String(blankResident.amountPaid))
@@ -575,7 +582,7 @@ export function DataProvider({
   )
 
   useEffect(() => {
-    setDueDayDraft(String(selectedResident.rentDueDay))
+    setNextDueDateDraft(resolveNextDueDateIso(selectedResident))
     setScheduleDraft(selectedResident.rentSchedule)
     setContractDraft(String(selectedResident.contractTotal))
     setPaidDraft(String(selectedResident.amountPaid))
@@ -583,6 +590,7 @@ export function DataProvider({
   }, [
     selectedResident.id,
     selectedResident.rentDueDay,
+    selectedResident.nextDueDateIso,
     selectedResident.rentSchedule,
     selectedResident.contractTotal,
     selectedResident.amountPaid,
@@ -610,8 +618,28 @@ export function DataProvider({
     return () => clearTimeout(timer)
   }, [toast])
 
+  function syncOpenInvoicesDueDate(resident: Resident) {
+    const dueIso = resolveNextDueDateIso(resident)
+    setInvoiceMap((prev) => ({
+      ...prev,
+      [resident.id]: (prev[resident.id] ?? []).map((inv) => {
+        if (inv.status === 'paid' || paidIds.includes(inv.id)) return inv
+        return {
+          ...inv,
+          dueDateIso: dueIso,
+          dueDate: formatIsoDueDate(dueIso, lang),
+          period: periodLabelFromIso(dueIso, lang),
+          status: isPastDue(dueIso) ? ('overdue' as const) : ('due' as const),
+        }
+      }),
+    }))
+  }
+
   function saveRentPlan() {
-    const day = Math.min(28, Math.max(1, Number(dueDayDraft) || 1))
+    const nextDueDateIso = isValidIsoDate(nextDueDateDraft)
+      ? nextDueDateDraft
+      : resolveNextDueDateIso(selectedResident)
+    const day = rentDueDayFromIso(nextDueDateIso)
     const contractTotal = Math.max(0, Number(contractDraft) || 0)
     const amountPaid = Math.max(0, Math.min(contractTotal, Number(paidDraft) || 0))
     const rentAmount = Math.max(
@@ -621,6 +649,7 @@ export function DataProvider({
     const updated: Resident = {
       ...selectedResident,
       rentDueDay: day,
+      nextDueDateIso,
       rentSchedule: scheduleDraft,
       contractTotal,
       amountPaid,
@@ -639,6 +668,7 @@ export function DataProvider({
         return next
       })
     } else {
+      syncOpenInvoicesDueDate(updated)
       ensureInstallmentInvoiceFor(updated)
     }
     showToast(tr('rentPlanSaved'))
@@ -1360,12 +1390,28 @@ export function DataProvider({
       }))
     }
     setResidentList((prev) =>
-      prev.map((r) =>
-        r.id === payment.residentId
-          ? { ...r, amountPaid: Math.min(r.contractTotal, r.amountPaid + verified) }
-          : r,
-      ),
+      prev.map((r) => {
+        if (r.id !== payment.residentId) return r
+        const withPaid = {
+          ...r,
+          amountPaid: Math.min(r.contractTotal, r.amountPaid + verified),
+        }
+        return exact ? residentAfterInstallmentPaid(withPaid) : withPaid
+      }),
     )
+    if (exact) {
+      const resident = residentList.find((r) => r.id === payment.residentId)
+      if (resident) {
+        const advanced = residentAfterInstallmentPaid({
+          ...resident,
+          amountPaid: Math.min(resident.contractTotal, resident.amountPaid + verified),
+        })
+        if (payment.residentId === selectedResidentId) {
+          setNextDueDateDraft(advanced.nextDueDateIso ?? resolveNextDueDateIso(advanced))
+        }
+        ensureInstallmentInvoiceFor(advanced)
+      }
+    }
     showToast(
       exact
         ? lang === 'ar'
@@ -1485,12 +1531,21 @@ export function DataProvider({
       ),
     }))
     setResidentList((prev) =>
-      prev.map((r) =>
-        r.id === resident.id
-          ? { ...r, amountPaid: Math.min(r.contractTotal, r.amountPaid + invoice.amount) }
-          : r,
-      ),
+      prev.map((r) => {
+        if (r.id !== resident.id) return r
+        const withPaid = {
+          ...r,
+          amountPaid: Math.min(r.contractTotal, r.amountPaid + invoice.amount),
+        }
+        return residentAfterInstallmentPaid(withPaid)
+      }),
     )
+    const advanced = residentAfterInstallmentPaid({
+      ...resident,
+      amountPaid: Math.min(resident.contractTotal, resident.amountPaid + invoice.amount),
+    })
+    setNextDueDateDraft(advanced.nextDueDateIso ?? resolveNextDueDateIso(advanced))
+    ensureInstallmentInvoiceFor(advanced)
     setPaidDraft((prev) => {
       const next = Math.min(
         Number(contractDraft) || resident.contractTotal,
@@ -1760,8 +1815,8 @@ export function DataProvider({
         humanMode,
         selectedResidentId,
         setSelectedResidentId,
-        dueDayDraft,
-        setDueDayDraft,
+        nextDueDateDraft,
+        setNextDueDateDraft,
         scheduleDraft,
         setScheduleDraft,
         contractDraft,

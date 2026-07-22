@@ -59,8 +59,10 @@ export interface Resident {
   /** Amount due each installment period */
   rentAmount: number
   currency: string
-  /** Day of month rent is due (1–28). Admin can change anytime. */
+  /** Day of month rent is due (1–28). Kept in sync with nextDueDateIso. */
   rentDueDay: number
+  /** Admin-set date for the next rent payment (YYYY-MM-DD). */
+  nextDueDateIso?: string
   /** Months between rent payments (1 = every month, 12 = once a year) */
   rentSchedule: RentSchedule
   /** Full rent obligation for the current lease term */
@@ -1393,7 +1395,55 @@ export function nextCalendarInstallmentDueIso(
   )
 }
 
-function periodLabelFromIso(iso: string, lang: 'en' | 'ar'): string {
+export function isValidIsoDate(iso?: string): boolean {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false
+  const d = new Date(`${iso}T12:00:00`)
+  return !Number.isNaN(d.getTime())
+}
+
+/** Next due date: admin-set date, or computed fallback for older records. */
+export function resolveNextDueDateIso(
+  resident: Pick<
+    Resident,
+    'nextDueDateIso' | 'leaseStart' | 'rentDueDay' | 'rentSchedule' | 'amountPaid' | 'rentAmount'
+  >,
+): string {
+  if (isValidIsoDate(resident.nextDueDateIso)) return resident.nextDueDateIso!
+  return nextCalendarInstallmentDueIso(resident)
+}
+
+/** Move a due date forward by N months (schedule interval). */
+export function advanceDueDateByMonths(iso: string, months: number): string {
+  const d = new Date(`${iso}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return iso
+  const day = d.getDate()
+  d.setDate(1)
+  d.setMonth(d.getMonth() + Math.max(1, Math.round(months)))
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  d.setDate(Math.min(day, lastDay))
+  const y = d.getFullYear()
+  const m = d.getMonth() + 1
+  const safeDay = d.getDate()
+  return `${y}-${String(m).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`
+}
+
+export function rentDueDayFromIso(iso: string): number {
+  const day = Number(iso.slice(8, 10))
+  return Math.min(28, Math.max(1, Number.isFinite(day) ? day : 1))
+}
+
+/** Advance next due date after an installment is paid. */
+export function residentAfterInstallmentPaid(resident: Resident): Resident {
+  const current = resolveNextDueDateIso(resident)
+  const next = advanceDueDateByMonths(current, normalizeRentSchedule(resident.rentSchedule))
+  return {
+    ...resident,
+    nextDueDateIso: next,
+    rentDueDay: rentDueDayFromIso(next),
+  }
+}
+
+export function periodLabelFromIso(iso: string, lang: 'en' | 'ar'): string {
   const d = new Date(`${iso}T12:00:00`)
   if (Number.isNaN(d.getTime())) return iso
   if (lang === 'ar') {
@@ -1428,7 +1478,7 @@ export function buildInstallmentInvoice(
   const remaining = remainingBalance(resident)
   if (remaining <= 0 || resident.rentAmount <= 0) return null
 
-  const dueDateIso = nextCalendarInstallmentDueIso(resident)
+  const dueDateIso = resolveNextDueDateIso(resident)
   const [y, m] = dueDateIso.split('-')
   const unit = (resident.apartment || resident.id).replace(/\s+/g, '')
   const id = `INV-${unit}-${y}${m}`
@@ -1462,12 +1512,26 @@ export function nowLabel() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-/** Human-readable next installment due date on the calendar grid. */
-export function formatNextCalendarInstallmentDue(
-  resident: Pick<Resident, 'leaseStart' | 'rentDueDay' | 'rentSchedule' | 'amountPaid' | 'rentAmount'>,
+/** Human-readable next rent due date. */
+export function formatNextDueDate(
+  resident: Pick<
+    Resident,
+    'nextDueDateIso' | 'leaseStart' | 'rentDueDay' | 'rentSchedule' | 'amountPaid' | 'rentAmount'
+  >,
   lang: 'en' | 'ar' = 'en',
 ): string {
-  return formatIsoDueDate(nextCalendarInstallmentDueIso(resident), lang)
+  return formatIsoDueDate(resolveNextDueDateIso(resident), lang)
+}
+
+/** @deprecated Use formatNextDueDate */
+export function formatNextCalendarInstallmentDue(
+  resident: Pick<
+    Resident,
+    'nextDueDateIso' | 'leaseStart' | 'rentDueDay' | 'rentSchedule' | 'amountPaid' | 'rentAmount'
+  >,
+  lang: 'en' | 'ar' = 'en',
+): string {
+  return formatNextDueDate(resident, lang)
 }
 
 /** Label for the due date in the current calendar month. */
@@ -1517,21 +1581,22 @@ export function isPastDue(iso?: string, today = new Date()) {
 
 export function applyDueDayToInvoices(
   list: Invoice[],
-  resident: Pick<Resident, 'leaseStart' | 'rentDueDay' | 'rentSchedule' | 'amountPaid' | 'rentAmount'>,
+  resident: Pick<
+    Resident,
+    'nextDueDateIso' | 'leaseStart' | 'rentDueDay' | 'rentSchedule' | 'amountPaid' | 'rentAmount'
+  >,
   lang: 'en' | 'ar' = 'en',
 ): Invoice[] {
-  const safeDay = Math.min(28, Math.max(1, Math.round(resident.rentDueDay || 1)))
-  const originYear = calendarOriginYear(resident.leaseStart)
   const n = normalizeRentSchedule(resident.rentSchedule)
+  const baseIso = resolveNextDueDateIso(resident)
   let openOffset = 0
   return list.map((inv) => {
     if (inv.status === 'paid') return inv
-    const installmentIndex = nextDueInstallmentIndex(resident) + openOffset
+    const installmentIso =
+      openOffset === 0 ? baseIso : advanceDueDateByMonths(baseIso, openOffset * n)
     openOffset += 1
     const extensionDays = inv.extensionDays ?? 0
-    const baseIso =
-      calendarInstallmentDueIso(installmentIndex, safeDay, n, originYear)
-    const effectiveIso = addDaysToIso(baseIso, extensionDays)
+    const effectiveIso = addDaysToIso(installmentIso, extensionDays)
     const overdue = isPastDue(effectiveIso)
     return {
       ...inv,

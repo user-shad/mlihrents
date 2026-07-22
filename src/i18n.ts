@@ -337,6 +337,8 @@ const en: Dict = {
   rentDueDay: 'Rent due day',
   rentDueDayHelp:
     'Day of month for each installment. Every N months uses the calendar grid (e.g. day 5 every 3 months → 5 Jan, 5 Apr, 5 Jul, 5 Oct).',
+  nextDueDateHelp:
+    'Exact date the next rent payment is due. After each full payment it moves forward by the schedule interval.',
   nextDueDate: 'Next due date',
   saveDueDay: 'Save due date',
   dueDaySaved: 'Payment due day updated',
@@ -782,6 +784,8 @@ const ar: Dict = {
   rentDueDay: 'يوم استحقاق الإيجار',
   rentDueDayHelp:
     'يوم الشهر لكل قسط. «كل N أشهر» يتبع التقويم (مثلاً يوم 5 كل 3 أشهر → 5 يناير، 5 أبريل، 5 يوليو، 5 أكتوبر).',
+  nextDueDateHelp:
+    'التاريخ المحدد لاستحقاق الدفعة القادمة. بعد كل دفعة كاملة ينتقل للأمام حسب فترة الجدول.',
   nextDueDate: 'تاريخ الاستحقاق القادم',
   saveDueDay: 'حفظ تاريخ الاستحقاق',
   dueDaySaved: 'تم تحديث يوم استحقاق الدفع',

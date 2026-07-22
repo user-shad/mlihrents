@@ -1,57 +1,59 @@
 import { describe, expect, it } from 'vitest'
 import {
+  advanceDueDateByMonths,
   applyDueDayToInvoices,
   blankResident,
   buildInstallmentInvoice,
-  calendarInstallmentDueIso,
-  nextCalendarInstallmentDueIso,
+  formatNextDueDate,
+  residentAfterInstallmentPaid,
+  resolveNextDueDateIso,
 } from './data'
 
-describe('calendar installment due dates', () => {
-  const quarterly = {
+describe('custom next due date', () => {
+  const resident = {
     ...blankResident,
     id: 'apt-a1',
     apartment: 'A1',
-    leaseStart: '01/11/2025',
     contractTotal: 28_800,
     amountPaid: 0,
     rentAmount: 7_200,
     rentDueDay: 5,
     rentSchedule: 3 as const,
+    nextDueDateIso: '2026-08-15',
   }
 
-  it('spaces due dates on the calendar grid every N months from January', () => {
-    expect(calendarInstallmentDueIso(0, 5, 3, 2026)).toBe('2026-01-05')
-    expect(calendarInstallmentDueIso(1, 5, 3, 2026)).toBe('2026-04-05')
-    expect(calendarInstallmentDueIso(2, 5, 3, 2026)).toBe('2026-07-05')
-    expect(calendarInstallmentDueIso(3, 5, 3, 2026)).toBe('2026-10-05')
+  it('uses the admin-set next due date', () => {
+    expect(resolveNextDueDateIso(resident)).toBe('2026-08-15')
+    expect(formatNextDueDate(resident, 'en')).toMatch(/15 Aug 2026/)
   })
 
-  it('starts after lease start on the calendar grid', () => {
-    expect(nextCalendarInstallmentDueIso(quarterly)).toBe('2026-01-05')
-    expect(
-      nextCalendarInstallmentDueIso({ ...quarterly, amountPaid: 7_200 }),
-    ).toBe('2026-04-05')
+  it('builds invoice on the custom due date', () => {
+    const inv = buildInstallmentInvoice(resident, 'en')
+    expect(inv?.dueDateIso).toBe('2026-08-15')
   })
 
-  it('builds invoice on the next calendar installment date', () => {
-    const inv = buildInstallmentInvoice(quarterly, 'en')
-    expect(inv?.dueDateIso).toBe('2026-01-05')
-    expect(inv?.amount).toBe(7_200)
+  it('advances due date by the schedule interval after payment', () => {
+    const next = residentAfterInstallmentPaid(resident)
+    expect(next.nextDueDateIso).toBe('2026-11-15')
+    expect(next.rentDueDay).toBe(15)
   })
 
-  it('aligns unpaid invoices to the calendar schedule', () => {
+  it('applies custom due date to open invoices', () => {
     const invoices = [
       {
-        id: 'INV-A1-202604',
-        period: 'Apr 2026',
+        id: 'INV-A1-202608',
+        period: 'Aug 2026',
         amount: 7_200,
-        dueDate: '1 Apr 2026',
-        dueDateIso: '2026-04-01',
+        dueDate: '1 Aug 2026',
+        dueDateIso: '2026-08-01',
         status: 'due' as const,
       },
     ]
-    const updated = applyDueDayToInvoices(invoices, { ...quarterly, amountPaid: 7_200 }, 'en')
-    expect(updated[0].dueDateIso).toBe('2026-04-05')
+    const updated = applyDueDayToInvoices(invoices, resident, 'en')
+    expect(updated[0].dueDateIso).toBe('2026-08-15')
+  })
+
+  it('adds months when advancing dates', () => {
+    expect(advanceDueDateByMonths('2026-01-31', 1)).toBe('2026-02-28')
   })
 })

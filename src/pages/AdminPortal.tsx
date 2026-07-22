@@ -164,8 +164,8 @@ export default function AdminPortal() {
     adminResidentPayments,
     invoiceMap,
     ticketMap,
-    dueDayDraft,
-    setDueDayDraft,
+    nextDueDateDraft,
+    setNextDueDateDraft,
     scheduleDraft,
     setScheduleDraft,
     contractDraft,
@@ -1363,7 +1363,7 @@ export default function AdminPortal() {
                             setContractDraft('0')
                             setPaidDraft('0')
                             setInstallmentDraft('0')
-                            setDueDayDraft('1')
+                            setNextDueDateDraft(new Date().toISOString().slice(0, 10))
                             setScheduleDraft(1)
                           }}
                         >
@@ -1981,17 +1981,15 @@ export default function AdminPortal() {
                     </select>
                   </div>
                   <div className="form-row">
-                    <label htmlFor="dueDay">{tr('rentDueDay')} (1–28)</label>
+                    <label htmlFor="nextDueDate">{tr('nextDueDate')}</label>
                     <input
-                      id="dueDay"
-                      type="number"
-                      min={1}
-                      max={28}
-                      value={dueDayDraft}
-                      onChange={(e) => setDueDayDraft(e.target.value)}
+                      id="nextDueDate"
+                      type="date"
+                      value={nextDueDateDraft}
+                      onChange={(e) => setNextDueDateDraft(e.target.value)}
                     />
                     <p className="meta" style={{ marginTop: '0.35rem' }}>
-                      {tr('rentDueDayHelp')}
+                      {tr('nextDueDateHelp')}
                     </p>
                   </div>
                   <div className="form-row">
