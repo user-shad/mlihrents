@@ -7,6 +7,13 @@ import {
 } from '../../lib/syncMerge'
 
 describe('syncMerge', () => {
+  it('prefers settled payment over stale pending_review from another device', () => {
+    const remote = [{ id: 'PAY-1', status: 'settled', confirmedAmount: 5000 }]
+    const local = [{ id: 'PAY-1', status: 'pending_review' }]
+    const merged = mergePaymentLists(remote, local)
+    expect(merged[0]?.status).toBe('settled')
+  })
+
   it('keeps pending payments from cloud when client save omits them', () => {
     const remote = [
       { id: 'PAY-100', status: 'pending_review', transferProof: { name: 'proof.jpg' } },

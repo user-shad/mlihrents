@@ -1389,40 +1389,40 @@ export function DataProvider({
     }
     const nextStatus = exact ? ('settled' as const) : ('partial' as const)
     const reviewedAt = `${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · ${nowLabel()}`
-    setPayments((prev) =>
-      prev.map((p) =>
-        p.id === paymentId
-          ? {
-              ...p,
-              status: nextStatus,
-              confirmedAmount: verified,
-              reviewedAt,
-              reviewNote: exact
-                ? 'Approved after screenshot review'
-                : `Partial: expected ${payment.amount}, received ${verified}`,
-            }
-          : p,
-      ),
+    const nextPayments = payments.map((p) =>
+      p.id === paymentId
+        ? {
+            ...p,
+            status: nextStatus,
+            confirmedAmount: verified,
+            reviewedAt,
+            reviewNote: exact
+              ? 'Approved after screenshot review'
+              : `Partial: expected ${payment.amount}, received ${verified}`,
+          }
+        : p,
     )
+    const nextPaidIds =
+      exact && !paidIds.includes(payment.invoiceId)
+        ? [...paidIds, payment.invoiceId]
+        : paidIds
+    let nextInvoiceMap = invoiceMap
     if (exact) {
-      setPaidIds((prev) => (prev.includes(payment.invoiceId) ? prev : [...prev, payment.invoiceId]))
-      setInvoiceMap((prev) => ({
-        ...prev,
-        [payment.residentId]: (prev[payment.residentId] ?? []).map((inv) =>
+      nextInvoiceMap = {
+        ...invoiceMap,
+        [payment.residentId]: (invoiceMap[payment.residentId] ?? []).map((inv) =>
           inv.id === payment.invoiceId ? { ...inv, status: 'paid' as const } : inv,
         ),
-      }))
+      }
     }
-    setResidentList((prev) =>
-      prev.map((r) => {
-        if (r.id !== payment.residentId) return r
-        const withPaid = {
-          ...r,
-          amountPaid: Math.min(r.contractTotal, r.amountPaid + verified),
-        }
-        return exact ? residentAfterInstallmentPaid(withPaid) : withPaid
-      }),
-    )
+    const nextResidentList = residentList.map((r) => {
+      if (r.id !== payment.residentId) return r
+      const withPaid = {
+        ...r,
+        amountPaid: Math.min(r.contractTotal, r.amountPaid + verified),
+      }
+      return exact ? residentAfterInstallmentPaid(withPaid) : withPaid
+    })
     if (exact) {
       const resident = residentList.find((r) => r.id === payment.residentId)
       if (resident) {
@@ -1433,9 +1433,45 @@ export function DataProvider({
         if (payment.residentId === selectedResidentId) {
           setNextDueDateDraft(advanced.nextDueDateIso ?? resolveNextDueDateIso(advanced))
         }
-        ensureInstallmentInvoiceFor(advanced)
+        if (remainingBalance(advanced) > 0 && advanced.rentAmount > 0) {
+          const existing = nextInvoiceMap[advanced.id] ?? []
+          const hasOpen = existing.some(
+            (inv) => inv.status !== 'paid' && !nextPaidIds.includes(inv.id),
+          )
+          if (!hasOpen) {
+            const nextInv = buildInstallmentInvoice(advanced, lang)
+            if (nextInv && !existing.some((inv) => inv.id === nextInv.id)) {
+              nextInvoiceMap = {
+                ...nextInvoiceMap,
+                [advanced.id]: [nextInv, ...existing],
+              }
+            }
+          }
+        }
       }
     }
+    setPayments(nextPayments)
+    if (exact) {
+      setPaidIds(nextPaidIds)
+      setInvoiceMap(nextInvoiceMap)
+    }
+    setResidentList(nextResidentList)
+    markLocalMutation()
+    const ops: PortalOps = {
+      residentList: nextResidentList,
+      listings,
+      payments: nextPayments,
+      invoiceMap: nextInvoiceMap,
+      ticketMap,
+      invoiceExtensions,
+      paidIds: nextPaidIds,
+      bankSettings,
+      serviceDirectory,
+    }
+    writeLocalOps(ops)
+    void flushCloudSaveNow(ops).then((synced) => {
+      if (!synced) showToast(tr('paymentSyncFailed'))
+    })
     showToast(
       exact
         ? lang === 'ar'
@@ -1460,18 +1496,33 @@ export function DataProvider({
     const payment = payments.find((p) => p.id === paymentId)
     if (!payment || payment.status !== 'pending_review') return
     const reviewedAt = `${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · ${nowLabel()}`
-    setPayments((prev) =>
-      prev.map((p) =>
-        p.id === paymentId
-          ? {
-              ...p,
-              status: 'rejected' as const,
-              reviewedAt,
-              reviewNote: note?.trim() || 'Rejected — amount or proof could not be verified',
-            }
-          : p,
-      ),
+    const nextPayments = payments.map((p) =>
+      p.id === paymentId
+        ? {
+            ...p,
+            status: 'rejected' as const,
+            reviewedAt,
+            reviewNote: note?.trim() || 'Rejected — amount or proof could not be verified',
+          }
+        : p,
     )
+    setPayments(nextPayments)
+    markLocalMutation()
+    const ops: PortalOps = {
+      residentList,
+      listings,
+      payments: nextPayments,
+      invoiceMap,
+      ticketMap,
+      invoiceExtensions,
+      paidIds,
+      bankSettings,
+      serviceDirectory,
+    }
+    writeLocalOps(ops)
+    void flushCloudSaveNow(ops).then((synced) => {
+      if (!synced) showToast(tr('paymentSyncFailed'))
+    })
     showToast(lang === 'ar' ? 'تم رفض التحويل — الفاتورة ما زالت مستحقة' : 'Transfer rejected — invoice remains due')
     autoNotifyPaymentWhatsApp(
       {

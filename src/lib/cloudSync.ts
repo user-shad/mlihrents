@@ -541,7 +541,10 @@ async function saveCloudRowViaApi(accounts: AccountRecord[], ops: PortalOps) {
       return true
     }
     const data = (await res.json().catch(() => ({}))) as { error?: string; hint?: string }
-    lastSyncError = data.error ?? data.hint ?? `Save failed (${res.status})`
+    const err = data.error ?? data.hint ?? `Save failed (${res.status})`
+    lastSyncError = err.includes('rate limit')
+      ? 'Cloud save blocked — GitHub sync rate limit. Connect Vercel Blob or Redis in project Storage, then redeploy.'
+      : err
     return false
   } catch {
     lastSyncError = 'Could not save to cloud'
@@ -783,7 +786,7 @@ function startPolling() {
   pollTimer = setInterval(() => {
     if (typeof document !== 'undefined' && document.hidden) return
     pullRemoteIfNewer()
-  }, 4000)
+  }, 15000)
 
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', () => {

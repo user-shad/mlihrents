@@ -275,6 +275,26 @@ async function saveToPostgres(payload: SyncPayload) {
 
 let lastBlobDebug: string | null = null
 
+const SYNC_CACHE_MS = 8000
+let syncCache: {
+  payload: SyncPayload | null
+  storage: StorageKind | null
+  loadedAt: number
+} | null = null
+
+function invalidateSyncCache() {
+  syncCache = null
+}
+
+async function loadBestCached(): Promise<{ payload: SyncPayload | null; storage: StorageKind | null }> {
+  if (syncCache && Date.now() - syncCache.loadedAt < SYNC_CACHE_MS) {
+    return { payload: syncCache.payload, storage: syncCache.storage }
+  }
+  const result = await loadBest()
+  syncCache = { ...result, loadedAt: Date.now() }
+  return result
+}
+
 async function fetchJsonPayload(url: string, label: string): Promise<SyncPayload | null> {
   try {
     const res = await fetch(url, {
@@ -573,7 +593,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'GET') {
-    const { payload, storage } = await loadBest()
+    const { payload, storage } = await loadBestCached()
     const blobBase = blobPublicBase()
     res.status(200).json({
       configured: true,
@@ -597,9 +617,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     try {
       await persistIncomingPaymentProofs(incoming.ops)
-      const { payload: existing } = await loadBest()
+      invalidateSyncCache()
+      const { payload: existing } = await loadBestCached()
       const payload = body.fullReplace ? incoming : mergeSyncPayload(existing, incoming)
       const storage = await saveBest(payload)
+      syncCache = { payload, storage, loadedAt: Date.now() }
       res.status(200).json({
         configured: true,
         storage,

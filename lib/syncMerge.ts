@@ -160,21 +160,41 @@ export function mergeResidentLists<T extends ResidentLike>(
   return merged
 }
 
+function paymentStatusRank(status?: string): number {
+  switch (status) {
+    case 'pending_review':
+      return 1
+    case 'partial':
+      return 2
+    case 'rejected':
+      return 3
+    case 'settled':
+      return 4
+    case 'deleted':
+      return 5
+    default:
+      return 0
+  }
+}
+
 function mergePaymentRecord<T extends PaymentLike>(existing: T, incoming: T): T {
   if (existing.status === 'deleted' || incoming.status === 'deleted') {
     return (existing.status === 'deleted' ? existing : incoming) as T
   }
 
-  const preferIncoming =
-    (incoming.transferProof?.dataUrl && !existing.transferProof?.dataUrl) ||
-    (incoming.status === 'pending_review' && existing.status !== 'pending_review')
-  const preferExisting =
-    (existing.transferProof?.dataUrl && !incoming.transferProof?.dataUrl) ||
-    (existing.status === 'pending_review' && incoming.status !== 'pending_review')
-
-  let merged = preferIncoming ? { ...existing, ...incoming } : { ...incoming, ...existing }
-  if (preferExisting && !preferIncoming) {
-    merged = { ...incoming, ...existing }
+  const rankA = paymentStatusRank(existing.status)
+  const rankB = paymentStatusRank(incoming.status)
+  let merged: T
+  if (rankB > rankA) {
+    merged = { ...existing, ...incoming } as T
+  } else if (rankA > rankB) {
+    merged = { ...incoming, ...existing } as T
+  } else {
+    const preferIncoming =
+      (incoming.transferProof?.dataUrl && !existing.transferProof?.dataUrl) ||
+      (Boolean((incoming as { reviewedAt?: string }).reviewedAt) &&
+        !(existing as { reviewedAt?: string }).reviewedAt)
+    merged = (preferIncoming ? { ...existing, ...incoming } : { ...incoming, ...existing }) as T
   }
 
   const transferProof = incoming.transferProof?.dataUrl
