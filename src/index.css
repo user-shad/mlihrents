@@ -1238,7 +1238,7 @@ a.resident-pick:visited {
 }
 
 .unit-link {
-  color: var(--accent, #1a6b5c);
+  color: var(--bad, #c44545);
   font-weight: 600;
   text-decoration: none;
 }
