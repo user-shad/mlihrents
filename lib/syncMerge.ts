@@ -17,6 +17,79 @@ export type TicketLike = {
   status?: string
 }
 
+export type ResidentLike = {
+  id: string
+  name?: string
+  phone?: string
+  pin?: string
+  apartment?: string
+  buildingNumber?: string
+  amountPaid?: number
+  contractTotal?: number
+  rentAmount?: number
+  rentSchedule?: unknown
+  rentDueDay?: number
+  nextDueDateIso?: string
+  amountPaidManual?: boolean
+}
+
+function residentRentFieldsDiffer<T extends ResidentLike>(a: T, b: T): boolean {
+  const localPhone = (a.phone ?? '').trim()
+  const remotePhone = (b.phone ?? '').trim()
+  return (
+    (localPhone && localPhone !== remotePhone) ||
+    ((a.name ?? '').trim() && (a.name ?? '').trim() !== (b.name ?? '').trim()) ||
+    (Boolean(a.pin) && a.pin !== b.pin) ||
+    a.amountPaid !== b.amountPaid ||
+    a.contractTotal !== b.contractTotal ||
+    a.rentAmount !== b.rentAmount ||
+    a.rentSchedule !== b.rentSchedule ||
+    a.rentDueDay !== b.rentDueDay ||
+    a.nextDueDateIso !== b.nextDueDateIso ||
+    Boolean(a.amountPaidManual) !== Boolean(b.amountPaidManual)
+  )
+}
+
+/** Merge residents field-wise; preferIncoming=false applies fresher cloud data on pull. */
+export function mergeResidentLists<T extends ResidentLike>(
+  remote: T[],
+  local: T[],
+  preferIncoming = true,
+): T[] {
+  if (!local.length) return remote
+  const localById = new Map(local.map((r) => [r.id, r]))
+  const merged = remote.map((remoteResident) => {
+    const localResident = localById.get(remoteResident.id)
+    if (!localResident) return remoteResident
+    if (!residentRentFieldsDiffer(localResident, remoteResident)) return remoteResident
+
+    if (!preferIncoming) {
+      if (localResident.amountPaidManual) {
+        return {
+          ...remoteResident,
+          amountPaid: localResident.amountPaid,
+          amountPaidManual: true,
+        } as T
+      }
+      return remoteResident
+    }
+
+    return {
+      ...remoteResident,
+      ...localResident,
+      apartment: remoteResident.apartment,
+      id: remoteResident.id,
+      buildingNumber: (localResident.buildingNumber ?? '').trim()
+        ? localResident.buildingNumber
+        : remoteResident.buildingNumber,
+    } as T
+  })
+  for (const localResident of local) {
+    if (!merged.some((r) => r.id === localResident.id)) merged.push(localResident)
+  }
+  return merged
+}
+
 function mergePaymentRecord<T extends PaymentLike>(existing: T, incoming: T): T {
   if (existing.status === 'deleted' || incoming.status === 'deleted') {
     return (existing.status === 'deleted' ? existing : incoming) as T
@@ -156,6 +229,10 @@ function extensionMap(value: unknown): Record<string, number> {
   return value as Record<string, number>
 }
 
+function residentList(value: unknown): ResidentLike[] {
+  return Array.isArray(value) ? (value as ResidentLike[]) : []
+}
+
 /** Merge portal ops from two devices or from cloud + local. */
 export function mergePortalOps(
   remote: Record<string, unknown>,
@@ -164,6 +241,7 @@ export function mergePortalOps(
   return {
     ...remote,
     ...local,
+    residentList: mergeResidentLists(residentList(remote.residentList), residentList(local.residentList), true),
     payments: mergePaymentLists(
       Array.isArray(remote.payments) ? (remote.payments as PaymentLike[]) : [],
       Array.isArray(local.payments) ? (local.payments as PaymentLike[]) : [],
