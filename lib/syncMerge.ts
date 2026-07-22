@@ -319,6 +319,31 @@ export function mergePaidIds(remote: string[] | undefined, local: string[] | und
   return [...new Set([...(remote ?? []), ...(local ?? [])])]
 }
 
+function invoiceIdKey(id: string) {
+  return id.trim().toUpperCase()
+}
+
+export function mergeRemovedInvoiceIds(
+  remote: string[] | undefined,
+  local: string[] | undefined,
+): string[] {
+  return [...new Set([...(remote ?? []), ...(local ?? [])].map(invoiceIdKey))]
+}
+
+export function applyRemovedInvoices<T extends InvoiceLike>(
+  map: Record<string, T[]>,
+  removedIds: string[] | undefined,
+): Record<string, T[]> {
+  if (!removedIds?.length) return map
+  const removed = new Set(removedIds.map(invoiceIdKey))
+  const next: Record<string, T[]> = {}
+  for (const [residentId, invoices] of Object.entries(map)) {
+    const kept = invoices.filter((inv) => !removed.has(invoiceIdKey(inv.id)))
+    if (kept.length > 0) next[residentId] = kept
+  }
+  return next
+}
+
 export function mergeInvoiceExtensions(
   remote: Record<string, number> | undefined,
   local: Record<string, number> | undefined,
@@ -361,9 +386,16 @@ export function mergePortalOps(
       Array.isArray(remote.payments) ? (remote.payments as PaymentLike[]) : [],
       Array.isArray(local.payments) ? (local.payments as PaymentLike[]) : [],
     ),
-    invoiceMap: mergeInvoiceMaps(
-      recordMap<InvoiceLike>(remote.invoiceMap),
-      recordMap<InvoiceLike>(local.invoiceMap),
+    removedInvoiceIds: mergeRemovedInvoiceIds(
+      idList(remote.removedInvoiceIds),
+      idList(local.removedInvoiceIds),
+    ),
+    invoiceMap: applyRemovedInvoices(
+      mergeInvoiceMaps(
+        recordMap<InvoiceLike>(remote.invoiceMap),
+        recordMap<InvoiceLike>(local.invoiceMap),
+      ),
+      mergeRemovedInvoiceIds(idList(remote.removedInvoiceIds), idList(local.removedInvoiceIds)),
     ),
     ticketMap: mergeTicketMaps(
       recordMap<TicketLike>(remote.ticketMap),

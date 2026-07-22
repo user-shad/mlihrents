@@ -84,11 +84,21 @@ import {
   writeLocalOps,
 } from '../lib/cloudSync'
 import { attachProofsToOps, readLocalProofs } from '../lib/localProofStore'
+import { applyRemovedInvoices } from '../../lib/syncMerge'
 import { siteLegal } from '../legal/siteLegal'
 import { sendWhatsAppAuto } from '../lib/whatsappAuto'
 
 const LEGACY_A1_TEST_ID = 'apt-a1'
 const LEGACY_A1_TEST_INVOICE = 'INV-TEST-A1'
+
+function invoiceIdKey(id: string) {
+  return id.trim().toUpperCase()
+}
+
+function isRemovedInvoice(id: string, removedIds: string[]) {
+  const key = invoiceIdKey(id)
+  return removedIds.some((row) => invoiceIdKey(row) === key)
+}
 
 function isLegacyTestTenantA1(resident: Resident): boolean {
   if (resident.id !== LEGACY_A1_TEST_ID) return false
@@ -188,14 +198,19 @@ function normalizePersistedOps(parsed: PortalOps): PortalOps {
     (cleaned.residentList ?? []).map((r) => migrateResident(r)),
   )
   const paidIds = cleaned.paidIds ?? []
+  const removedInvoiceIds = cleaned.removedInvoiceIds ?? []
   return {
     ...cleaned,
     residentList,
     paidIds,
-    invoiceMap: pruneStaleOpenInvoices(
-      residentList,
-      ensureSeedInvoices(cleaned.invoiceMap ?? {}),
-      paidIds,
+    removedInvoiceIds,
+    invoiceMap: applyRemovedInvoices(
+      pruneStaleOpenInvoices(
+        residentList,
+        ensureSeedInvoices(cleaned.invoiceMap ?? {}),
+        paidIds,
+      ),
+      removedInvoiceIds,
     ),
     serviceDirectory:
       Array.isArray(cleaned.serviceDirectory) && cleaned.serviceDirectory.length > 0
@@ -382,6 +397,9 @@ export function DataProvider({
   const [ticketCategory, setTicketCategory] = useState('Plumbing')
   const [ticketNote, setTicketNote] = useState('')
   const [paidIds, setPaidIds] = useState<string[]>(() => bootOps.paidIds)
+  const [removedInvoiceIds, setRemovedInvoiceIds] = useState<string[]>(
+    () => bootOps.removedInvoiceIds ?? [],
+  )
   /** Extra days granted past the original due date, keyed by invoice id */
   const [invoiceExtensions, setInvoiceExtensions] = useState<Record<string, number>>(
     () => bootOps.invoiceExtensions,
@@ -425,6 +443,7 @@ export function DataProvider({
       setTicketMap(next.ticketMap)
       setInvoiceExtensions(next.invoiceExtensions)
       setPaidIds(next.paidIds)
+      setRemovedInvoiceIds(next.removedInvoiceIds ?? [])
       if (isBankConfigured(next.bankSettings)) {
         setBankSettings(next.bankSettings)
       }
@@ -443,6 +462,7 @@ export function DataProvider({
       ticketMap,
       invoiceExtensions,
       paidIds,
+      removedInvoiceIds,
       bankSettings,
       serviceDirectory,
     }
@@ -456,6 +476,7 @@ export function DataProvider({
     ticketMap,
     invoiceExtensions,
     paidIds,
+    removedInvoiceIds,
     bankSettings,
     serviceDirectory,
   ])
@@ -474,6 +495,7 @@ export function DataProvider({
       ticketMap,
       invoiceExtensions,
       paidIds,
+      removedInvoiceIds,
       bankSettings,
       serviceDirectory,
       ...overrides,
@@ -541,12 +563,14 @@ export function DataProvider({
   }, [lang, session?.residentId, liveResident.id, liveResident.name, liveResident.apartment])
 
   const visibleInvoices = useMemo(() => {
-    const base = (invoiceMap[liveResident.id] ?? []).map((inv) => ({
-      ...(paidIds.includes(inv.id) ? { ...inv, status: 'paid' as const } : inv),
-      extensionDays: invoiceExtensions[inv.id] ?? inv.extensionDays ?? 0,
-    }))
+    const base = (invoiceMap[liveResident.id] ?? [])
+      .filter((inv) => !isRemovedInvoice(inv.id, removedInvoiceIds))
+      .map((inv) => ({
+        ...(paidIds.includes(inv.id) ? { ...inv, status: 'paid' as const } : inv),
+        extensionDays: invoiceExtensions[inv.id] ?? inv.extensionDays ?? 0,
+      }))
     return applyDueDayToInvoices(base, liveResident, lang)
-  }, [invoiceMap, liveResident, paidIds, invoiceExtensions, lang])
+  }, [invoiceMap, liveResident, paidIds, invoiceExtensions, removedInvoiceIds, lang])
 
   const dueInvoice = canCollectRent(liveResident)
     ? visibleInvoices.find((i) => i.status === 'due' || i.status === 'overdue')
@@ -559,17 +583,21 @@ export function DataProvider({
     if (remainingBalance(liveResident) <= 0 || liveResident.rentAmount <= 0) return
     const existing = invoiceMap[liveResident.id] ?? []
     const hasOpen = existing.some(
-      (inv) => inv.status !== 'paid' && !paidIds.includes(inv.id),
+      (inv) =>
+        !isRemovedInvoice(inv.id, removedInvoiceIds) &&
+        inv.status !== 'paid' &&
+        !paidIds.includes(inv.id),
     )
     if (hasOpen) return
     const next = buildInstallmentInvoice(liveResident, lang)
     if (!next) return
     if (existing.some((inv) => inv.id === next.id)) return
+    if (isRemovedInvoice(next.id, removedInvoiceIds)) return
     setInvoiceMap((prev) => ({
       ...prev,
       [liveResident.id]: [next, ...(prev[liveResident.id] ?? [])],
     }))
-  }, [liveResident, invoiceMap, paidIds, lang])
+  }, [liveResident, invoiceMap, paidIds, removedInvoiceIds, lang])
 
   // Same for the apartment selected in admin payments
   useEffect(() => {
@@ -577,17 +605,21 @@ export function DataProvider({
     if (remainingBalance(selectedResident) <= 0 || selectedResident.rentAmount <= 0) return
     const existing = invoiceMap[selectedResident.id] ?? []
     const hasOpen = existing.some(
-      (inv) => inv.status !== 'paid' && !paidIds.includes(inv.id),
+      (inv) =>
+        !isRemovedInvoice(inv.id, removedInvoiceIds) &&
+        inv.status !== 'paid' &&
+        !paidIds.includes(inv.id),
     )
     if (hasOpen) return
     const next = buildInstallmentInvoice(selectedResident, lang)
     if (!next) return
     if (existing.some((inv) => inv.id === next.id)) return
+    if (isRemovedInvoice(next.id, removedInvoiceIds)) return
     setInvoiceMap((prev) => ({
       ...prev,
       [selectedResident.id]: [next, ...(prev[selectedResident.id] ?? [])],
     }))
-  }, [selectedResident, invoiceMap, paidIds, lang])
+  }, [selectedResident, invoiceMap, paidIds, removedInvoiceIds, lang])
 
   const adminBalance = useMemo(() => {
     const incoming = payments
@@ -606,12 +638,14 @@ export function DataProvider({
   }
 
   const adminResidentInvoices = useMemo(() => {
-    const base = (invoiceMap[selectedResidentId] ?? []).map((inv) => ({
+    const base = (invoiceMap[selectedResidentId] ?? [])
+      .filter((inv) => !isRemovedInvoice(inv.id, removedInvoiceIds))
+      .map((inv) => ({
       ...(paidIds.includes(inv.id) ? { ...inv, status: 'paid' as const } : inv),
       extensionDays: invoiceExtensions[inv.id] ?? inv.extensionDays ?? 0,
     }))
     return applyDueDayToInvoices(base, selectedResident, lang)
-  }, [selectedResidentId, selectedResident, invoiceMap, paidIds, invoiceExtensions, lang])
+  }, [selectedResidentId, selectedResident, invoiceMap, paidIds, invoiceExtensions, removedInvoiceIds, lang])
 
   const adminResidentTickets = ticketMap[selectedResidentId] ?? []
 
@@ -1735,6 +1769,7 @@ export function DataProvider({
       ticketMap,
       invoiceExtensions,
       paidIds,
+      removedInvoiceIds,
       bankSettings,
       serviceDirectory,
     }
@@ -1860,12 +1895,18 @@ export function DataProvider({
     }
     const nextExtensions = { ...invoiceExtensions }
     delete nextExtensions[invoiceId]
+    const nextRemovedInvoiceIds = removedInvoiceIds.some(
+      (id) => invoiceIdKey(id) === invoiceIdKey(invoiceId),
+    )
+      ? removedInvoiceIds
+      : [...removedInvoiceIds, invoiceId]
 
     if (checkoutInvoiceId === invoiceId) setCheckoutInvoiceId(null)
     setPayments(nextPayments)
     setPaidIds(nextPaidIds)
     setInvoiceMap(nextInvoiceMap)
     setInvoiceExtensions(nextExtensions)
+    setRemovedInvoiceIds(nextRemovedInvoiceIds)
     setResidentList(nextResidentList)
     if (reverseAmount > 0) {
       setPaidDraft(String(Math.max(0, (Number(paidDraft) || 0) - reverseAmount)))
@@ -1876,6 +1917,7 @@ export function DataProvider({
       invoiceMap: nextInvoiceMap,
       paidIds: nextPaidIds,
       invoiceExtensions: nextExtensions,
+      removedInvoiceIds: nextRemovedInvoiceIds,
     }).then((synced) => {
       if (!synced) showToast(tr('paymentSyncFailed'))
     })

@@ -3,6 +3,7 @@ import {
   mergeInvoiceMaps,
   mergePaidIds,
   mergePaymentLists,
+  mergePortalOps,
   mergeResidentLists,
   mergeSyncPayload,
 } from '../../lib/syncMerge'
@@ -65,6 +66,21 @@ describe('syncMerge', () => {
     expect(merged[0]?.contractTotal).toBe(36_000)
     expect(merged[0]?.rentAmount).toBe(3_000)
     expect(merged[0]?.amountPaid).toBe(9_000)
+  })
+
+  it('keeps removed invoices out after cloud merge', () => {
+    const merged = mergePortalOps(
+      {
+        invoiceMap: {
+          'apt-a1': [{ id: 'INV-A1-202608', status: 'due' }],
+        },
+      },
+      {
+        invoiceMap: {},
+        removedInvoiceIds: ['INV-A1-202608'],
+      },
+    )
+    expect((merged.invoiceMap as Record<string, { id: string }[]>)['apt-a1'] ?? []).toHaveLength(0)
   })
 
   it('merges sync payloads without dropping pending payments', () => {

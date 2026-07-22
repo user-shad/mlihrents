@@ -30,11 +30,13 @@ import {
   writeLocalProofs,
 } from './localProofStore'
 import {
+  applyRemovedInvoices,
   mergeAccountLists,
   mergeInvoiceExtensions,
   mergeInvoiceMaps,
   mergePaidIds,
   mergePaymentLists,
+  mergeRemovedInvoiceIds,
   mergeResidentLists,
   mergeTicketMaps,
 } from '../../lib/syncMerge'
@@ -78,6 +80,8 @@ export interface PortalOps {
   ticketMap: Record<string, Ticket[]>
   invoiceExtensions: Record<string, number>
   paidIds: string[]
+  /** Invoice ids admin removed — kept across sync so they are not recreated. */
+  removedInvoiceIds?: string[]
   bankSettings: BankAccountSettings
   serviceDirectory: ServiceContact[]
   /** Set after rent schedule values were migrated to month intervals. */
@@ -212,6 +216,7 @@ export function createDefaultOps(): PortalOps {
     ticketMap: ticketsByResident,
     invoiceExtensions: {},
     paidIds: [],
+    removedInvoiceIds: [],
     bankSettings: defaultBankSettings,
     serviceDirectory: defaultServiceDirectory,
   }
@@ -401,6 +406,7 @@ function normalizeCloudOps(raw: unknown): PortalOps {
     ticketMap: ops.ticketMap ?? ticketsByResident,
     invoiceExtensions: ops.invoiceExtensions ?? {},
     paidIds: Array.isArray(ops.paidIds) ? ops.paidIds : [],
+    removedInvoiceIds: Array.isArray(ops.removedInvoiceIds) ? ops.removedInvoiceIds : [],
     bankSettings: ops.bankSettings ?? defaultBankSettings,
     serviceDirectory:
       Array.isArray(ops.serviceDirectory) && ops.serviceDirectory.length > 0
@@ -712,14 +718,22 @@ function mergeOpsPreferringLocalProofs(
   preferLocalResidents = true,
 ): PortalOps {
   if (!local) return remote
+  const removedInvoiceIds = mergeRemovedInvoiceIds(
+    remote.removedInvoiceIds,
+    local.removedInvoiceIds,
+  )
   return {
     ...remote,
     ...local,
     residentList: mergeResidentLists(remote.residentList, local.residentList, preferLocalResidents),
     payments: mergePaymentLists(remote.payments, local.payments),
-    invoiceMap: mergeInvoiceMaps(remote.invoiceMap, local.invoiceMap),
+    invoiceMap: applyRemovedInvoices(
+      mergeInvoiceMaps(remote.invoiceMap, local.invoiceMap),
+      removedInvoiceIds,
+    ),
     ticketMap: mergeTicketMaps(remote.ticketMap, local.ticketMap),
     paidIds: mergePaidIds(remote.paidIds, local.paidIds),
+    removedInvoiceIds,
     invoiceExtensions: mergeInvoiceExtensions(remote.invoiceExtensions, local.invoiceExtensions),
     listings: local.listings?.length ? local.listings : remote.listings,
     serviceDirectory: local.serviceDirectory?.length ? local.serviceDirectory : remote.serviceDirectory,
