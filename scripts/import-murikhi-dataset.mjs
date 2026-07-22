@@ -15,8 +15,10 @@ const PDF_PATH =
   'c:/Users/project/Downloads/اثبات الدخل الشهري المعتمد من محمد المريخي بعد التدقيق .pdf'
 
 const STAFF_ACCOUNTS = [
-  { phone: '0553262626', pin: '1989', role: 'admin', name: 'Building Admin', staffTier: 'admin' },
-  { phone: '0505001021', pin: '3004', role: 'admin', name: 'Operations Manager', staffTier: 'staff' },
+  { phone: '0553262626', pin: '1989', role: 'admin', name: 'Bo 3baid', staffTier: 'admin' },
+  { phone: '0505001021', pin: '3004', role: 'admin', name: 'Kalban', staffTier: 'staff' },
+  { phone: '0529999799', pin: '1988', role: 'admin', name: 'Mosa', staffTier: 'admin' },
+  { phone: '0503262626', pin: '1983', role: 'admin', name: 'Mohammed', staffTier: 'admin' },
 ]
 
 const DEFAULT_BANK = {

@@ -5,14 +5,14 @@ import { isBuildingAdmin, staffCan } from './staffPermissions'
 const buildingAdmin: Session = {
   role: 'admin',
   phone: '0553262626',
-  name: 'Building Admin',
+  name: 'Bo 3baid',
   staffTier: 'admin',
 }
 
 const operationsManager: Session = {
   role: 'admin',
   phone: '0505001021',
-  name: 'Operations Manager',
+  name: 'Kalban',
   staffTier: 'staff',
 }
 

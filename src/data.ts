@@ -1029,12 +1029,16 @@ export interface StaffAccount {
 
 /**
  * Bootstrap staff logins (passwords persist after first change in localStorage).
- * Building Admin: `0553262626` · PIN `1989` — can change tenant passwords
- * Operations Manager: `0505001021` · PIN `3004` — can set tenant login passwords
+ * Bo 3baid (admin): `0553262626` · PIN `1989`
+ * Kalban (staff): `0505001021` · PIN `3004`
+ * Mosa (admin): `0529999799` · PIN `1988`
+ * Mohammed (admin): `0503262626` · PIN `1983`
  */
 export const staffAccounts: StaffAccount[] = [
-  { phone: '0553262626', pin: '1989', name: 'Building Admin', tier: 'admin' },
-  { phone: '0505001021', pin: '3004', name: 'Operations Manager', tier: 'staff' },
+  { phone: '0553262626', pin: '1989', name: 'Bo 3baid', tier: 'admin' },
+  { phone: '0505001021', pin: '3004', name: 'Kalban', tier: 'staff' },
+  { phone: '0529999799', pin: '1988', name: 'Mosa', tier: 'admin' },
+  { phone: '0503262626', pin: '1983', name: 'Mohammed', tier: 'admin' },
 ]
 
 export const invoices: Invoice[] = []
