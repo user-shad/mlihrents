@@ -1201,6 +1201,97 @@ export function parseLeaseStartDate(leaseStart?: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
+/** Parse lease end dates (same formats as lease start). */
+export function parseLeaseEndDate(leaseEnd?: string): Date | null {
+  return parseLeaseStartDate(leaseEnd)
+}
+
+function subtractMonthsFromDate(date: Date, months: number): Date {
+  const day = date.getDate()
+  const d = new Date(date.getFullYear(), date.getMonth(), 1)
+  d.setMonth(d.getMonth() - months)
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  d.setDate(Math.min(day, lastDay))
+  return d
+}
+
+/** Date when a lease-end reminder should be sent (N months before end). */
+export function leaseEndReminderOnDate(leaseEnd: string, monthsBefore = 2): Date | null {
+  const end = parseLeaseEndDate(leaseEnd)
+  if (!end) return null
+  return subtractMonthsFromDate(end, monthsBefore)
+}
+
+/** True during the reminder window starting N months before lease end. */
+export function isLeaseEndReminderDue(
+  leaseEnd: string | undefined,
+  monthsBefore = 2,
+  today = new Date(),
+  windowDays = 45,
+): boolean {
+  const end = parseLeaseEndDate(leaseEnd)
+  const remindOn = leaseEndReminderOnDate(leaseEnd ?? '', monthsBefore)
+  if (!end || !remindOn) return false
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const remindStart = new Date(remindOn.getFullYear(), remindOn.getMonth(), remindOn.getDate())
+  if (todayStart > end) return false
+  const diffDays = (todayStart.getTime() - remindStart.getTime()) / 86_400_000
+  return diffDays >= 0 && diffDays <= windowDays
+}
+
+/** Occupied residents whose lease-end reminder is due now (2 months before end). */
+export function residentsForLeaseEndReminder(
+  residents: Resident[],
+  monthsBefore = 2,
+  today = new Date(),
+): Resident[] {
+  return residents.filter((resident) => {
+    if (!resident.leaseEnd?.trim()) return false
+    if (!resident.name?.trim() && !resident.phone?.trim()) return false
+    return isLeaseEndReminderDue(resident.leaseEnd, monthsBefore, today)
+  })
+}
+
+function formatLeaseEndLabel(leaseEnd: string, lang: 'en' | 'ar'): string {
+  const parsed = parseLeaseEndDate(leaseEnd)
+  if (!parsed) return leaseEnd
+  if (lang === 'ar') {
+    return parsed.toLocaleDateString('ar-AE', { day: 'numeric', month: 'long', year: 'numeric' })
+  }
+  return parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+/** Pre-filled WhatsApp lease-end reminder (one language). */
+export function buildLeaseEndReminderWhatsAppMessageForLang(
+  resident: Resident,
+  lang: 'en' | 'ar',
+  portalUrl: string,
+  brandName = 'MLIH Rents',
+  monthsBefore = 2,
+) {
+  const name = resident.name.trim() || (lang === 'ar' ? 'الساكن' : 'Resident')
+  const unit = unitCodeLabel(resident)
+  const endLabel = formatLeaseEndLabel(resident.leaseEnd, lang)
+
+  if (lang === 'ar') {
+    return `مرحباً ${name}،\n\nتذكير من ${brandName}: عقد إيجار الوحدة ${unit} ينتهي في ${endLabel} (بعد ${monthsBefore} أشهر تقريباً).\n\nيرجى التواصل مع الإدارة لتجديد العقد أو ترتيبات المغادرة.\n\n${portalUrl}\n\nشكراً لكم.`
+  }
+
+  return `Hello ${name},\n\nThis is a lease-end reminder from ${brandName} for unit ${unit}.\n\nYour lease ends on ${endLabel} (about ${monthsBefore} months from now). Please contact management about renewal or move-out plans.\n\n${portalUrl}\n\nThank you.`
+}
+
+/** Bilingual lease-end reminder for WhatsApp. */
+export function buildLeaseEndReminderWhatsAppMessage(
+  resident: Resident,
+  portalUrl: string,
+  brandName = 'MLIH Rents',
+  monthsBefore = 2,
+) {
+  const en = buildLeaseEndReminderWhatsAppMessageForLang(resident, 'en', portalUrl, brandName, monthsBefore)
+  const ar = buildLeaseEndReminderWhatsAppMessageForLang(resident, 'ar', portalUrl, brandName, monthsBefore)
+  return `${en}\n\n———\n\n${ar}`
+}
+
 /** Count rent installments due from lease start through a calendar month (inclusive). */
 export function installmentCountThroughMonth(
   resident: Resident,

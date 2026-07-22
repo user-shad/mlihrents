@@ -12,6 +12,7 @@ import {
   expectedMonthlyIncome,
   buildingLabel,
   buildRentReminderWhatsAppMessage,
+  buildLeaseEndReminderWhatsAppMessage,
   buildPaymentStatusWhatsAppMessage,
   findInvoiceInMap,
   findPaymentById,
@@ -25,6 +26,7 @@ import {
   type PaymentRecord,
   remainingBalance,
   rentScheduleLabel,
+  residentsForLeaseEndReminder,
   RentSchedule,
   suggestInstallment,
   unitCodeLabel,
@@ -197,6 +199,11 @@ export default function AdminPortal() {
     updateServiceContact,
     removeServiceContact,
   } = useData()
+
+  const leaseEndReminderResidents = useMemo(
+    () => residentsForLeaseEndReminder(residentList),
+    [residentList],
+  )
 
   const [apartmentSearch, setApartmentSearch] = useState('')
   const [apartmentEditorOpen, setApartmentEditorOpen] = useState(false)
@@ -673,6 +680,35 @@ export default function AdminPortal() {
         phone,
       },
       adminResidentInvoices,
+      `${siteLegal.publicUrl}/resident`,
+      siteLegal.brandName,
+    )
+    const url = whatsappChatUrl(phone, message)
+    if (!url) {
+      showToast(tr('reminderNoPhone'))
+      return
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  function sendLeaseEndReminder(resident = selectedResident) {
+    const phone = (resident.phone || apartmentForm.phone).trim()
+    if (!phone) {
+      showToast(tr('reminderNoPhone'))
+      return
+    }
+    if (!resident.leaseEnd?.trim()) {
+      showToast(lang === 'ar' ? 'أضف تاريخ نهاية العقد أولاً' : 'Add a lease end date first')
+      return
+    }
+    const message = buildLeaseEndReminderWhatsAppMessage(
+      {
+        ...resident,
+        name: resident.id === selectedResident.id
+          ? apartmentForm.name.trim() || resident.name
+          : resident.name,
+        phone,
+      },
       `${siteLegal.publicUrl}/resident`,
       siteLegal.brandName,
     )
@@ -1302,6 +1338,14 @@ export default function AdminPortal() {
                           {tr('sendReminder')}
                         </button>
                         <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          title={tr('sendLeaseEndReminderHelp')}
+                          onClick={() => sendLeaseEndReminder()}
+                        >
+                          {tr('sendLeaseEndReminder')}
+                        </button>
+                        <button
                           className="btn btn-primary btn-sm"
                           type="button"
                           onClick={() => {
@@ -1758,6 +1802,46 @@ export default function AdminPortal() {
 
             </section>
 
+            <section className="panel" style={{ marginTop: '1rem' }}>
+              <h2 style={{ marginBottom: '0.25rem' }}>
+                {tr('leaseEndReminders')}
+                {leaseEndReminderResidents.length > 0
+                  ? ` (${leaseEndReminderResidents.length})`
+                  : ''}
+              </h2>
+              <p className="meta" style={{ marginTop: 0 }}>
+                {tr('leaseEndRemindersLead')}
+              </p>
+              <div className="list">
+                {leaseEndReminderResidents.map((resident) => (
+                  <div className="list-row" key={resident.id}>
+                    <div>
+                      <strong>
+                        <AdminUnitLink unit={unitCodeLabel(resident)} tab="info" />
+                      </strong>
+                      <div className="meta">
+                        {resident.name.trim() || tr('vacantUnit')}
+                        {resident.phone ? ` · ${resident.phone}` : ''}
+                        <br />
+                        {tr('leaseEnd')}: {resident.leaseEnd}
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      title={tr('sendLeaseEndReminderHelp')}
+                      onClick={() => sendLeaseEndReminder(resident)}
+                    >
+                      {tr('sendLeaseEndReminder')}
+                    </button>
+                  </div>
+                ))}
+                {leaseEndReminderResidents.length === 0 && (
+                  <p className="meta">{tr('leaseEndRemindersEmpty')}</p>
+                )}
+              </div>
+            </section>
+
             <StaffPaymentAssistant />
 
             <section className="panel" style={{ marginTop: '1rem' }}>
@@ -1946,14 +2030,24 @@ export default function AdminPortal() {
                       {selectedResident.building ? ` · ${selectedResident.building}` : ''}
                     </p>
                   </div>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    type="button"
-                    title={tr('sendReminderHelp')}
-                    onClick={sendRentReminder}
-                  >
-                    {tr('sendReminder')}
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      title={tr('sendReminderHelp')}
+                      onClick={sendRentReminder}
+                    >
+                      {tr('sendReminder')}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      title={tr('sendLeaseEndReminderHelp')}
+                      onClick={() => sendLeaseEndReminder()}
+                    >
+                      {tr('sendLeaseEndReminder')}
+                    </button>
+                  </div>
                 </div>
 
                 <h3 className="section-label">{tr('rentSchedule')}</h3>

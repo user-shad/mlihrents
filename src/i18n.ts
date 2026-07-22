@@ -334,6 +334,13 @@ const en: Dict = {
   continueInbox: 'Continue in inbox',
   sendReminder: 'Send rent reminder',
   sendReminderHelp: 'Opens WhatsApp with a bilingual rent reminder (English and Arabic).',
+  sendLeaseEndReminder: 'Send lease end reminder',
+  sendLeaseEndReminderHelp:
+    'Opens WhatsApp with a bilingual reminder 2 months before the lease end date.',
+  leaseEndReminders: 'Lease ending soon (2 months notice)',
+  leaseEndRemindersLead:
+    'Residents whose lease ends in about 2 months. Send a WhatsApp reminder to discuss renewal or move-out.',
+  leaseEndRemindersEmpty: 'No leases due for a 2-month reminder right now.',
   reminderNoPhone: 'Add a phone number before sending a reminder',
   downloadLease: 'Download lease',
   rentDueDay: 'Rent due day',
@@ -782,6 +789,12 @@ const ar: Dict = {
   continueInbox: 'المتابعة في الوارد',
   sendReminder: 'إرسال تذكير إيجار',
   sendReminderHelp: 'يفتح واتساب مع تذكير بالإيجار بالإنجليزية والعربية.',
+  sendLeaseEndReminder: 'إرسال تذكير انتهاء العقد',
+  sendLeaseEndReminderHelp: 'يفتح واتساب بتذكير ثنائي اللغة قبل انتهاء العقد بشهرين.',
+  leaseEndReminders: 'عقود تنتهي قريباً (تنبيه قبل شهرين)',
+  leaseEndRemindersLead:
+    'سكان يقترب موعد انتهاء عقدهم بنحو شهرين. أرسل تذكير واتساب لمناقشة التجديد أو المغادرة.',
+  leaseEndRemindersEmpty: 'لا توجد عقود مستحقة لتذكير قبل شهرين حالياً.',
   reminderNoPhone: 'أضف رقم هاتف قبل إرسال التذكير',
   downloadLease: 'تحميل العقد',
   rentDueDay: 'يوم استحقاق الإيجار',
