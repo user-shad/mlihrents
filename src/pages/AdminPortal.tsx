@@ -49,7 +49,7 @@ import {
   type AdminPortalTab,
 } from '../lib/adminUnitLink'
 import { bankSummary, BANK_EDIT_PASSWORD, isBankConfigured } from '../config/paymentSettings'
-import { fetchSyncHealth, forceSyncNow, getSyncMode, getSyncStatus, pullCloudNow } from '../lib/cloudSync'
+import { fetchSyncHealth, getSyncMode, getSyncStatus, pullCloudNow } from '../lib/cloudSync'
 import { exportAllApartmentsExcel, exportApartmentExcel } from '../lib/exportApartmentExcel'
 import { StaffPaymentAssistant } from '../components/StaffPaymentAssistant'
 import { PaymentProofThumb } from '../components/PaymentProofThumb'
@@ -234,7 +234,6 @@ export default function AdminPortal() {
   const [syncHint, setSyncHint] = useState<string | null>(() => getSyncStatus().hint)
   const [syncError, setSyncError] = useState<string | null>(() => getSyncStatus().lastError)
   const [syncBackends, setSyncBackends] = useState(() => getSyncStatus().backends)
-  const [syncingPayments, setSyncingPayments] = useState(false)
 
   function refreshSyncStatus() {
     const status = getSyncStatus()
@@ -242,41 +241,6 @@ export default function AdminPortal() {
     setSyncHint(status.hint)
     setSyncError(status.lastError)
     setSyncBackends(status.backends)
-  }
-
-  async function syncAllPayments() {
-    if (syncingPayments) return
-    setSyncingPayments(true)
-    try {
-      const status = await forceSyncNow()
-      setCloudSyncActive(status.mode === 'cloud')
-      setSyncHint(status.hint)
-      setSyncError(status.lastError)
-      setSyncBackends(status.backends)
-      if (status.lastError) {
-        showToast(tr('syncPaymentsFailed'))
-      } else {
-        showToast(tr('syncPaymentsOk'))
-      }
-    } catch {
-      showToast(tr('syncPaymentsFailed'))
-    } finally {
-      setSyncingPayments(false)
-    }
-  }
-
-  function renderSyncPaymentsButton(className = 'btn btn-ghost btn-sm') {
-    return (
-      <button
-        className={className}
-        type="button"
-        title={tr('syncPaymentsHelp')}
-        disabled={syncingPayments}
-        onClick={() => void syncAllPayments()}
-      >
-        {syncingPayments ? tr('syncInProgress') : tr('syncPayments')}
-      </button>
-    )
   }
 
   useEffect(() => {
@@ -291,11 +255,11 @@ export default function AdminPortal() {
   }, [])
 
   useEffect(() => {
-    if (pendingPayments.length === 0 && tab !== 'payments') return
     pullCloudNow()
-    const id = window.setInterval(pullCloudNow, 8000)
+    const intervalMs = pendingPayments.length > 0 ? 8000 : 15000
+    const id = window.setInterval(pullCloudNow, intervalMs)
     return () => window.clearInterval(id)
-  }, [pendingPayments.length, tab])
+  }, [pendingPayments.length])
 
   const emptyServiceForm = {
     role: '',
@@ -1669,7 +1633,6 @@ export default function AdminPortal() {
                 <p>{tr('adminIncomeLead')}</p>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {renderSyncPaymentsButton()}
                 <button className="btn btn-ghost btn-sm" type="button" onClick={exportEveryApartment}>
                   {tr('exportAllApartmentsExcel')}
                 </button>
@@ -1811,7 +1774,6 @@ export default function AdminPortal() {
                 <h1>{tr('adminPaymentsTab')}</h1>
                 <p>{tr('adminPaymentsLead')}</p>
               </div>
-              {renderSyncPaymentsButton()}
             </header>
 
             <section className="panel" style={{ marginTop: '1rem' }}>
