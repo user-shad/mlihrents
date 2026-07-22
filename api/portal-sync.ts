@@ -279,8 +279,10 @@ const SYNC_CACHE_MS = 8000
 let syncCache: {
   payload: SyncPayload | null
   storage: StorageKind | null
+  proofs: ProofStore
   loadedAt: number
 } | null = null
+let lastGithubProofs: ProofStore = {}
 
 function invalidateSyncCache() {
   syncCache = null
@@ -291,7 +293,7 @@ async function loadBestCached(): Promise<{ payload: SyncPayload | null; storage:
     return { payload: syncCache.payload, storage: syncCache.storage }
   }
   const result = await loadBest()
-  syncCache = { ...result, loadedAt: Date.now() }
+  syncCache = { ...result, proofs: lastGithubProofs, loadedAt: Date.now() }
   return result
 }
 
@@ -431,33 +433,8 @@ async function readGistFileText(
   return text
 }
 
-async function loadProofsFromGithub(): Promise<ProofStore> {
-  if (!hasGithub()) return {}
-  const auth = githubAuth()
-  const res = await fetch(`https://api.github.com/gists/${githubGistId()}`, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${auth}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-    cache: 'no-store',
-  })
-  if (!res.ok) return {}
-  const gist = (await res.json()) as {
-    files?: Record<string, { content?: string; truncated?: boolean; raw_url?: string }>
-  }
-  const proofsFile = gist.files?.[PROOFS_GIST_FILENAME]
-  const proofsText = await readGistFileText(proofsFile, auth)
-  if (!proofsText) return {}
-  try {
-    return JSON.parse(proofsText) as ProofStore
-  } catch {
-    return {}
-  }
-}
-
-async function loadFromGithub(): Promise<SyncPayload | null> {
-  if (!hasGithub()) return null
+async function fetchGithubGist(): Promise<{ main: SyncPayload | null; proofs: ProofStore }> {
+  if (!hasGithub()) return { main: null, proofs: {} }
   const auth = githubAuth()
   const res = await fetch(`https://api.github.com/gists/${githubGistId()}`, {
     headers: {
@@ -473,18 +450,45 @@ async function loadFromGithub(): Promise<SyncPayload | null> {
   }
   const mainFile = gist.files?.[GIST_FILENAME] ?? Object.values(gist.files ?? {})[0]
   const mainText = await readGistFileText(mainFile, auth)
-  if (!mainText) return null
-  const main = JSON.parse(mainText) as SyncPayload
-  const proofs = await loadProofsFromGithub()
+  const proofsText = await readGistFileText(gist.files?.[PROOFS_GIST_FILENAME], auth)
+  let main: SyncPayload | null = null
+  if (mainText) main = JSON.parse(mainText) as SyncPayload
+  let proofs: ProofStore = {}
+  if (proofsText) {
+    try {
+      proofs = JSON.parse(proofsText) as ProofStore
+    } catch {
+      proofs = {}
+    }
+  }
+  lastGithubProofs = proofs
+  return { main, proofs }
+}
 
+async function loadProofsFromGithub(): Promise<ProofStore> {
+  if (!hasGithub()) return {}
+  if (Object.keys(lastGithubProofs).length > 0) return lastGithubProofs
+  const { proofs } = await fetchGithubGist()
+  return proofs
+}
+
+async function loadFromGithub(): Promise<SyncPayload | null> {
+  const { main, proofs } = await fetchGithubGist()
+  if (!main) return null
   return normalizeLoadedPayload(main, proofs)
 }
 
 async function saveToGithub(payload: SyncPayload) {
   if (!hasGithub()) throw new Error('github_unavailable')
   const { payload: main, proofs: incoming } = detachProofsFromPayload(payload)
-  const existing = await loadProofsFromGithub()
+  const existing =
+    syncCache?.proofs && Object.keys(syncCache.proofs).length > 0
+      ? syncCache.proofs
+      : Object.keys(lastGithubProofs).length > 0
+        ? lastGithubProofs
+        : await loadProofsFromGithub()
   const proofs = mergeProofStores(existing, incoming, main.ops)
+  lastGithubProofs = proofs
   const res = await fetch(`https://api.github.com/gists/${githubGistId()}`, {
     method: 'PATCH',
     headers: {
@@ -616,12 +620,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-      await persistIncomingPaymentProofs(incoming.ops)
       invalidateSyncCache()
       const { payload: existing } = await loadBestCached()
       const payload = body.fullReplace ? incoming : mergeSyncPayload(existing, incoming)
       const storage = await saveBest(payload)
-      syncCache = { payload, storage, loadedAt: Date.now() }
+      syncCache = { payload, storage, proofs: lastGithubProofs, loadedAt: Date.now() }
       res.status(200).json({
         configured: true,
         storage,

@@ -84,7 +84,6 @@ import {
   writeLocalOps,
 } from '../lib/cloudSync'
 import { attachProofsToOps, readLocalProofs } from '../lib/localProofStore'
-import { uploadPaymentProof } from '../lib/paymentProofApi'
 import { siteLegal } from '../legal/siteLegal'
 import { sendWhatsAppAuto } from '../lib/whatsappAuto'
 
@@ -1348,7 +1347,6 @@ export function DataProvider({
         bankSettings,
         serviceDirectory,
       }
-      await uploadPaymentProof(record.id, bankProof)
       writeLocalOps(ops)
       setPayments(nextPayments)
       const synced = await flushCloudSaveNow(ops)

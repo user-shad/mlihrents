@@ -129,7 +129,7 @@ let bootstrapPromise: Promise<BootstrapData> | null = null
 let pendingAccounts: AccountRecord[] | undefined
 let pendingOps: PortalOps | undefined
 let flushTimer: ReturnType<typeof setTimeout> | null = null
-let pollTimer: ReturnType<typeof setInterval> | null = null
+let pollTimer: ReturnType<typeof setTimeout> | null = null
 let configPollTimer: ReturnType<typeof setInterval> | null = null
 let suppressRemoteUntil = 0
 let suppressCloudPush = 0
@@ -771,22 +771,61 @@ function applyRemoteRow(row: CloudRow) {
   }
 }
 
+function paymentsSyncFingerprint(ops: PortalOps): string {
+  return ops.payments
+    .map((p) => `${p.id}:${p.status}:${p.reviewedAt ?? ''}`)
+    .sort()
+    .join('|')
+}
+
+function pollIntervalMs() {
+  const ops = readLocalOps()
+  if (!ops) return 15000
+  const active = ops.payments.some(
+    (p) => p.status === 'pending_review' || p.status === 'partial',
+  )
+  return active ? 8000 : 15000
+}
+
+function schedulePoll() {
+  if (pollTimer) clearTimeout(pollTimer)
+  pollTimer = setTimeout(() => {
+    pollTimer = null
+    if (typeof document === 'undefined' || !document.hidden) {
+      pullRemoteIfNewer()
+    }
+    if (syncMode === 'cloud') schedulePoll()
+  }, pollIntervalMs())
+}
 function pullRemoteIfNewer() {
   if (Date.now() < suppressRemoteUntil) return
   if (hasPendingLocalSave()) return
   void loadCloudRow().then((row) => {
     if (!row) return
-    if (row.updated_at && lastCloudUpdatedAt && row.updated_at <= lastCloudUpdatedAt) return
+    const localOps = readLocalOps()
+    const timestampUnchanged =
+      Boolean(row.updated_at && lastCloudUpdatedAt && row.updated_at <= lastCloudUpdatedAt)
+    if (timestampUnchanged && localOps) {
+      if (paymentsSyncFingerprint(row.ops) === paymentsSyncFingerprint(localOps)) return
+    }
+    applyRemoteRow(row)
+  })
+}
+
+/** Force a cloud pull (e.g. resident waiting for admin approval). */
+export function pullCloudNow() {
+  if (syncMode !== 'cloud') return
+  if (Date.now() < suppressRemoteUntil) return
+  if (hasPendingLocalSave()) return
+  void loadCloudRow().then((row) => {
+    if (!row) return
     applyRemoteRow(row)
   })
 }
 
 function startPolling() {
   if (pollTimer) return
-  pollTimer = setInterval(() => {
-    if (typeof document !== 'undefined' && document.hidden) return
-    pullRemoteIfNewer()
-  }, 15000)
+  schedulePoll()
 
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', () => {

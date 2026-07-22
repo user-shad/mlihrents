@@ -49,7 +49,7 @@ import {
   type AdminPortalTab,
 } from '../lib/adminUnitLink'
 import { bankSummary, BANK_EDIT_PASSWORD, isBankConfigured } from '../config/paymentSettings'
-import { fetchSyncHealth, forceSyncNow, getSyncMode, getSyncStatus } from '../lib/cloudSync'
+import { fetchSyncHealth, forceSyncNow, getSyncMode, getSyncStatus, pullCloudNow } from '../lib/cloudSync'
 import { exportAllApartmentsExcel, exportApartmentExcel } from '../lib/exportApartmentExcel'
 import { StaffPaymentAssistant } from '../components/StaffPaymentAssistant'
 import { PaymentProofThumb } from '../components/PaymentProofThumb'
@@ -286,6 +286,13 @@ export default function AdminPortal() {
     }, 10000)
     return () => window.clearInterval(id)
   }, [])
+
+  useEffect(() => {
+    if (pendingPayments.length === 0 && tab !== 'payments') return
+    pullCloudNow()
+    const id = window.setInterval(pullCloudNow, 8000)
+    return () => window.clearInterval(id)
+  }, [pendingPayments.length, tab])
 
   const emptyServiceForm = {
     role: '',

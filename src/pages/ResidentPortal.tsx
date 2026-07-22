@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   buildPaymentDueAnnouncements,
@@ -16,6 +16,7 @@ import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
+import { pullCloudNow } from '../lib/cloudSync'
 
 type Tab = 'home' | 'pay' | 'tickets' | 'chat' | 'profile'
 
@@ -63,6 +64,17 @@ export default function ResidentPortal() {
     bankReferenceDraft,
     setBankReferenceDraft,
   } = useData()
+
+  const awaitingPaymentReview = payments.some(
+    (p) => p.residentId === liveResident.id && p.status === 'pending_review',
+  )
+
+  useEffect(() => {
+    if (!awaitingPaymentReview) return
+    pullCloudNow()
+    const id = window.setInterval(pullCloudNow, 8000)
+    return () => window.clearInterval(id)
+  }, [awaitingPaymentReview, liveResident.id])
 
   const residentName = liveResident.name || session?.name || ''
   const residentFirstName = residentName.split(' ')[0] || residentName || 'there'
