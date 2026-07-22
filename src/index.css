@@ -1816,3 +1816,16 @@ html[dir='rtl'] .pay-method.active {
   gap: 0.5rem;
   justify-content: flex-end;
 }
+
+.sample-site-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  padding: 0.55rem 1rem;
+  text-align: center;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #4a3200;
+  background: linear-gradient(90deg, #ffd27a, #ffb347);
+  border-bottom: 1px solid rgba(74, 50, 0, 0.15);
+}

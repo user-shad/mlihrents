@@ -71,6 +71,10 @@ Residents are created by staff in **Admin → Info** — assign phone number and
 
 Buildings **A–D** · 36 units (A0–A12, B1–B8, C1–C7, D1–D8).
 
+## Sample site (another domain, isolated data)
+
+See **[SETUP-SAMPLE-SITE.md](./SETUP-SAMPLE-SITE.md)** to deploy a demo copy on a new Vercel project without affecting www.mlihrent.com.
+
 ## UAE domain & compliance
 
 See **[COMPLIANCE-UAE.md](./COMPLIANCE-UAE.md)** for domain registration (`.ae`), trade licence, PDPL, and RERA notes.

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { formatMoney, isVacantAutoListing } from '../data'
 import { siteLegal } from '../legal/siteLegal'
+import { siteConfig } from '../config/siteConfig'
 import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
 import { BrandMark, LanguageSwitch } from '../components/ui'
@@ -35,7 +36,8 @@ export default function LandingPage() {
         <div className="hero-visual" aria-hidden />
         <div className="hero-content">
           <h1 className="hero-brand">
-            MLIH<span>rent</span>
+            {siteConfig.heroTitle}
+            <span>{siteConfig.heroAccent}</span>
           </h1>
           <p>{tr('heroSub')}</p>
           <div className="hero-cta">
