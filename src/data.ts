@@ -1320,48 +1320,23 @@ export function paidPercent(resident: Resident) {
   return Math.min(100, Math.round((resident.amountPaid / resident.contractTotal) * 100))
 }
 
-/** Index of the next installment still due (0 = first payment at lease start). */
-export function openInstallmentIndex(resident: Pick<Resident, 'amountPaid' | 'rentAmount'>): number {
-  if (resident.rentAmount <= 0) return 0
-  return Math.floor(Math.max(0, resident.amountPaid) / resident.rentAmount)
-}
-
-/** Due date for installment N, spaced by the resident's every-N-months schedule. */
-export function installmentDueDateIso(
-  resident: Pick<Resident, 'rentDueDay' | 'rentSchedule' | 'leaseStart'>,
-  installmentIndex: number,
-): string | null {
-  const start = parseLeaseStartDate(resident.leaseStart)
-  if (!start) return null
-  const intervalMonths = normalizeRentSchedule(resident.rentSchedule)
-  const dueDay = Math.min(28, Math.max(1, resident.rentDueDay || 1))
-  const target = new Date(start.getFullYear(), start.getMonth() + installmentIndex * intervalMonths, 1)
-  const year = target.getFullYear()
-  const month = target.getMonth() + 1
+/** Build ISO due date from calendar year/month and due day (1–28). */
+export function calendarDueDateIso(year: number, month: number, dueDay: number): string {
+  const safeDay = Math.min(28, Math.max(1, Math.round(dueDay)))
   const lastDay = new Date(year, month, 0).getDate()
-  const day = Math.min(dueDay, lastDay)
+  const day = Math.min(safeDay, lastDay)
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
-export type RentDueContext = Pick<
-  Resident,
-  'rentDueDay' | 'rentSchedule' | 'leaseStart' | 'amountPaid' | 'rentAmount'
->
-
-/** Human-readable next installment due date (respects every-N-months schedule). */
-export function formatNextInstallmentDue(resident: RentDueContext, lang: 'en' | 'ar' = 'en'): string {
-  const iso = installmentDueDateIso(resident, openInstallmentIndex(resident))
-  if (iso) return formatIsoDueDate(iso, lang)
-  return formatDueDateFromDay(resident.rentDueDay, undefined, lang)
+/** Due date in the current calendar month for a given due day. */
+export function currentCalendarDueDateIso(dueDay: number, today = new Date()): string {
+  return calendarDueDateIso(today.getFullYear(), today.getMonth() + 1, dueDay)
 }
 
-function periodLabelFromIso(iso: string, lang: 'en' | 'ar'): string {
-  const d = new Date(`${iso}T12:00:00`)
-  if (Number.isNaN(d.getTime())) return iso
-  if (lang === 'ar') {
-    return d.toLocaleDateString('ar-AE', { month: 'long', year: 'numeric' })
-  }
-  return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+/** Index of the next installment still due (0 = first payment). */
+export function openInstallmentIndex(resident: Pick<Resident, 'amountPaid' | 'rentAmount'>): number {
+  if (resident.rentAmount <= 0) return 0
+  return Math.floor(Math.max(0, resident.amountPaid) / resident.rentAmount)
 }
 
 /** Current calendar period label for installment invoices */
@@ -1384,20 +1359,17 @@ export function buildInstallmentInvoice(
   const remaining = remainingBalance(resident)
   if (remaining <= 0 || resident.rentAmount <= 0) return null
 
-  const installmentIndex = openInstallmentIndex(resident)
-  const dueDateIso =
-    installmentDueDateIso(resident, installmentIndex) ??
-    dueDayToIso(resident.rentDueDay || 1)
-  const dueDate = new Date(`${dueDateIso}T12:00:00`)
-  const y = dueDate.getFullYear()
-  const m = dueDate.getMonth() + 1
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = now.getMonth() + 1
+  const dueDateIso = currentCalendarDueDateIso(resident.rentDueDay || 1, now)
   const unit = (resident.apartment || resident.id).replace(/\s+/g, '')
   const id = `INV-${unit}-${y}${String(m).padStart(2, '0')}`
   const amount = Math.min(resident.rentAmount, remaining)
 
   return {
     id,
-    period: periodLabelFromIso(dueDateIso, lang),
+    period: currentPeriodLabel(lang),
     amount,
     dueDateIso,
     dueDate: formatIsoDueDate(dueDateIso, lang),
@@ -1423,20 +1395,14 @@ export function nowLabel() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-/** Format a due date label from day-of-month for the current invoice period. */
-export function formatDueDateFromDay(day: number, monthLabel = 'Jul 2026', lang: 'en' | 'ar' = 'en') {
-  const safe = Math.min(28, Math.max(1, Math.round(day)))
-  if (lang === 'ar') {
-    const monthAr = monthLabel.includes('Jul')
-      ? 'يوليو 2026'
-      : monthLabel.includes('Jun')
-        ? 'يونيو 2026'
-        : monthLabel.includes('May')
-          ? 'مايو 2026'
-          : monthLabel
-    return `${safe} ${monthAr}`
-  }
-  return `${safe} ${monthLabel}`
+/** Label for the due date in the current calendar month. */
+export function formatCalendarDueDate(dueDay: number, lang: 'en' | 'ar' = 'en'): string {
+  return formatIsoDueDate(currentCalendarDueDateIso(dueDay), lang)
+}
+
+/** @deprecated Use formatCalendarDueDate — kept for older call sites. */
+export function formatDueDateFromDay(day: number, _monthLabel?: string, lang: 'en' | 'ar' = 'en') {
+  return formatCalendarDueDate(day, lang)
 }
 
 export function dueDayToIso(day: number, monthLabel = 'Jul 2026') {
@@ -1476,19 +1442,21 @@ export function isPastDue(iso?: string, today = new Date()) {
 
 export function applyDueDayToInvoices(
   list: Invoice[],
-  resident: RentDueContext,
+  dueDay: number,
   lang: 'en' | 'ar' = 'en',
 ): Invoice[] {
-  let openOffset = 0
+  const safeDay = Math.min(28, Math.max(1, Math.round(dueDay)))
+  const now = new Date()
   return list.map((inv) => {
     if (inv.status === 'paid') return inv
-    const installmentIndex = openInstallmentIndex(resident) + openOffset
-    openOffset += 1
     const extensionDays = inv.extensionDays ?? 0
-    const baseIso =
-      installmentDueDateIso(resident, installmentIndex) ??
-      inv.dueDateIso ??
-      dueDayToIso(resident.rentDueDay || 1)
+    let baseIso = inv.dueDateIso
+    if (!baseIso) {
+      baseIso = currentCalendarDueDateIso(safeDay, now)
+    } else {
+      const [y, m] = baseIso.split('-')
+      baseIso = calendarDueDateIso(Number(y), Number(m), safeDay)
+    }
     const effectiveIso = addDaysToIso(baseIso, extensionDays)
     const overdue = isPastDue(effectiveIso)
     return {

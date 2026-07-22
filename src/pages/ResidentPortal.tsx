@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   buildPaymentDueAnnouncements,
-  formatNextInstallmentDue,
+  formatCalendarDueDate,
   formatMoney,
   isValidBankReference,
   paymentMethodLabel,
@@ -207,7 +207,7 @@ export default function ResidentPortal() {
                     <div>
                       <strong>{tr('rentDueDay')}</strong>
                       <div className="meta">
-                        {formatNextInstallmentDue(liveResident, lang)}
+                        {formatCalendarDueDate(liveResident.rentDueDay, lang)}
                         {' · '}
                         {rentScheduleLabel(liveResident.rentSchedule, lang)}
                       </div>
@@ -839,7 +839,7 @@ export default function ResidentPortal() {
                 </div>
                 <div className="profile-item">
                   <span className="k">{tr('nextDueDate')}</span>
-                  <span className="v">{formatNextInstallmentDue(liveResident, lang)}</span>
+                  <span className="v">{formatCalendarDueDate(liveResident.rentDueDay, lang)}</span>
                 </div>
                 <div className="profile-item">
                   <span className="k">{tr('rentSchedule')}</span>

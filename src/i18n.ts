@@ -335,8 +335,7 @@ const en: Dict = {
   reminderNoPhone: 'Add a phone number before sending a reminder',
   downloadLease: 'Download lease',
   rentDueDay: 'Rent due day',
-  rentDueDayHelp:
-    'Day of month for each installment. With every N months, due dates repeat every N months from lease start (e.g. day 5 every 3 months).',
+  rentDueDayHelp: 'Day of each calendar month when rent is due (e.g. 5 = the 5th of the month).',
   nextDueDate: 'Next due date',
   saveDueDay: 'Save due date',
   dueDaySaved: 'Payment due day updated',
@@ -780,8 +779,7 @@ const ar: Dict = {
   reminderNoPhone: 'أضف رقم هاتف قبل إرسال التذكير',
   downloadLease: 'تحميل العقد',
   rentDueDay: 'يوم استحقاق الإيجار',
-  rentDueDayHelp:
-    'يوم الشهر لكل قسط. مع «كل N أشهر»، يتكرر الاستحقاق كل N أشهر من بداية العقد (مثلاً يوم 5 كل 3 أشهر).',
+  rentDueDayHelp: 'يوم من كل شهر ميلادي يستحق فيه الإيجار (مثلاً 5 = الخامس من الشهر).',
   nextDueDate: 'تاريخ الاستحقاق القادم',
   saveDueDay: 'حفظ تاريخ الاستحقاق',
   dueDaySaved: 'تم تحديث يوم استحقاق الدفع',
