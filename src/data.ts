@@ -1320,6 +1320,50 @@ export function paidPercent(resident: Resident) {
   return Math.min(100, Math.round((resident.amountPaid / resident.contractTotal) * 100))
 }
 
+/** Index of the next installment still due (0 = first payment at lease start). */
+export function openInstallmentIndex(resident: Pick<Resident, 'amountPaid' | 'rentAmount'>): number {
+  if (resident.rentAmount <= 0) return 0
+  return Math.floor(Math.max(0, resident.amountPaid) / resident.rentAmount)
+}
+
+/** Due date for installment N, spaced by the resident's every-N-months schedule. */
+export function installmentDueDateIso(
+  resident: Pick<Resident, 'rentDueDay' | 'rentSchedule' | 'leaseStart'>,
+  installmentIndex: number,
+): string | null {
+  const start = parseLeaseStartDate(resident.leaseStart)
+  if (!start) return null
+  const intervalMonths = normalizeRentSchedule(resident.rentSchedule)
+  const dueDay = Math.min(28, Math.max(1, resident.rentDueDay || 1))
+  const target = new Date(start.getFullYear(), start.getMonth() + installmentIndex * intervalMonths, 1)
+  const year = target.getFullYear()
+  const month = target.getMonth() + 1
+  const lastDay = new Date(year, month, 0).getDate()
+  const day = Math.min(dueDay, lastDay)
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+export type RentDueContext = Pick<
+  Resident,
+  'rentDueDay' | 'rentSchedule' | 'leaseStart' | 'amountPaid' | 'rentAmount'
+>
+
+/** Human-readable next installment due date (respects every-N-months schedule). */
+export function formatNextInstallmentDue(resident: RentDueContext, lang: 'en' | 'ar' = 'en'): string {
+  const iso = installmentDueDateIso(resident, openInstallmentIndex(resident))
+  if (iso) return formatIsoDueDate(iso, lang)
+  return formatDueDateFromDay(resident.rentDueDay, undefined, lang)
+}
+
+function periodLabelFromIso(iso: string, lang: 'en' | 'ar'): string {
+  const d = new Date(`${iso}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return iso
+  if (lang === 'ar') {
+    return d.toLocaleDateString('ar-AE', { month: 'long', year: 'numeric' })
+  }
+  return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+}
+
 /** Current calendar period label for installment invoices */
 export function currentPeriodLabel(lang: 'en' | 'ar' = 'en') {
   const d = new Date()
@@ -1340,18 +1384,20 @@ export function buildInstallmentInvoice(
   const remaining = remainingBalance(resident)
   if (remaining <= 0 || resident.rentAmount <= 0) return null
 
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = now.getMonth() + 1
-  const dueDay = Math.min(28, Math.max(1, resident.rentDueDay || 1))
-  const dueDateIso = `${y}-${String(m).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`
+  const installmentIndex = openInstallmentIndex(resident)
+  const dueDateIso =
+    installmentDueDateIso(resident, installmentIndex) ??
+    dueDayToIso(resident.rentDueDay || 1)
+  const dueDate = new Date(`${dueDateIso}T12:00:00`)
+  const y = dueDate.getFullYear()
+  const m = dueDate.getMonth() + 1
   const unit = (resident.apartment || resident.id).replace(/\s+/g, '')
   const id = `INV-${unit}-${y}${String(m).padStart(2, '0')}`
   const amount = Math.min(resident.rentAmount, remaining)
 
   return {
     id,
-    period: currentPeriodLabel(lang),
+    period: periodLabelFromIso(dueDateIso, lang),
     amount,
     dueDateIso,
     dueDate: formatIsoDueDate(dueDateIso, lang),
@@ -1428,26 +1474,21 @@ export function isPastDue(iso?: string, today = new Date()) {
   return !Number.isNaN(due.getTime()) && due.getTime() < today.getTime()
 }
 
-export function applyDueDayToInvoices(list: Invoice[], dueDay: number, lang: 'en' | 'ar' = 'en'): Invoice[] {
+export function applyDueDayToInvoices(
+  list: Invoice[],
+  resident: RentDueContext,
+  lang: 'en' | 'ar' = 'en',
+): Invoice[] {
+  let openOffset = 0
   return list.map((inv) => {
     if (inv.status === 'paid') return inv
+    const installmentIndex = openInstallmentIndex(resident) + openOffset
+    openOffset += 1
     const extensionDays = inv.extensionDays ?? 0
-    let baseIso = inv.dueDateIso
-    if (!baseIso) {
-      const month =
-        inv.period.includes('July') || inv.period.includes('Jul')
-          ? 'Jul 2026'
-          : inv.period.includes('June') || inv.period.includes('Jun')
-            ? 'Jun 2026'
-            : inv.period.includes('May')
-              ? 'May 2026'
-              : 'Jul 2026'
-      baseIso = dueDayToIso(dueDay, month)
-    } else {
-      const [y, m] = baseIso.split('-')
-      const safeDay = Math.min(28, Math.max(1, dueDay))
-      baseIso = `${y}-${m}-${String(safeDay).padStart(2, '0')}`
-    }
+    const baseIso =
+      installmentDueDateIso(resident, installmentIndex) ??
+      inv.dueDateIso ??
+      dueDayToIso(resident.rentDueDay || 1)
     const effectiveIso = addDaysToIso(baseIso, extensionDays)
     const overdue = isPastDue(effectiveIso)
     return {
