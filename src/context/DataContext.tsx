@@ -1330,9 +1330,12 @@ export function DataProvider({
       await uploadPaymentProof(record.id, bankProof)
       writeLocalOps(ops)
       setPayments(nextPayments)
-      await flushCloudSaveNow(ops)
-
+      const synced = await flushCloudSaveNow(ops)
       setPaying(false)
+      if (!synced) {
+        showToast(tr('paymentSyncFailed'))
+        return
+      }
       setCheckoutInvoiceId(null)
       setBankProof(null)
       setBankReferenceDraft('')

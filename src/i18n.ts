@@ -210,6 +210,8 @@ const en: Dict = {
   bankReferenceShort: 'Bank ref',
   paymentSubmittedWithFlags:
     'Proof submitted — amount or reference mismatch flagged for admin review',
+  paymentSyncFailed:
+    'Could not sync your payment to the server. Check your connection and try again.',
   ocrAmountLabel: 'Amount on screenshot (OCR)',
   amountMismatchFlag: 'Amount on screenshot does not match invoice',
   bankRefMismatchFlag: 'Bank reference does not match screenshot',
@@ -657,6 +659,7 @@ const ar: Dict = {
   bankReferenceDuplicate: 'تم إرسال هذا المرجع مسبقاً — تحقق من تكرار التحويل',
   bankReferenceShort: 'مرجع البنك',
   paymentSubmittedWithFlags: 'تم إرسال الإثبات — يوجد تعارض في المبلغ أو المرجع للمراجعة',
+  paymentSyncFailed: 'تعذر مزامنة الدفع مع الخادم. تحقق من الاتصال وحاول مرة أخرى.',
   ocrAmountLabel: 'المبلغ في اللقطة (OCR)',
   amountMismatchFlag: 'المبلغ في اللقطة لا يطابق الفاتورة',
   bankRefMismatchFlag: 'رقم المرجع لا يطابق اللقطة',

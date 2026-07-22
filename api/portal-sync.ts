@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { upsertPaymentProof } from '../lib/proofStorage.js'
 import { requireSyncAuth } from '../lib/syncAuth.js'
 import {
   detachProofsFromPayload,
@@ -19,6 +20,31 @@ const REDIS_KEY = 'portal-sync'
 const REDIS_PROOFS_KEY = 'portal-sync-proofs'
 const GIST_FILENAME = 'portal-sync.json'
 const PROOFS_GIST_FILENAME = 'portal-sync-proofs.json'
+
+async function persistIncomingPaymentProofs(ops: unknown) {
+  if (!ops || typeof ops !== 'object') return
+  const payments = (ops as { payments?: unknown }).payments
+  if (!Array.isArray(payments)) return
+  for (const payment of payments) {
+    if (!payment || typeof payment !== 'object') continue
+    const row = payment as {
+      id?: string
+      status?: string
+      transferProof?: { name?: string; dataUrl?: string }
+    }
+    if (row.status !== 'pending_review') continue
+    const proof = row.transferProof
+    if (!row.id || !proof?.dataUrl) continue
+    try {
+      await upsertPaymentProof(row.id, {
+        name: proof.name || 'proof.jpg',
+        dataUrl: proof.dataUrl,
+      })
+    } catch {
+      /* saveBest also stores proofs — best effort */
+    }
+  }
+}
 
 /**
  * Public Blob base URL for this project.
@@ -570,6 +596,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
+      await persistIncomingPaymentProofs(incoming.ops)
       const { payload: existing } = await loadBest()
       const payload = body.fullReplace ? incoming : mergeSyncPayload(existing, incoming)
       const storage = await saveBest(payload)

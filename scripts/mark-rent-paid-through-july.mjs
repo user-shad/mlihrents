@@ -68,9 +68,18 @@ function amountDueThroughMonth(resident, throughYear, throughMonth) {
   return Math.min(resident.contractTotal, count * resident.rentAmount)
 }
 
+function calendarDueDateIso(year, month, dueDay) {
+  const safeDay = Math.min(28, Math.max(1, Math.round(dueDay)))
+  const lastDay = new Date(year, month, 0).getDate()
+  const day = Math.min(safeDay, lastDay)
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
 function applyRentPaidThroughMonth(residentList, invoiceMap, paidIds, throughYear, throughMonth) {
   const throughIso = `${throughYear}-${String(throughMonth).padStart(2, '0')}-31`
   const throughKey = `${throughYear}-${String(throughMonth).padStart(2, '0')}`
+  const nextDueYear = throughMonth === 12 ? throughYear + 1 : throughYear
+  const nextDueMonth = throughMonth === 12 ? 1 : throughMonth + 1
 
   const nextResidents = residentList.map((resident) => {
     if (!isUnitOccupied(resident) || !hasRentPlan(resident)) return resident
@@ -78,9 +87,13 @@ function applyRentPaidThroughMonth(residentList, invoiceMap, paidIds, throughYea
     if (targetPaid <= 0) return resident
     const amountPaid = Math.min(resident.contractTotal, Math.max(resident.amountPaid, targetPaid))
     const caughtUp = amountPaid >= targetPaid
+    const dueDay = Math.min(28, Math.max(1, Number(resident.rentDueDay) || 1))
+    const nextDueDateIso = calendarDueDateIso(nextDueYear, nextDueMonth, dueDay)
     return {
       ...resident,
       amountPaid,
+      nextDueDateIso,
+      rentDueDay: dueDay,
       status:
         resident.status === 'notice'
           ? resident.status
@@ -109,6 +122,19 @@ function applyRentPaidThroughMonth(residentList, invoiceMap, paidIds, throughYea
     invoiceMap: nextInvoiceMap,
     paidIds: [...paidSet],
   }
+}
+
+function markAllOpenInvoicesPaid(invoiceMap, paidIds) {
+  const paidSet = new Set(paidIds)
+  const nextInvoiceMap = {}
+  for (const [residentId, invoices] of Object.entries(invoiceMap ?? {})) {
+    nextInvoiceMap[residentId] = (invoices ?? []).map((inv) => {
+      if (inv.status === 'paid') return inv
+      paidSet.add(inv.id)
+      return { ...inv, status: 'paid' }
+    })
+  }
+  return { invoiceMap: nextInvoiceMap, paidIds: [...paidSet] }
 }
 
 async function loadToken() {
@@ -149,6 +175,7 @@ async function main() {
     THROUGH_YEAR,
     THROUGH_MONTH,
   )
+  const closedInvoices = markAllOpenInvoicesPaid(fixed.invoiceMap, fixed.paidIds)
 
   const afterPaid = fixed.residentList.reduce((sum, r) => sum + (Number(r.amountPaid) || 0), 0)
   const updatedUnits = fixed.residentList.filter((r, idx) => {
@@ -157,18 +184,20 @@ async function main() {
   })
 
   console.log(`Through: Jul ${THROUGH_YEAR}`)
+  console.log(`Next due month: Aug ${THROUGH_YEAR}`)
   console.log(`Occupied units with rent plan: ${fixed.residentList.filter((r) => isUnitOccupied(r) && hasRentPlan(r)).length}`)
   console.log(`Units with amountPaid updated: ${updatedUnits.length}`)
   console.log(`Total amountPaid: ${beforePaid.toLocaleString()} -> ${afterPaid.toLocaleString()} AED`)
-  console.log(`Paid invoice ids: ${fixed.paidIds.length}`)
+  console.log(`Paid invoice ids: ${closedInvoices.paidIds.length}`)
 
   const payload = {
     accounts,
     ops: {
       ...ops,
       residentList: fixed.residentList,
-      invoiceMap: fixed.invoiceMap,
-      paidIds: fixed.paidIds,
+      invoiceMap: closedInvoices.invoiceMap,
+      paidIds: closedInvoices.paidIds,
+      payments: (ops.payments ?? []).filter((p) => p.status !== 'pending_review'),
     },
   }
 

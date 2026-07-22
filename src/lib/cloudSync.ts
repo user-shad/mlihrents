@@ -24,6 +24,7 @@ import { defaultBankSettings } from '../config/paymentSettings'
 import {
   attachProofsToOps,
   detachProofsFromOps,
+  ingestRemoteProofs,
   persistLocalProofsFromOps,
   readLocalProofs,
   writeLocalProofs,
@@ -520,7 +521,7 @@ async function saveCloudRowViaApi(accounts: AccountRecord[], ops: PortalOps) {
   }
 }
 
-async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps) {
+async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps): Promise<boolean> {
   suppressRemoteUntil = Date.now() + 3000
 
   const existing = await loadCloudRowViaApi()
@@ -531,7 +532,7 @@ async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps) {
     !hasAccountsData(accounts)
   ) {
     lastSyncError = 'Skipped empty upload to protect cloud data'
-    return
+    return false
   }
 
   const mergedOps =
@@ -541,9 +542,9 @@ async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps) {
       ? mergeAccountsPreferringLocal(existing.accounts, accounts)
       : accounts
 
-  if (await saveCloudRowViaApi(mergedAccounts, mergedOps)) return
+  if (await saveCloudRowViaApi(mergedAccounts, mergedOps)) return true
 
-  if (!supabase) return
+  if (!supabase) return false
   const preparedAccounts = prepareStoredAccounts(mergedAccounts)
   const slimOps = slimOpsForCloud(mergedOps)
   const updated_at = new Date().toISOString()
@@ -557,6 +558,7 @@ async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps) {
   lastSyncError = null
   lastCloudUpdatedAt = updated_at
   touchLocalSyncMeta()
+  return true
 }
 
 function cloudTimestamp(cloud: CloudRow | null) {
@@ -785,6 +787,7 @@ function applyRemoteRow(row: CloudRow) {
     const mergedOps = localOps
       ? { ...row.ops, ...localOps, payments: mergePaymentLists(row.ops.payments, localOps.payments) }
       : row.ops
+    ingestRemoteProofs(mergedOps)
     const mergedAccounts = localAccounts ?? row.accounts
     suppressCloudPush++
     try {
@@ -798,6 +801,7 @@ function applyRemoteRow(row: CloudRow) {
   }
 
   const mergedOps = mergeOpsPreferringLocalProofs(row.ops, localOps)
+  ingestRemoteProofs(mergedOps)
   const mergedAccounts = mergeAccountsPreferringLocal(row.accounts, localAccounts)
 
   suppressCloudPush++
@@ -899,7 +903,7 @@ export function onCloudOps(listener: OpsListener) {
   }
 }
 
-async function flushCloudSave(explicitOps?: PortalOps) {
+async function flushCloudSave(explicitOps?: PortalOps): Promise<boolean> {
   const accounts = pendingAccounts ?? readLocalAccounts() ?? []
   const ops = attachProofsToOps(
     explicitOps ?? pendingOps ?? readLocalOps() ?? createDefaultOps(),
@@ -907,7 +911,7 @@ async function flushCloudSave(explicitOps?: PortalOps) {
   )
   pendingAccounts = undefined
   pendingOps = undefined
-  await saveCloudRow(accounts, ops)
+  return saveCloudRow(accounts, ops)
 }
 
 function scheduleCloudSave() {
@@ -934,12 +938,12 @@ export function queueCloudOps(ops: PortalOps) {
 }
 
 /** Push pending cloud changes immediately (e.g. after uploading a transfer screenshot). */
-export async function flushCloudSaveNow(explicitOps?: PortalOps) {
+export async function flushCloudSaveNow(explicitOps?: PortalOps): Promise<boolean> {
   if (flushTimer) {
     clearTimeout(flushTimer)
     flushTimer = null
   }
-  await flushCloudSave(explicitOps)
+  return flushCloudSave(explicitOps)
 }
 
 export async function forceSyncNow(): Promise<SyncStatus> {

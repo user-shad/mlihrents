@@ -33,7 +33,9 @@ export function PaymentProofThumb({
     setLoading(true)
     void fetchPaymentProof(payment.id).then((proof) => {
       if (cancelled) return
-      if (proof?.dataUrl) setDataUrl(proof.dataUrl)
+      if (proof?.dataUrl) {
+        setDataUrl(proof.dataUrl)
+      }
       setLoading(false)
     })
     return () => {

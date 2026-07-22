@@ -87,3 +87,16 @@ export function persistLocalProofsFromOps<T extends OpsWithPayments>(ops: T) {
   const merged = mergeProofStores(readLocalProofs(), incoming, ops.payments)
   writeLocalProofs(merged)
 }
+
+/** Keep pending screenshots from a cloud pull in this browser's proof cache. */
+export function ingestRemoteProofs<T extends OpsWithPayments>(ops: T) {
+  const incoming: LocalProofStore = {}
+  for (const payment of ops.payments) {
+    if (payment.status !== 'pending_review') continue
+    const proof = payment.transferProof
+    if (!proof?.dataUrl) continue
+    incoming[payment.id] = { name: proof.name || 'proof.jpg', dataUrl: proof.dataUrl }
+  }
+  if (Object.keys(incoming).length === 0) return
+  writeLocalProofs(mergeProofStores(readLocalProofs(), incoming, ops.payments))
+}

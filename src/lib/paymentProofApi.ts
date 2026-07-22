@@ -20,7 +20,7 @@ export async function uploadPaymentProof(
   const next: LocalProofStore = { ...readLocalProofs(), [key]: proof }
   writeLocalProofs(next)
 
-  if (!syncApiToken()) return true
+  if (!syncApiToken()) return false
 
   try {
     const res = await fetch('/api/payment-proof', {
