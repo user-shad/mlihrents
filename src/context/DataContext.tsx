@@ -1877,14 +1877,17 @@ export function DataProvider({
           }
         : p,
     )
-    const nextResidentList =
+    const nextResident =
       reverseAmount > 0
-        ? residentList.map((r) =>
-            r.id === resident.id
-              ? { ...r, amountPaid: Math.max(0, r.amountPaid - reverseAmount) }
-              : r,
-          )
-        : residentList
+        ? residentAfterInstallmentPaid({
+            ...resident,
+            amountPaid: Math.max(0, resident.amountPaid - reverseAmount),
+            amountPaidManual: true,
+          })
+        : resident
+    const nextResidentList = residentList.map((r) =>
+      r.id === resident.id ? nextResident : r,
+    )
     const nextPaidIds = paidIds.filter((id) => id !== invoiceId)
     const remaining = invoices.filter((inv) => inv.id !== invoiceId)
     let nextInvoiceMap: Record<string, Invoice[]> = { ...invoiceMap }
@@ -1909,7 +1912,9 @@ export function DataProvider({
     setRemovedInvoiceIds(nextRemovedInvoiceIds)
     setResidentList(nextResidentList)
     if (reverseAmount > 0) {
-      setPaidDraft(String(Math.max(0, (Number(paidDraft) || 0) - reverseAmount)))
+      const nextPaid = Math.max(0, nextResident.amountPaid)
+      setPaidDraft(String(nextPaid))
+      setNextDueDateDraft(nextResident.nextDueDateIso ?? resolveNextDueDateIso(nextResident))
     }
     void pushOpsToCloud({
       residentList: nextResidentList,

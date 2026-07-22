@@ -132,12 +132,18 @@ function mergeResidentRecord<T extends ResidentLike>(
   const remotePaid = Number(remote.amountPaid) || 0
   const localPaid = Number(local.amountPaid) || 0
   const base = preferLocal ? { ...remote, ...local } : { ...local, ...remote }
+  const amountPaid =
+    preferLocal
+      ? localPaid
+      : local.amountPaidManual
+        ? localPaid
+        : Math.max(remotePaid, localPaid)
 
   return {
     ...base,
     contractTotal: Math.max(remoteTotal, localTotal),
     rentAmount: Math.max(remoteRent, localRent),
-    amountPaid: Math.max(remotePaid, localPaid),
+    amountPaid,
     amountPaidManual: Boolean(local.amountPaidManual || remote.amountPaidManual),
     rentSchedule:
       localRent > 0 && remoteRent === 0

@@ -44,6 +44,21 @@ describe('syncMerge', () => {
     expect(mergePaidIds(['INV-1'], ['INV-2', 'INV-1']).sort()).toEqual(['INV-1', 'INV-2'])
   })
 
+  it('prefers lower local amountPaid when local is newer after invoice removal', () => {
+    const remote = [{ id: 'apt-a1', contractTotal: 36_000, amountPaid: 9_000, rentAmount: 3_000 }]
+    const local = [
+      {
+        id: 'apt-a1',
+        contractTotal: 36_000,
+        amountPaid: 0,
+        rentAmount: 3_000,
+        amountPaidManual: true,
+      },
+    ]
+    const merged = mergeResidentLists(remote, local, true)
+    expect(merged[0]?.amountPaid).toBe(0)
+  })
+
   it('keeps contract total when cloud sync is newer but local has rent plan', () => {
     const remote = [
       {
