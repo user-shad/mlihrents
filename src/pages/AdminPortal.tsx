@@ -163,6 +163,8 @@ export default function AdminPortal() {
     confirmBankPayment,
     rejectBankPayment,
     deletePayment,
+    adminRecordPayment,
+    invoiceHasPendingPayment,
     adminResidentInvoices,
     adminResidentTickets,
     adminResidentPayments,
@@ -2371,7 +2373,19 @@ export default function AdminPortal() {
                             : ''}
                         </div>
                       </div>
-                      <Badge lang={lang} status={inv.status} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-end' }}>
+                        <Badge lang={lang} status={inv.status} />
+                        {inv.status !== 'paid' && (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            type="button"
+                            disabled={invoiceHasPendingPayment(inv.id)}
+                            onClick={() => adminRecordPayment(inv.id)}
+                          >
+                            {tr('markInvoicePaid')}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                   {adminResidentInvoices.length === 0 && (

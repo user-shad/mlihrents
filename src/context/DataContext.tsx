@@ -654,12 +654,16 @@ export function DataProvider({
     return () => clearTimeout(timer)
   }, [toast])
 
-  function syncOpenInvoicesDueDate(resident: Resident) {
+  function withSyncedOpenInvoices(
+    map: Record<string, Invoice[]>,
+    resident: Resident,
+    paidIdList: string[],
+  ) {
     const dueIso = resolveNextDueDateIso(resident)
-    setInvoiceMap((prev) => ({
-      ...prev,
-      [resident.id]: (prev[resident.id] ?? []).map((inv) => {
-        if (inv.status === 'paid' || paidIds.includes(inv.id)) return inv
+    return {
+      ...map,
+      [resident.id]: (map[resident.id] ?? []).map((inv) => {
+        if (inv.status === 'paid' || paidIdList.includes(inv.id)) return inv
         return {
           ...inv,
           dueDateIso: dueIso,
@@ -668,7 +672,116 @@ export function DataProvider({
           status: isPastDue(dueIso) ? ('overdue' as const) : ('due' as const),
         }
       }),
-    }))
+    }
+  }
+
+  function withInstallmentInvoiceIfNeeded(
+    map: Record<string, Invoice[]>,
+    resident: Resident,
+    paidIdList: string[],
+  ) {
+    if (remainingBalance(resident) <= 0 || resident.rentAmount <= 0) return map
+    const existing = map[resident.id] ?? []
+    const hasOpen = existing.some(
+      (inv) => inv.status !== 'paid' && !paidIdList.includes(inv.id),
+    )
+    if (hasOpen) return map
+    const next = buildInstallmentInvoice(resident, lang)
+    if (!next || existing.some((inv) => inv.id === next.id)) return map
+    return { ...map, [resident.id]: [next, ...existing] }
+  }
+
+  function applyAdminPaidIncrease(
+    resident: Resident,
+    previousAmountPaid: number,
+    nextAmountPaid: number,
+    currentInvoiceMap: Record<string, Invoice[]>,
+    currentPaidIds: string[],
+    currentPayments: PaymentRecord[],
+  ) {
+    const delta = Math.max(0, nextAmountPaid - previousAmountPaid)
+    if (delta <= 0) {
+      return {
+        resident: { ...resident, amountPaid: nextAmountPaid },
+        invoiceMap: currentInvoiceMap,
+        paidIds: currentPaidIds,
+        payments: currentPayments,
+      }
+    }
+
+    let remaining = delta
+    let nextInvoiceMap = { ...currentInvoiceMap }
+    let nextPaidIds = [...currentPaidIds]
+    let nextPayments = [...currentPayments]
+    const invoices = [...(nextInvoiceMap[resident.id] ?? [])]
+    const unit = unitCodeLabel(resident)
+    const paidAt = `${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · ${nowLabel()}`
+    const reviewNote = lang === 'ar' ? 'سجّلته الإدارة' : 'Recorded by admin'
+
+    const unpaid = invoices
+      .map((inv, idx) => ({ inv, idx }))
+      .filter(({ inv }) => inv.status !== 'paid' && !nextPaidIds.includes(inv.id))
+      .sort((a, b) => (a.inv.dueDateIso ?? '').localeCompare(b.inv.dueDateIso ?? ''))
+
+    for (const { inv, idx } of unpaid) {
+      if (remaining < inv.amount) break
+      remaining -= inv.amount
+      invoices[idx] = { ...inv, status: 'paid' as const }
+      if (!nextPaidIds.includes(inv.id)) nextPaidIds.push(inv.id)
+      nextPayments = [
+        {
+          id: `PAY-${Date.now().toString().slice(-6)}-${inv.id.slice(-4)}`,
+          invoiceId: inv.id,
+          residentId: resident.id,
+          residentName: resident.name || unit,
+          unit,
+          amount: inv.amount,
+          method: 'bank' as const,
+          status: 'settled' as const,
+          paidAt,
+          destination: bankSettings.accountName || 'Building account',
+          paymentRef: buildPaymentRef(unit, inv.id),
+          confirmedAmount: inv.amount,
+          reviewedAt: paidAt,
+          reviewNote,
+        },
+        ...nextPayments,
+      ]
+    }
+
+    if (remaining > 0) {
+      nextPayments = [
+        {
+          id: `PAY-${Date.now().toString().slice(-6)}`,
+          invoiceId: '',
+          residentId: resident.id,
+          residentName: resident.name || unit,
+          unit,
+          amount: remaining,
+          method: 'bank' as const,
+          status: 'settled' as const,
+          paidAt,
+          destination: bankSettings.accountName || 'Building account',
+          confirmedAmount: remaining,
+          reviewedAt: paidAt,
+          reviewNote,
+        },
+        ...nextPayments,
+      ]
+    }
+
+    nextInvoiceMap = { ...nextInvoiceMap, [resident.id]: invoices }
+    const nextResident = residentAfterInstallmentPaid({
+      ...resident,
+      amountPaid: nextAmountPaid,
+    })
+
+    return {
+      resident: nextResident,
+      invoiceMap: nextInvoiceMap,
+      paidIds: nextPaidIds,
+      payments: nextPayments,
+    }
   }
 
   function saveRentPlan() {
@@ -682,6 +795,7 @@ export function DataProvider({
       0,
       Number(installmentDraft) || suggestInstallment(contractTotal, scheduleDraft),
     )
+    const previousAmountPaid = selectedResident.amountPaid
     const updated: Resident = {
       ...selectedResident,
       rentDueDay: day,
@@ -692,40 +806,66 @@ export function DataProvider({
       amountPaidManual: true,
       rentAmount,
     }
-    setResidentList((prev) =>
-      prev.map((r) => (r.id === selectedResidentId ? updated : r)),
+    let nextResidentList = residentList.map((r) =>
+      r.id === selectedResidentId ? updated : r,
     )
-    if (!canCollectRent(updated)) {
-      setInvoiceMap((prev) => {
-        const existing = prev[selectedResidentId] ?? []
-        const kept = existing.filter((inv) => inv.status === 'paid' || paidIds.includes(inv.id))
-        const next = { ...prev }
-        if (kept.length > 0) next[selectedResidentId] = kept
-        else delete next[selectedResidentId]
-        return next
-      })
-    } else {
-      syncOpenInvoicesDueDate(updated)
-      ensureInstallmentInvoiceFor(updated)
-    }
-    showToast(tr('rentPlanSaved'))
-  }
+    let nextInvoiceMap = { ...invoiceMap }
+    let nextPaidIds = [...paidIds]
+    let nextPayments = [...payments]
+    let nextResident = updated
 
-  /** Create a current-period invoice when rent remains but no unpaid invoice exists. */
-  function ensureInstallmentInvoiceFor(resident: Resident) {
-    if (remainingBalance(resident) <= 0 || resident.rentAmount <= 0) return
-    const existing = invoiceMap[resident.id] ?? []
-    const hasOpen = existing.some(
-      (inv) => inv.status !== 'paid' && !paidIds.includes(inv.id),
-    )
-    if (hasOpen) return
-    const next = buildInstallmentInvoice(resident, lang)
-    if (!next) return
-    if (existing.some((inv) => inv.id === next.id)) return
-    setInvoiceMap((prev) => ({
-      ...prev,
-      [resident.id]: [next, ...(prev[resident.id] ?? [])],
-    }))
+    if (amountPaid > previousAmountPaid) {
+      const applied = applyAdminPaidIncrease(
+        updated,
+        previousAmountPaid,
+        amountPaid,
+        nextInvoiceMap,
+        nextPaidIds,
+        nextPayments,
+      )
+      nextResident = applied.resident
+      nextInvoiceMap = applied.invoiceMap
+      nextPaidIds = applied.paidIds
+      nextPayments = applied.payments
+      nextResidentList = residentList.map((r) =>
+        r.id === selectedResidentId ? nextResident : r,
+      )
+    }
+
+    if (!canCollectRent(nextResident)) {
+      const existing = nextInvoiceMap[selectedResidentId] ?? []
+      const kept = existing.filter(
+        (inv) => inv.status === 'paid' || nextPaidIds.includes(inv.id),
+      )
+      if (kept.length > 0) nextInvoiceMap = { ...nextInvoiceMap, [selectedResidentId]: kept }
+      else {
+        const { [selectedResidentId]: _, ...rest } = nextInvoiceMap
+        nextInvoiceMap = rest
+      }
+    } else {
+      nextInvoiceMap = withSyncedOpenInvoices(nextInvoiceMap, nextResident, nextPaidIds)
+      nextInvoiceMap = withInstallmentInvoiceIfNeeded(
+        nextInvoiceMap,
+        nextResident,
+        nextPaidIds,
+      )
+    }
+
+    setResidentList(nextResidentList)
+    setInvoiceMap(nextInvoiceMap)
+    setPaidIds(nextPaidIds)
+    setPayments(nextPayments)
+    setNextDueDateDraft(nextResident.nextDueDateIso ?? resolveNextDueDateIso(nextResident))
+    setPaidDraft(String(nextResident.amountPaid))
+    void pushOpsToCloud({
+      residentList: nextResidentList,
+      invoiceMap: nextInvoiceMap,
+      paidIds: nextPaidIds,
+      payments: nextPayments,
+    }).then((synced) => {
+      if (!synced) showToast(tr('paymentSyncFailed'))
+    })
+    showToast(tr('rentPlanSaved'))
   }
 
   function saveResidentLoginPin(phone: string, pin: string) {
@@ -1055,37 +1195,69 @@ export function DataProvider({
       }
     }
 
-    const updated: Resident = {
+    const previousAmountPaid = existing.amountPaid
+    let updated: Resident = {
       ...existing,
       ...baseFields,
       pin: accountPin || existing.pin,
       amountPaidManual: true,
     }
-    setResidentList((prev) => prev.map((r) => (r.id === residentId ? updated : r)))
+    let nextResidentList = residentList.map((r) => (r.id === residentId ? updated : r))
+    let nextInvoiceMap = { ...invoiceMap }
+    let nextPaidIds = [...paidIds]
+    let nextPayments = [...payments]
+    let nextResident = updated
 
-    if (!canCollectRent(updated)) {
-      const invoiceIds = (invoiceMap[residentId] ?? []).map((inv) => inv.id)
-      setInvoiceMap((prev) => {
-        const existingInvoices = prev[residentId] ?? []
-        const kept = existingInvoices.filter((inv) => inv.status === 'paid' || paidIds.includes(inv.id))
-        const next = { ...prev }
-        if (kept.length > 0) next[residentId] = kept
-        else delete next[residentId]
-        return next
-      })
-      if (invoiceIds.length > 0) {
-        setInvoiceExtensions((prev) => {
-          const next = { ...prev }
-          for (const id of invoiceIds) delete next[id]
-          return next
-        })
-        setPaidIds((prev) => prev.filter((id) => !invoiceIds.includes(id)))
-      }
-    } else {
-      ensureInstallmentInvoiceFor(updated)
+    if (amountPaid > previousAmountPaid) {
+      const applied = applyAdminPaidIncrease(
+        updated,
+        previousAmountPaid,
+        amountPaid,
+        nextInvoiceMap,
+        nextPaidIds,
+        nextPayments,
+      )
+      nextResident = applied.resident
+      nextInvoiceMap = applied.invoiceMap
+      nextPaidIds = applied.paidIds
+      nextPayments = applied.payments
+      nextResidentList = residentList.map((r) => (r.id === residentId ? nextResident : r))
     }
 
+    if (!canCollectRent(nextResident)) {
+      const invoiceIds = (nextInvoiceMap[residentId] ?? []).map((inv) => inv.id)
+      const existingInvoices = nextInvoiceMap[residentId] ?? []
+      const kept = existingInvoices.filter(
+        (inv) => inv.status === 'paid' || nextPaidIds.includes(inv.id),
+      )
+      if (kept.length > 0) nextInvoiceMap = { ...nextInvoiceMap, [residentId]: kept }
+      else {
+        const { [residentId]: _, ...rest } = nextInvoiceMap
+        nextInvoiceMap = rest
+      }
+      if (invoiceIds.length > 0) {
+        const nextExtensions = { ...invoiceExtensions }
+        for (const id of invoiceIds) delete nextExtensions[id]
+        setInvoiceExtensions(nextExtensions)
+        nextPaidIds = nextPaidIds.filter((id) => !invoiceIds.includes(id))
+      }
+    } else {
+      nextInvoiceMap = withInstallmentInvoiceIfNeeded(nextInvoiceMap, nextResident, nextPaidIds)
+    }
+
+    setResidentList(nextResidentList)
+    setInvoiceMap(nextInvoiceMap)
+    setPaidIds(nextPaidIds)
+    setPayments(nextPayments)
     setSelectedResidentId(residentId)
+    void pushOpsToCloud({
+      residentList: nextResidentList,
+      invoiceMap: nextInvoiceMap,
+      paidIds: nextPaidIds,
+      payments: nextPayments,
+    }).then((synced) => {
+      if (!synced) showToast(tr('paymentSyncFailed'))
+    })
     showToast(tr('apartmentUpdated'))
   }
 

@@ -634,7 +634,13 @@ function mergeBootstrap(
     accounts = localAccounts
   }
 
-  if (preferCloud) {
+  if (cloudHasOps && localHasOps) {
+    const preferLocalResidents = localTime >= cloudTime
+    ops = mergeOpsPreferringLocalProofs(cloud!.ops, localOps, preferLocalResidents)
+    if (cloud!.ops.paymentResetAt) {
+      ops = applyPaymentResetFromCloud(ops, localOps)
+    }
+  } else if (preferCloud && cloudHasOps) {
     ops = applyPaymentResetFromCloud(cloud!.ops, localHasOps ? localOps : null)
   } else {
     if (localHasOps) ops = localOps
