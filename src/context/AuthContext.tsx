@@ -6,6 +6,7 @@ import {
 } from '../data'
 import { ensureBootstrapStaff, prepareStoredAccounts } from '../lib/accountBootstrap'
 import {
+  flushCloudAccountsNow,
   onCloudAccounts,
   queueCloudAccounts,
   writeLocalAccounts,
@@ -103,7 +104,9 @@ export function AuthProvider({
     if (!isValidPin(pin)) return 'pinInvalid'
     const key = normalizePhone(phone)
     if (!key) return 'phoneRequired'
-    const account = accounts.find((a) => a.role === 'resident' && a.phone === key)
+    const account = accounts.find(
+      (a) => a.role === 'resident' && normalizePhone(a.phone) === key,
+    )
     if (!account) return 'accountNotFound'
     if (account.pin !== pin) return 'wrongPin'
     if (!account.residentId) return 'accountNotFound'
@@ -141,12 +144,18 @@ export function AuthProvider({
     if (!key) return 'phoneRequired'
     setAccounts((prev) => {
       const withoutDupPhone = prev.filter(
-        (a) => !(a.role === 'resident' && (a.residentId === residentId || a.phone === key)),
+        (a) =>
+          !(
+            a.role === 'resident' &&
+            (a.residentId === residentId || normalizePhone(a.phone) === key)
+          ),
       )
-      return [
+      const next = [
         ...withoutDupPhone,
         { phone: key, pin, role: 'resident', name, residentId },
       ]
+      void flushCloudAccountsNow(next)
+      return next
     })
     return null
   }

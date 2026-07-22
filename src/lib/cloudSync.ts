@@ -15,6 +15,7 @@ import {
   invoicesByResident,
   residents,
   migrateResident,
+  normalizePhone,
   paymentsPerYearToIntervalMonths,
   seedPayments,
   ticketsByResident,
@@ -616,14 +617,20 @@ function mergeBootstrap(
     (cloudHasAccounts || cloudHasOps) &&
     (cloudTime >= localTime || (!localHasAccounts && !localHasOps))
 
-  let accounts = cloud?.accounts ?? []
+  let accounts: AccountRecord[] = cloud?.accounts ?? []
   let ops = cloud?.ops ?? createDefaultOps()
 
-  if (preferCloud) {
+  if (cloudHasAccounts && localHasAccounts && localAccounts) {
+    accounts = mergeAccountsPreferringLocal(cloud!.accounts, localAccounts)
+  } else if (preferCloud && cloudHasAccounts) {
     accounts = cloud!.accounts
+  } else if (localHasAccounts && localAccounts) {
+    accounts = localAccounts
+  }
+
+  if (preferCloud) {
     ops = applyPaymentResetFromCloud(cloud!.ops, localHasOps ? localOps : null)
   } else {
-    if (localHasAccounts && localAccounts) accounts = localAccounts
     if (localHasOps) ops = localOps
     if (cloud?.ops?.paymentResetAt) {
       ops = applyPaymentResetFromCloud(cloud.ops, localHasOps ? localOps : null)
@@ -672,23 +679,39 @@ function mergeAccountsPreferringLocal(
   local: AccountRecord[] | null,
 ): AccountRecord[] {
   if (!local?.length) return remote
+  if (!remote.length) return local
   const localByResident = new Map(
     local.filter((a) => a.role === 'resident' && a.residentId).map((a) => [a.residentId!, a]),
   )
   const localByPhone = new Map(
-    local.filter((a) => a.role === 'resident').map((a) => [a.phone, a]),
+    local.filter((a) => a.role === 'resident').map((a) => [normalizePhone(a.phone), a]),
   )
-  return remote.map((remoteAccount) => {
+  const merged = remote.map((remoteAccount) => {
     if (remoteAccount.role !== 'resident') return remoteAccount
     const localAccount =
       (remoteAccount.residentId ? localByResident.get(remoteAccount.residentId) : undefined) ??
-      localByPhone.get(remoteAccount.phone)
+      localByPhone.get(normalizePhone(remoteAccount.phone))
     if (!localAccount) return remoteAccount
     if (localAccount.phone !== remoteAccount.phone || localAccount.pin !== remoteAccount.pin) {
-      return { ...remoteAccount, ...localAccount }
+      return { ...remoteAccount, ...localAccount, phone: normalizePhone(localAccount.phone) }
     }
     return remoteAccount
   })
+  for (const localAccount of local) {
+    if (localAccount.role !== 'resident') continue
+    const phoneKey = normalizePhone(localAccount.phone)
+    if (!phoneKey && !localAccount.residentId) continue
+    const alreadyMerged = merged.some(
+      (a) =>
+        a.role === 'resident' &&
+        ((localAccount.residentId && a.residentId === localAccount.residentId) ||
+          (phoneKey && normalizePhone(a.phone) === phoneKey)),
+    )
+    if (!alreadyMerged) {
+      merged.push({ ...localAccount, phone: phoneKey || localAccount.phone })
+    }
+  }
+  return merged
 }
 
 function mergeOpsPreferringLocalProofs(
@@ -873,6 +896,15 @@ export function queueCloudOps(ops: PortalOps) {
   pendingOps = ops
   touchLocalSyncMeta()
   scheduleCloudSave()
+}
+
+export async function flushCloudAccountsNow(accounts: AccountRecord[]): Promise<boolean> {
+  if (flushTimer) {
+    clearTimeout(flushTimer)
+    flushTimer = null
+  }
+  pendingAccounts = undefined
+  return saveCloudRow(accounts, readLocalOps() ?? createDefaultOps())
 }
 
 /** Push pending cloud changes immediately (e.g. after uploading a transfer screenshot). */

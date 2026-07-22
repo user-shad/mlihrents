@@ -757,7 +757,7 @@ export function DataProvider({
     const next: Resident = {
       id,
       name: input.name,
-      phone: input.phone,
+      phone: normalizePhone(input.phone) || input.phone.trim(),
       pin: input.pin,
       building: '',
       buildingNumber: input.buildingNumber || '',
