@@ -29,6 +29,14 @@ import {
   readLocalProofs,
   writeLocalProofs,
 } from './localProofStore'
+import {
+  mergeInvoiceExtensions,
+  mergeInvoiceMaps,
+  mergePaidIds,
+  mergePaymentLists,
+  mergeTicketMaps,
+} from '../../lib/syncMerge'
+import { isBankConfigured } from '../config/paymentSettings'
 import { isSupabaseConfigured, supabase } from './supabase'
 
 export const ACCOUNTS_KEY = 'mlihrents_accounts_v3'
@@ -640,52 +648,6 @@ async function doBootstrap(): Promise<BootstrapData> {
   return merged
 }
 
-function mergePaymentRecord(
-  existing: PortalOps['payments'][number],
-  incoming: PortalOps['payments'][number],
-): PortalOps['payments'][number] {
-  if (existing.status === 'deleted' || incoming.status === 'deleted') {
-    return existing.status === 'deleted' ? existing : incoming
-  }
-
-  const preferIncoming =
-    (incoming.transferProof?.dataUrl && !existing.transferProof?.dataUrl) ||
-    (incoming.status === 'pending_review' && existing.status !== 'pending_review')
-  const preferExisting =
-    (existing.transferProof?.dataUrl && !incoming.transferProof?.dataUrl) ||
-    (existing.status === 'pending_review' && incoming.status !== 'pending_review')
-
-  let merged = preferIncoming ? { ...existing, ...incoming } : { ...incoming, ...existing }
-  if (preferExisting && !preferIncoming) {
-    merged = { ...incoming, ...existing }
-  }
-
-  const transferProof = incoming.transferProof?.dataUrl
-    ? incoming.transferProof
-    : existing.transferProof?.dataUrl
-      ? existing.transferProof
-      : incoming.transferProof ?? existing.transferProof
-
-  return { ...merged, transferProof }
-}
-
-function mergePaymentLists(
-  remote: PortalOps['payments'],
-  local: PortalOps['payments'] | undefined,
-): PortalOps['payments'] {
-  const map = new Map<string, PortalOps['payments'][number]>()
-  for (const payment of remote) map.set(payment.id, payment)
-  for (const payment of local ?? []) {
-    const existing = map.get(payment.id)
-    if (!existing) {
-      map.set(payment.id, payment)
-      continue
-    }
-    map.set(payment.id, mergePaymentRecord(existing, payment))
-  }
-  return [...map.values()].sort((a, b) => b.id.localeCompare(a.id))
-}
-
 function mergeResidentLists(
   remote: PortalOps['residentList'],
   local: PortalOps['residentList'] | undefined,
@@ -755,10 +717,16 @@ function mergeOpsPreferringLocalProofs(remote: PortalOps, local: PortalOps | nul
   if (!local) return remote
   return {
     ...remote,
+    ...local,
     residentList: mergeResidentLists(remote.residentList, local.residentList),
     payments: mergePaymentLists(remote.payments, local.payments),
+    invoiceMap: mergeInvoiceMaps(remote.invoiceMap, local.invoiceMap),
+    ticketMap: mergeTicketMaps(remote.ticketMap, local.ticketMap),
+    paidIds: mergePaidIds(remote.paidIds, local.paidIds),
+    invoiceExtensions: mergeInvoiceExtensions(remote.invoiceExtensions, local.invoiceExtensions),
     listings: local.listings?.length ? local.listings : remote.listings,
     serviceDirectory: local.serviceDirectory?.length ? local.serviceDirectory : remote.serviceDirectory,
+    bankSettings: isBankConfigured(local.bankSettings) ? local.bankSettings : remote.bankSettings,
   }
 }
 
@@ -772,9 +740,6 @@ function applyRemoteRow(row: CloudRow) {
     (localOps ? hasOpsData(localOps) : false) ||
     (localAccounts ? hasAccountsData(localAccounts) : false)
   if (remoteEmpty && localHas) return
-
-  const remoteTime = cloudTimestamp(row)
-  const localTime = localTimestamp()
 
   if (row.ops.paymentResetAt && row.ops.paymentResetAt > readPaymentResetAck()) {
     const mergedOps = applyPaymentResetFromCloud(row.ops, localOps)
@@ -790,24 +755,9 @@ function applyRemoteRow(row: CloudRow) {
     return
   }
 
-  if (localTime > remoteTime) {
-    const mergedOps = localOps
-      ? { ...row.ops, ...localOps, payments: mergePaymentLists(row.ops.payments, localOps.payments) }
-      : row.ops
-    ingestRemoteProofs(mergedOps)
-    const mergedAccounts = localAccounts ?? row.accounts
-    suppressCloudPush++
-    try {
-      accountsListener?.(prepareStoredAccounts(mergedAccounts))
-      opsListener?.(mergedOps)
-      lastCloudUpdatedAt = row.updated_at
-    } finally {
-      suppressCloudPush--
-    }
-    return
-  }
-
-  const mergedOps = mergeOpsPreferringLocalProofs(row.ops, localOps)
+  const mergedOps = localOps
+    ? mergeOpsPreferringLocalProofs(row.ops, localOps)
+    : row.ops
   ingestRemoteProofs(mergedOps)
   const mergedAccounts = mergeAccountsPreferringLocal(row.accounts, localAccounts)
 
@@ -826,12 +776,7 @@ function pullRemoteIfNewer() {
   if (hasPendingLocalSave()) return
   void loadCloudRow().then((row) => {
     if (!row) return
-    const remoteTime = cloudTimestamp(row)
-    const localTime = localTimestamp()
-    // Only apply when cloud is actually newer — never overwrite local with older remote
-    if (remoteTime > localTime) {
-      applyRemoteRow(row)
-    }
+    applyRemoteRow(row)
   })
 }
 
