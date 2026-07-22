@@ -90,6 +90,31 @@ function ensureSeedResidents(list: BootstrapAccountRecord[]): BootstrapAccountRe
   return next
 }
 
+/** Create missing login rows from synced apartment records (phone + 4-digit PIN). */
+export function syncLoginAccountsFromResidents(
+  list: BootstrapAccountRecord[],
+  residents: Array<{ id: string; name?: string; phone?: string; pin?: string }>,
+): BootstrapAccountRecord[] {
+  let next = [...list]
+  for (const resident of residents) {
+    const phone = normalizePhone(resident.phone ?? '')
+    const pin = (resident.pin ?? '').trim()
+    if (!phone || !/^\d{4}$/.test(pin)) continue
+    const idx = next.findIndex(
+      (a) =>
+        a.role === 'resident' &&
+        (a.residentId === resident.id || normalizePhone(a.phone) === phone),
+    )
+    const name = (resident.name ?? '').trim() || resident.id
+    if (idx >= 0) {
+      next[idx] = { ...next[idx], phone, pin, name, residentId: resident.id }
+    } else {
+      next.push({ phone, pin, role: 'resident', name, residentId: resident.id })
+    }
+  }
+  return next
+}
+
 export function prepareStoredAccounts(raw: BootstrapAccountRecord[]): BootstrapAccountRecord[] {
   const base = raw.length > 0 ? raw : seedAccounts()
   return ensureSeedResidents(ensureBootstrapStaff(base))

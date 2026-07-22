@@ -33,6 +33,76 @@ export type ResidentLike = {
   amountPaidManual?: boolean
 }
 
+export type AccountLike = {
+  phone: string
+  pin: string
+  role: string
+  name: string
+  residentId?: string
+  staffTier?: string
+}
+
+function normalizePhoneDigits(phone: string): string {
+  let digits = phone.replace(/\D/g, '')
+  if (digits.startsWith('971') && digits.length >= 12) {
+    digits = `0${digits.slice(3)}`
+  }
+  if (digits.length === 9 && digits.startsWith('5')) {
+    digits = `0${digits}`
+  }
+  return digits
+}
+
+/** Merge login accounts without dropping residents registered on another device. */
+export function mergeAccountLists<T extends AccountLike>(remote: T[], local: T[]): T[] {
+  if (!local.length) return remote
+  if (!remote.length) return local
+
+  const localByResident = new Map(
+    local
+      .filter((a) => a.role === 'resident' && a.residentId)
+      .map((a) => [a.residentId!, a]),
+  )
+  const localByPhone = new Map(
+    local
+      .filter((a) => a.role === 'resident')
+      .map((a) => [normalizePhoneDigits(a.phone), a]),
+  )
+
+  const merged = remote.map((remoteAccount) => {
+    if (remoteAccount.role !== 'resident') return remoteAccount
+    const localAccount =
+      (remoteAccount.residentId ? localByResident.get(remoteAccount.residentId) : undefined) ??
+      localByPhone.get(normalizePhoneDigits(remoteAccount.phone))
+    if (!localAccount) return remoteAccount
+    if (localAccount.phone !== remoteAccount.phone || localAccount.pin !== remoteAccount.pin) {
+      return {
+        ...remoteAccount,
+        ...localAccount,
+        phone: normalizePhoneDigits(localAccount.phone),
+      } as T
+    }
+    return remoteAccount
+  })
+
+  for (const localAccount of local) {
+    if (localAccount.role !== 'resident') continue
+    const phoneKey = normalizePhoneDigits(localAccount.phone)
+    if (!phoneKey && !localAccount.residentId) continue
+    const alreadyMerged = merged.some(
+      (a) =>
+        a.role === 'resident' &&
+        ((localAccount.residentId && a.residentId === localAccount.residentId) ||
+          (phoneKey && normalizePhoneDigits(a.phone) === phoneKey)),
+    )
+    if (!alreadyMerged) {
+      merged.push({ ...localAccount, phone: phoneKey || localAccount.phone } as T)
+    }
+  }
+
+  return merged
+}
+
 function residentRentFieldsDiffer<T extends ResidentLike>(a: T, b: T): boolean {
   const localPhone = (a.phone ?? '').trim()
   const remotePhone = (b.phone ?? '').trim()
@@ -270,9 +340,16 @@ export function mergeSyncPayload(existing: SyncPayload | null, incoming: SyncPay
   const existingOps = existing.ops as Record<string, unknown>
   const incomingOps = incoming.ops as Record<string, unknown>
 
-  const accounts = Array.isArray(incoming.accounts) && incoming.accounts.length > 0
-    ? incoming.accounts
-    : existing.accounts
+  const existingAccounts = Array.isArray(existing.accounts)
+    ? (existing.accounts as AccountLike[])
+    : []
+  const incomingAccounts = Array.isArray(incoming.accounts)
+    ? (incoming.accounts as AccountLike[])
+    : []
+  const accounts =
+    incomingAccounts.length > 0
+      ? mergeAccountLists(existingAccounts, incomingAccounts)
+      : existing.accounts
 
   return {
     ...incoming,

@@ -1,5 +1,5 @@
 import type { AccountRecord } from '../context/AuthContext'
-import { prepareStoredAccounts } from './accountBootstrap'
+import { prepareStoredAccounts, syncLoginAccountsFromResidents } from './accountBootstrap'
 import type { BankAccountSettings } from '../config/paymentSettings'
 import type {
   AvailableApartment,
@@ -31,6 +31,7 @@ import {
   writeLocalProofs,
 } from './localProofStore'
 import {
+  mergeAccountLists,
   mergeInvoiceExtensions,
   mergeInvoiceMaps,
   mergePaidIds,
@@ -567,13 +568,16 @@ async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps): Promise<
     existing && hasOpsData(existing.ops) ? mergeOpsPreferringLocalProofs(existing.ops, ops) : ops
   const mergedAccounts =
     existing && hasAccountsData(existing.accounts)
-      ? mergeAccountsPreferringLocal(existing.accounts, accounts)
+      ? mergeAccountLists(existing.accounts, accounts)
       : accounts
+  const syncedAccounts = prepareStoredAccounts(
+    syncLoginAccountsFromResidents(mergedAccounts, ops.residentList),
+  )
 
-  if (await saveCloudRowViaApi(mergedAccounts, mergedOps)) return true
+  if (await saveCloudRowViaApi(syncedAccounts, mergedOps)) return true
 
   if (!supabase) return false
-  const preparedAccounts = prepareStoredAccounts(mergedAccounts)
+  const preparedAccounts = syncedAccounts
   const slimOps = slimOpsForCloud(mergedOps)
   const updated_at = new Date().toISOString()
   await supabase.from('portal_sync').upsert({
@@ -637,7 +641,7 @@ function mergeBootstrap(
     }
   }
 
-  return { accounts: prepareStoredAccounts(accounts), ops }
+  return { accounts: prepareStoredAccounts(syncLoginAccountsFromResidents(accounts, ops.residentList)), ops }
 }
 
 async function pushLocalToCloudIfNeeded(data: BootstrapData, cloud: CloudRow | null) {
@@ -661,10 +665,22 @@ async function doBootstrap(): Promise<BootstrapData> {
   const localOps = readLocalOps() ?? createDefaultOps()
 
   const cloud = await loadCloudRow()
-  const merged = mergeBootstrap(cloud, localAccounts, localOps)
+  let merged = mergeBootstrap(cloud, localAccounts, localOps)
+  const residentAccountsBefore = merged.accounts.filter((a) => a.role === 'resident').length
+  merged = {
+    ...merged,
+    accounts: prepareStoredAccounts(
+      syncLoginAccountsFromResidents(merged.accounts, merged.ops.residentList),
+    ),
+  }
 
   if (syncMode === 'cloud') {
-    await pushLocalToCloudIfNeeded(merged, cloud)
+    const residentAccountsAfter = merged.accounts.filter((a) => a.role === 'resident').length
+    if (residentAccountsAfter > residentAccountsBefore) {
+      await saveCloudRow(merged.accounts, merged.ops)
+    } else {
+      await pushLocalToCloudIfNeeded(merged, cloud)
+    }
     startPolling()
     startRealtimeSync()
   } else {
@@ -679,39 +695,7 @@ function mergeAccountsPreferringLocal(
   local: AccountRecord[] | null,
 ): AccountRecord[] {
   if (!local?.length) return remote
-  if (!remote.length) return local
-  const localByResident = new Map(
-    local.filter((a) => a.role === 'resident' && a.residentId).map((a) => [a.residentId!, a]),
-  )
-  const localByPhone = new Map(
-    local.filter((a) => a.role === 'resident').map((a) => [normalizePhone(a.phone), a]),
-  )
-  const merged = remote.map((remoteAccount) => {
-    if (remoteAccount.role !== 'resident') return remoteAccount
-    const localAccount =
-      (remoteAccount.residentId ? localByResident.get(remoteAccount.residentId) : undefined) ??
-      localByPhone.get(normalizePhone(remoteAccount.phone))
-    if (!localAccount) return remoteAccount
-    if (localAccount.phone !== remoteAccount.phone || localAccount.pin !== remoteAccount.pin) {
-      return { ...remoteAccount, ...localAccount, phone: normalizePhone(localAccount.phone) }
-    }
-    return remoteAccount
-  })
-  for (const localAccount of local) {
-    if (localAccount.role !== 'resident') continue
-    const phoneKey = normalizePhone(localAccount.phone)
-    if (!phoneKey && !localAccount.residentId) continue
-    const alreadyMerged = merged.some(
-      (a) =>
-        a.role === 'resident' &&
-        ((localAccount.residentId && a.residentId === localAccount.residentId) ||
-          (phoneKey && normalizePhone(a.phone) === phoneKey)),
-    )
-    if (!alreadyMerged) {
-      merged.push({ ...localAccount, phone: phoneKey || localAccount.phone })
-    }
-  }
-  return merged
+  return mergeAccountLists(remote, local)
 }
 
 function mergeOpsPreferringLocalProofs(
@@ -751,7 +735,10 @@ function applyRemoteRow(row: CloudRow) {
 
   if (row.ops.paymentResetAt && row.ops.paymentResetAt > readPaymentResetAck()) {
     const mergedOps = applyPaymentResetFromCloud(row.ops, localOps)
-    const mergedAccounts = mergeAccountsPreferringLocal(row.accounts, localAccounts)
+    let mergedAccounts = mergeAccountsPreferringLocal(row.accounts, localAccounts)
+    mergedAccounts = prepareStoredAccounts(
+      syncLoginAccountsFromResidents(mergedAccounts, mergedOps.residentList),
+    )
     suppressCloudPush++
     try {
       accountsListener?.(prepareStoredAccounts(mergedAccounts))
@@ -767,7 +754,10 @@ function applyRemoteRow(row: CloudRow) {
     ? mergeOpsPreferringLocalProofs(row.ops, localOps, preferLocalResidents)
     : row.ops
   ingestRemoteProofs(mergedOps)
-  const mergedAccounts = mergeAccountsPreferringLocal(row.accounts, localAccounts)
+  let mergedAccounts = mergeAccountsPreferringLocal(row.accounts, localAccounts)
+  mergedAccounts = prepareStoredAccounts(
+    syncLoginAccountsFromResidents(mergedAccounts, mergedOps.residentList),
+  )
 
   suppressCloudPush++
   try {
