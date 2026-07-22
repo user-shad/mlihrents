@@ -1,0 +1,19 @@
+---
+description: Auto-commit and deploy project changes to production after completing work
+alwaysApply: true
+---
+
+# Auto-deploy on changes
+
+When you finish implementing or fixing something in this repo:
+
+1. Commit all intentional code changes (exclude secrets, `.env*`, and local preview/script artifacts unless the user asked for them).
+2. Push to `origin master` to trigger the Vercel deploy.
+3. Tell the user deployment was pushed — no need to wait for them to ask "deploy" separately.
+
+Only skip auto-deploy when:
+- The user explicitly says not to deploy or not to commit.
+- There are no changes to commit.
+- Push fails and needs user approval on the protected branch — retry once with approval, then report the blocker.
+
+After push, briefly note what was deployed and the live URL: https://www.mlihrent.com
