@@ -240,6 +240,9 @@ const en: Dict = {
   paymentRejectedNotifyBanner: 'Payment rejected — notify the resident?',
   deletePayment: 'Delete payment',
   deletePaymentConfirm: 'Delete this payment? If it was approved, the paid amount will be reversed.',
+  removeInvoice: 'Remove invoice',
+  removeInvoiceConfirm:
+    'Remove this invoice? Any linked payments will be deleted and the paid balance adjusted if needed.',
   amountMismatch: 'Does not match invoice',
   noPendingPayments:
     'No screenshots waiting. After a resident pays and uploads proof, it appears here until you approve or reject.',
@@ -714,6 +717,9 @@ const ar: Dict = {
   paymentRejectedNotifyBanner: 'تم رفض الدفع — هل تريد إبلاغ الساكن؟',
   deletePayment: 'حذف الدفعة',
   deletePaymentConfirm: 'حذف هذه الدفعة؟ إذا كانت معتمدة سيتم عكس المبلغ المدفوع.',
+  removeInvoice: 'حذف الفاتورة',
+  removeInvoiceConfirm:
+    'حذف هذه الفاتورة؟ سيتم حذف أي مدفوعات مرتبطة وتعديل رصيد المدفوع إن لزم.',
   amountMismatch: 'لا يطابق الفاتورة',
   noPendingPayments:
     'لا لقطات بانتظار المراجعة. بعد دفع الساكن ورفع الإثبات تظهر هنا حتى توافق أو ترفض.',

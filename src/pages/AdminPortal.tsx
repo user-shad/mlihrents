@@ -164,6 +164,7 @@ export default function AdminPortal() {
     rejectBankPayment,
     deletePayment,
     adminRecordPayment,
+    removeInvoice,
     invoiceHasPendingPayment,
     adminResidentInvoices,
     adminResidentTickets,
@@ -2407,6 +2408,17 @@ export default function AdminPortal() {
                             {tr('markInvoicePaid')}
                           </button>
                         )}
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          disabled={invoiceHasPendingPayment(inv.id)}
+                          onClick={() => {
+                            if (!window.confirm(tr('removeInvoiceConfirm'))) return
+                            removeInvoice(inv.id)
+                          }}
+                        >
+                          {tr('removeInvoice')}
+                        </button>
                       </div>
                     </div>
                   ))}

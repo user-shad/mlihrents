@@ -244,6 +244,8 @@ interface DataContextValue {
   deletePayment: (paymentId: string) => void
   /** Staff records that an invoice was paid (cash / confirmed transfer) */
   adminRecordPayment: (invoiceId: string) => void
+  /** Remove an invoice and undo linked settled payments */
+  removeInvoice: (invoiceId: string) => void
   toast: string | null
   chatInput: string
   setChatInput: (v: string) => void
@@ -1802,6 +1804,84 @@ export function DataProvider({
     showToast(lang === 'ar' ? 'تم حذف الدفعة' : 'Payment deleted')
   }
 
+  function removeInvoice(invoiceId: string) {
+    if (session?.role !== 'admin') return
+    const resident = selectedResident
+    const invoices = invoiceMap[resident.id] ?? []
+    const invoice = invoices.find((inv) => inv.id === invoiceId)
+    if (!invoice) return
+    if (invoiceHasPendingPayment(invoiceId)) {
+      showToast(
+        lang === 'ar'
+          ? 'لا يمكن الحذف — يوجد تحويل قيد المراجعة لهذه الفاتورة'
+          : 'Cannot remove — a payment for this invoice is pending review',
+      )
+      return
+    }
+
+    const reviewedAt = `${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · ${nowLabel()}`
+    const deletedNote = lang === 'ar' ? 'حُذف بواسطة الإدارة' : 'Deleted by admin'
+    const linked = payments.filter((p) => p.invoiceId === invoiceId && p.status !== 'deleted')
+    const credited = linked
+      .filter((p) => p.status === 'settled' || p.status === 'partial')
+      .reduce((sum, p) => sum + (p.confirmedAmount ?? p.amount), 0)
+    const isPaid = invoice.status === 'paid' || paidIds.includes(invoiceId)
+    const reverseAmount =
+      credited > 0 ? credited : isPaid ? invoice.amount : 0
+
+    const nextPayments = payments.map((p) =>
+      p.invoiceId === invoiceId && p.status !== 'deleted'
+        ? {
+            ...p,
+            status: 'deleted' as const,
+            reviewNote: deletedNote,
+            reviewedAt,
+            transferProof: p.transferProof
+              ? { name: p.transferProof.name, dataUrl: '' }
+              : undefined,
+          }
+        : p,
+    )
+    const nextResidentList =
+      reverseAmount > 0
+        ? residentList.map((r) =>
+            r.id === resident.id
+              ? { ...r, amountPaid: Math.max(0, r.amountPaid - reverseAmount) }
+              : r,
+          )
+        : residentList
+    const nextPaidIds = paidIds.filter((id) => id !== invoiceId)
+    const remaining = invoices.filter((inv) => inv.id !== invoiceId)
+    let nextInvoiceMap: Record<string, Invoice[]> = { ...invoiceMap }
+    if (remaining.length > 0) nextInvoiceMap = { ...nextInvoiceMap, [resident.id]: remaining }
+    else {
+      const { [resident.id]: _, ...rest } = nextInvoiceMap
+      nextInvoiceMap = rest
+    }
+    const nextExtensions = { ...invoiceExtensions }
+    delete nextExtensions[invoiceId]
+
+    if (checkoutInvoiceId === invoiceId) setCheckoutInvoiceId(null)
+    setPayments(nextPayments)
+    setPaidIds(nextPaidIds)
+    setInvoiceMap(nextInvoiceMap)
+    setInvoiceExtensions(nextExtensions)
+    setResidentList(nextResidentList)
+    if (reverseAmount > 0) {
+      setPaidDraft(String(Math.max(0, (Number(paidDraft) || 0) - reverseAmount)))
+    }
+    void pushOpsToCloud({
+      residentList: nextResidentList,
+      payments: nextPayments,
+      invoiceMap: nextInvoiceMap,
+      paidIds: nextPaidIds,
+      invoiceExtensions: nextExtensions,
+    }).then((synced) => {
+      if (!synced) showToast(tr('paymentSyncFailed'))
+    })
+    showToast(lang === 'ar' ? 'تم حذف الفاتورة' : 'Invoice removed')
+  }
+
   function adminRecordPayment(invoiceId: string) {
     const invoice = adminResidentInvoices.find((inv) => inv.id === invoiceId)
     if (!invoice || invoice.status === 'paid') return
@@ -2175,6 +2255,7 @@ export function DataProvider({
         rejectBankPayment,
         deletePayment,
         adminRecordPayment,
+        removeInvoice,
         toast,
         chatInput,
         setChatInput,
