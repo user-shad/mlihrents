@@ -150,7 +150,7 @@ export function AuthProvider({
             (a.residentId === residentId || normalizePhone(a.phone) === key)
           ),
       )
-      const next = [
+      const next: AccountRecord[] = [
         ...withoutDupPhone,
         { phone: key, pin, role: 'resident', name, residentId },
       ]

@@ -15,7 +15,6 @@ import {
   invoicesByResident,
   residents,
   migrateResident,
-  normalizePhone,
   paymentsPerYearToIntervalMonths,
   seedPayments,
   ticketsByResident,

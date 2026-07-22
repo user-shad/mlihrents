@@ -2015,10 +2015,10 @@ export default function AdminPortal() {
                   <div className="list-row" key={resident.id}>
                     <div>
                       <strong>
-                        <AdminUnitLink unit={unitCodeLabel(resident)} tab="payments" />
+                        <AdminUnitLink unit={resident.apartment?.trim() || resident.id} tab="payments" />
                       </strong>
                       <div className="meta">
-                        {resident.name.trim() || tr('vacantUnit')}
+                        {(resident.name ?? '').trim() || tr('vacantUnit')}
                         {resident.phone ? ` · ${resident.phone}` : ''}
                       </div>
                     </div>
