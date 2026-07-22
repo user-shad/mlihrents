@@ -6,6 +6,7 @@ import {
   mergePaymentLists,
   mergePortalOps,
   mergeResidentLists,
+  mergeRevokedResidentLogins,
   mergeSyncPayload,
 } from '../../lib/syncMerge'
 
@@ -124,6 +125,15 @@ describe('syncMerge', () => {
       },
     )
     expect((merged.invoiceMap as Record<string, { id: string }[]>)['apt-a1'] ?? []).toHaveLength(0)
+  })
+
+  it('merges revoked resident logins from both devices', () => {
+    expect(mergeRevokedResidentLogins(['apt-a1'], ['APT-A2']).sort()).toEqual(['apt-a1', 'apt-a2'])
+    const merged = mergePortalOps(
+      { revokedResidentLogins: ['apt-a1'] },
+      { revokedResidentLogins: ['apt-a3'] },
+    )
+    expect((merged.revokedResidentLogins as string[]).sort()).toEqual(['apt-a1', 'apt-a3'])
   })
 
   it('merges sync payloads without dropping pending payments', () => {

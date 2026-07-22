@@ -342,6 +342,13 @@ export function mergeRemovedInvoiceIds(
   return [...new Set([...(remote ?? []), ...(local ?? [])].map(invoiceIdKey))]
 }
 
+export function mergeRevokedResidentLogins(
+  remote: string[] | undefined,
+  local: string[] | undefined,
+): string[] {
+  return [...new Set([...(remote ?? []), ...(local ?? [])].map((id) => id.trim().toLowerCase()))]
+}
+
 export function applyRemovedInvoices<T extends InvoiceLike>(
   map: Record<string, T[]>,
   removedIds: string[] | undefined,
@@ -401,6 +408,10 @@ export function mergePortalOps(
     removedInvoiceIds: mergeRemovedInvoiceIds(
       idList(remote.removedInvoiceIds),
       idList(local.removedInvoiceIds),
+    ),
+    revokedResidentLogins: mergeRevokedResidentLogins(
+      idList(remote.revokedResidentLogins),
+      idList(local.revokedResidentLogins),
     ),
     invoiceMap: applyRemovedInvoices(
       mergeInvoiceMaps(

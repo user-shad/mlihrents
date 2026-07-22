@@ -38,6 +38,7 @@ import {
   mergePaymentLists,
   mergeRemovedInvoiceIds,
   mergeResidentLists,
+  mergeRevokedResidentLogins,
   mergeTicketMaps,
 } from '../../lib/syncMerge'
 import { isBankConfigured } from '../config/paymentSettings'
@@ -82,6 +83,8 @@ export interface PortalOps {
   paidIds: string[]
   /** Invoice ids admin removed — kept across sync so they are not recreated. */
   removedInvoiceIds?: string[]
+  /** Resident ids whose login admin revoked — do not recreate from apartment phone/pin. */
+  revokedResidentLogins?: string[]
   bankSettings: BankAccountSettings
   serviceDirectory: ServiceContact[]
   /** Set after rent schedule values were migrated to month intervals. */
@@ -217,6 +220,7 @@ export function createDefaultOps(): PortalOps {
     invoiceExtensions: {},
     paidIds: [],
     removedInvoiceIds: [],
+    revokedResidentLogins: [],
     bankSettings: defaultBankSettings,
     serviceDirectory: defaultServiceDirectory,
   }
@@ -407,6 +411,7 @@ function normalizeCloudOps(raw: unknown): PortalOps {
     invoiceExtensions: ops.invoiceExtensions ?? {},
     paidIds: Array.isArray(ops.paidIds) ? ops.paidIds : [],
     removedInvoiceIds: Array.isArray(ops.removedInvoiceIds) ? ops.removedInvoiceIds : [],
+    revokedResidentLogins: Array.isArray(ops.revokedResidentLogins) ? ops.revokedResidentLogins : [],
     bankSettings: ops.bankSettings ?? defaultBankSettings,
     serviceDirectory:
       Array.isArray(ops.serviceDirectory) && ops.serviceDirectory.length > 0
@@ -579,7 +584,11 @@ async function saveCloudRow(accounts: AccountRecord[], ops: PortalOps): Promise<
       ? mergeAccountLists(existing.accounts, accounts)
       : accounts
   const syncedAccounts = prepareStoredAccounts(
-    syncLoginAccountsFromResidents(mergedAccounts, ops.residentList),
+    syncLoginAccountsFromResidents(
+      mergedAccounts,
+      mergedOps.residentList,
+      mergedOps.revokedResidentLogins ?? [],
+    ),
   )
 
   if (await saveCloudRowViaApi(syncedAccounts, mergedOps)) return true
@@ -659,7 +668,7 @@ function mergeBootstrap(
     }
   }
 
-  return { accounts: prepareStoredAccounts(syncLoginAccountsFromResidents(accounts, ops.residentList)), ops }
+  return { accounts: prepareStoredAccounts(syncLoginAccountsFromResidents(accounts, ops.residentList, ops.revokedResidentLogins ?? [])), ops }
 }
 
 async function pushLocalToCloudIfNeeded(data: BootstrapData, cloud: CloudRow | null) {
@@ -688,7 +697,11 @@ async function doBootstrap(): Promise<BootstrapData> {
   merged = {
     ...merged,
     accounts: prepareStoredAccounts(
-      syncLoginAccountsFromResidents(merged.accounts, merged.ops.residentList),
+      syncLoginAccountsFromResidents(
+        merged.accounts,
+        merged.ops.residentList,
+        merged.ops.revokedResidentLogins ?? [],
+      ),
     ),
   }
 
@@ -727,6 +740,10 @@ function mergeOpsPreferringLocalProofs(
     remote.removedInvoiceIds,
     local.removedInvoiceIds,
   )
+  const revokedResidentLogins = mergeRevokedResidentLogins(
+    remote.revokedResidentLogins,
+    local.revokedResidentLogins,
+  )
   return {
     ...remote,
     ...local,
@@ -739,6 +756,7 @@ function mergeOpsPreferringLocalProofs(
     ticketMap: mergeTicketMaps(remote.ticketMap, local.ticketMap),
     paidIds: mergePaidIds(remote.paidIds, local.paidIds),
     removedInvoiceIds,
+    revokedResidentLogins,
     invoiceExtensions: mergeInvoiceExtensions(remote.invoiceExtensions, local.invoiceExtensions),
     listings: local.listings?.length ? local.listings : remote.listings,
     serviceDirectory: local.serviceDirectory?.length ? local.serviceDirectory : remote.serviceDirectory,
@@ -768,7 +786,11 @@ function applyRemoteRow(row: CloudRow) {
       preferLocalResidents,
     )
     mergedAccounts = prepareStoredAccounts(
-      syncLoginAccountsFromResidents(mergedAccounts, mergedOps.residentList),
+      syncLoginAccountsFromResidents(
+        mergedAccounts,
+        mergedOps.residentList,
+        mergedOps.revokedResidentLogins ?? [],
+      ),
     )
     suppressCloudPush++
     try {
@@ -791,7 +813,11 @@ function applyRemoteRow(row: CloudRow) {
     preferLocalResidents,
   )
   mergedAccounts = prepareStoredAccounts(
-    syncLoginAccountsFromResidents(mergedAccounts, mergedOps.residentList),
+    syncLoginAccountsFromResidents(
+      mergedAccounts,
+      mergedOps.residentList,
+      mergedOps.revokedResidentLogins ?? [],
+    ),
   )
 
   suppressCloudPush++
@@ -814,7 +840,8 @@ function opsSyncFingerprint(ops: PortalOps): string {
     .sort()
     .join('|')
   const removedFp = (ops.removedInvoiceIds ?? []).slice().sort().join('|')
-  return `${paymentFp}::${residentFp}::${removedFp}`
+  const revokedFp = (ops.revokedResidentLogins ?? []).slice().sort().join('|')
+  return `${paymentFp}::${residentFp}::${removedFp}::${revokedFp}`
 }
 
 function pollIntervalMs() {

@@ -94,9 +94,12 @@ function ensureSeedResidents(list: BootstrapAccountRecord[]): BootstrapAccountRe
 export function syncLoginAccountsFromResidents(
   list: BootstrapAccountRecord[],
   residents: Array<{ id: string; name?: string; phone?: string; pin?: string }>,
+  revokedResidentIds: string[] = [],
 ): BootstrapAccountRecord[] {
+  const revoked = new Set(revokedResidentIds.map((id) => id.trim().toLowerCase()))
   let next = [...list]
   for (const resident of residents) {
+    if (revoked.has(resident.id.trim().toLowerCase())) continue
     const phone = normalizePhone(resident.phone ?? '')
     const pin = (resident.pin ?? '').trim()
     if (!phone || !/^\d{4}$/.test(pin)) continue

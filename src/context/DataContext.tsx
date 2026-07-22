@@ -100,6 +100,26 @@ function isRemovedInvoice(id: string, removedIds: string[]) {
   return removedIds.some((row) => invoiceIdKey(row) === key)
 }
 
+function residentIdKey(id: string) {
+  return id.trim().toLowerCase()
+}
+
+function addRevokedResidentLogin(ids: string[], residentId: string): string[] {
+  const key = residentIdKey(residentId)
+  return ids.some((row) => residentIdKey(row) === key) ? ids : [...ids, key]
+}
+
+function removeRevokedResidentLogin(ids: string[], residentId: string): string[] {
+  const key = residentIdKey(residentId)
+  return ids.filter((row) => residentIdKey(row) !== key)
+}
+
+function mergeRemovedInvoiceIdList(existing: string[], invoiceIds: string[]): string[] {
+  const next = new Set(existing.map(invoiceIdKey))
+  for (const id of invoiceIds) next.add(invoiceIdKey(id))
+  return [...next]
+}
+
 function isLegacyTestTenantA1(resident: Resident): boolean {
   if (resident.id !== LEGACY_A1_TEST_ID) return false
   const phone = resident.phone.replace(/\D/g, '')
@@ -199,11 +219,13 @@ function normalizePersistedOps(parsed: PortalOps): PortalOps {
   )
   const paidIds = cleaned.paidIds ?? []
   const removedInvoiceIds = cleaned.removedInvoiceIds ?? []
+  const revokedResidentLogins = cleaned.revokedResidentLogins ?? []
   return {
     ...cleaned,
     residentList,
     paidIds,
     removedInvoiceIds,
+    revokedResidentLogins,
     invoiceMap: applyRemovedInvoices(
       pruneStaleOpenInvoices(
         residentList,
@@ -400,6 +422,9 @@ export function DataProvider({
   const [removedInvoiceIds, setRemovedInvoiceIds] = useState<string[]>(
     () => bootOps.removedInvoiceIds ?? [],
   )
+  const [revokedResidentLogins, setRevokedResidentLogins] = useState<string[]>(
+    () => bootOps.revokedResidentLogins ?? [],
+  )
   /** Extra days granted past the original due date, keyed by invoice id */
   const [invoiceExtensions, setInvoiceExtensions] = useState<Record<string, number>>(
     () => bootOps.invoiceExtensions,
@@ -444,6 +469,7 @@ export function DataProvider({
       setInvoiceExtensions(next.invoiceExtensions)
       setPaidIds(next.paidIds)
       setRemovedInvoiceIds(next.removedInvoiceIds ?? [])
+      setRevokedResidentLogins(next.revokedResidentLogins ?? [])
       if (isBankConfigured(next.bankSettings)) {
         setBankSettings(next.bankSettings)
       }
@@ -463,6 +489,7 @@ export function DataProvider({
       invoiceExtensions,
       paidIds,
       removedInvoiceIds,
+      revokedResidentLogins,
       bankSettings,
       serviceDirectory,
     }
@@ -477,6 +504,7 @@ export function DataProvider({
     invoiceExtensions,
     paidIds,
     removedInvoiceIds,
+    revokedResidentLogins,
     bankSettings,
     serviceDirectory,
   ])
@@ -496,6 +524,7 @@ export function DataProvider({
       invoiceExtensions,
       paidIds,
       removedInvoiceIds,
+      revokedResidentLogins,
       bankSettings,
       serviceDirectory,
       ...overrides,
@@ -913,9 +942,18 @@ export function DataProvider({
       showToast(tr(err))
       return
     }
-    setResidentList((prev) =>
-      prev.map((r) => (r.id === selectedResidentId ? { ...r, phone, pin } : r)),
+    const nextRevoked = removeRevokedResidentLogin(revokedResidentLogins, selectedResidentId)
+    const nextResidentList = residentList.map((r) =>
+      r.id === selectedResidentId ? { ...r, phone, pin } : r,
     )
+    setRevokedResidentLogins(nextRevoked)
+    setResidentList(nextResidentList)
+    void pushOpsToCloud({
+      residentList: nextResidentList,
+      revokedResidentLogins: nextRevoked,
+    }).then((synced) => {
+      if (!synced) showToast(tr('paymentSyncFailed'))
+    })
     showToast(tr('loginPinSaved'))
   }
 
@@ -923,9 +961,18 @@ export function DataProvider({
     if (session?.role !== 'admin') return
     if (!selectedResidentId) return
     clearResidentCredentials(selectedResidentId)
-    setResidentList((prev) =>
-      prev.map((r) => (r.id === selectedResidentId ? { ...r, phone: '', pin: '' } : r)),
+    const nextRevoked = addRevokedResidentLogin(revokedResidentLogins, selectedResidentId)
+    const nextResidentList = residentList.map((r) =>
+      r.id === selectedResidentId ? { ...r, phone: '', pin: '' } : r,
     )
+    setRevokedResidentLogins(nextRevoked)
+    setResidentList(nextResidentList)
+    void pushOpsToCloud({
+      residentList: nextResidentList,
+      revokedResidentLogins: nextRevoked,
+    }).then((synced) => {
+      if (!synced) showToast(tr('paymentSyncFailed'))
+    })
     showToast(tr('loginCleared'))
   }
 
@@ -970,11 +1017,14 @@ export function DataProvider({
     setInvoiceMap((prev) => ({ ...prev, [id]: [] }))
     setTicketMap((prev) => ({ ...prev, [id]: [] }))
     setSelectedResidentId(id)
+    const nextRevoked = removeRevokedResidentLogin(revokedResidentLogins, id)
     const nextResidentList = [...residentList, next]
+    setRevokedResidentLogins(nextRevoked)
     void pushOpsToCloud({
       residentList: nextResidentList,
       invoiceMap: { ...invoiceMap, [id]: [] },
       ticketMap: { ...ticketMap, [id]: [] },
+      revokedResidentLogins: nextRevoked,
     }).then((synced) => {
       if (!synced) showToast(tr('paymentSyncFailed'))
     })
@@ -1036,41 +1086,53 @@ export function DataProvider({
     if (!resident) return
     const invoiceIds = (invoiceMap[selectedResidentId] ?? []).map((inv) => inv.id)
     clearResidentCredentials(selectedResidentId)
-    setResidentList((prev) =>
-      prev.map((r) =>
-        r.id === selectedResidentId
-          ? {
-              ...r,
-              name: '',
-              phone: '',
-              pin: '',
-              parking: '',
-              occupants: undefined,
-              leaseStart: undefined,
-              leaseEnd: '',
-              rentAmount: 0,
-              rentDueDay: 1,
-              rentSchedule: 1,
-              contractTotal: 0,
-              amountPaid: 0,
-              status: 'active',
-            }
-          : r,
-      ),
+    const nextRevoked = addRevokedResidentLogin(revokedResidentLogins, selectedResidentId)
+    const nextRemovedInvoiceIds = mergeRemovedInvoiceIdList(removedInvoiceIds, invoiceIds)
+    const nextResidentList = residentList.map((r) =>
+      r.id === selectedResidentId
+        ? {
+            ...r,
+            name: '',
+            phone: '',
+            pin: '',
+            parking: '',
+            occupants: undefined,
+            leaseStart: undefined,
+            leaseEnd: '',
+            rentAmount: 0,
+            rentDueDay: 1,
+            rentSchedule: blankResident.rentSchedule,
+            contractTotal: 0,
+            amountPaid: 0,
+            status: 'active' as const,
+          }
+        : r,
     )
-    setInvoiceMap((prev) => {
-      const next = { ...prev }
-      delete next[selectedResidentId]
-      return next
+    const nextInvoiceMap = { ...invoiceMap }
+    delete nextInvoiceMap[selectedResidentId]
+    const nextExtensions = { ...invoiceExtensions }
+    for (const id of invoiceIds) delete nextExtensions[id]
+    const nextPaidIds = paidIds.filter((id) => !invoiceIds.includes(id))
+    const nextPayments = payments.filter((p) => p.residentId !== selectedResidentId)
+
+    setRevokedResidentLogins(nextRevoked)
+    setResidentList(nextResidentList)
+    setInvoiceMap(nextInvoiceMap)
+    setInvoiceExtensions(nextExtensions)
+    setPaidIds(nextPaidIds)
+    setPayments(nextPayments)
+    setRemovedInvoiceIds(nextRemovedInvoiceIds)
+    void pushOpsToCloud({
+      residentList: nextResidentList,
+      invoiceMap: nextInvoiceMap,
+      invoiceExtensions: nextExtensions,
+      paidIds: nextPaidIds,
+      payments: nextPayments,
+      removedInvoiceIds: nextRemovedInvoiceIds,
+      revokedResidentLogins: nextRevoked,
+    }).then((synced) => {
+      if (!synced) showToast(tr('paymentSyncFailed'))
     })
-    if (invoiceIds.length > 0) {
-      setInvoiceExtensions((prev) => {
-        const next = { ...prev }
-        for (const id of invoiceIds) delete next[id]
-        return next
-      })
-      setPaidIds((prev) => prev.filter((id) => !invoiceIds.includes(id)))
-    }
     showToast(tr('apartmentCleared'))
   }
 
@@ -1206,10 +1268,15 @@ export function DataProvider({
         }
       }
       setInvoiceMap(nextInvoiceMap)
+      const nextRevoked = input.phone.trim() && pin
+        ? removeRevokedResidentLogin(revokedResidentLogins, next.id)
+        : revokedResidentLogins
+      setRevokedResidentLogins(nextRevoked)
       void pushOpsToCloud({
         residentList: nextResidentList,
         invoiceMap: nextInvoiceMap,
         ticketMap: { ...ticketMap, [next.id]: ticketMap[next.id] ?? [] },
+        revokedResidentLogins: nextRevoked,
       }).then((synced) => {
         if (!synced) showToast(tr('paymentSyncFailed'))
       })
@@ -1286,11 +1353,17 @@ export function DataProvider({
     setPaidIds(nextPaidIds)
     setPayments(nextPayments)
     setSelectedResidentId(residentId)
+    const nextRevoked =
+      phone && accountPin
+        ? removeRevokedResidentLogin(revokedResidentLogins, residentId)
+        : revokedResidentLogins
+    setRevokedResidentLogins(nextRevoked)
     void pushOpsToCloud({
       residentList: nextResidentList,
       invoiceMap: nextInvoiceMap,
       paidIds: nextPaidIds,
       payments: nextPayments,
+      revokedResidentLogins: nextRevoked,
     }).then((synced) => {
       if (!synced) showToast(tr('paymentSyncFailed'))
     })
@@ -1304,40 +1377,48 @@ export function DataProvider({
 
     const invoiceIds = (invoiceMap[residentId] ?? []).map((inv) => inv.id)
     clearResidentCredentials(residentId)
-
-    setPayments((prev) => prev.filter((p) => p.residentId !== residentId))
-
-    setInvoiceMap((prev) => {
-      const next = { ...prev }
-      delete next[residentId]
-      return next
-    })
-    setTicketMap((prev) => {
-      const next = { ...prev }
-      delete next[residentId]
-      return next
-    })
-    if (invoiceIds.length > 0) {
-      setInvoiceExtensions((prev) => {
-        const next = { ...prev }
-        for (const id of invoiceIds) delete next[id]
-        return next
-      })
-      setPaidIds((prev) => prev.filter((id) => !invoiceIds.includes(id)))
-    }
+    const nextRevoked = addRevokedResidentLogin(revokedResidentLogins, residentId)
+    const nextRemovedInvoiceIds = mergeRemovedInvoiceIdList(removedInvoiceIds, invoiceIds)
+    const nextPayments = payments.filter((p) => p.residentId !== residentId)
+    const nextInvoiceMap = { ...invoiceMap }
+    delete nextInvoiceMap[residentId]
+    const nextTicketMap = { ...ticketMap }
+    delete nextTicketMap[residentId]
+    const nextExtensions = { ...invoiceExtensions }
+    for (const id of invoiceIds) delete nextExtensions[id]
+    const nextPaidIds = paidIds.filter((id) => !invoiceIds.includes(id))
 
     const seed = apartmentUnits.find((u) => u.id === residentId)
-    if (seed) {
-      setResidentList((prev) => prev.map((r) => (r.id === residentId ? seed : r)))
-    } else {
-      setResidentList((prev) => prev.filter((r) => r.id !== residentId))
-    }
+    const nextResidentList = seed
+      ? residentList.map((r) => (r.id === residentId ? seed : r))
+      : residentList.filter((r) => r.id !== residentId)
+
+    setRevokedResidentLogins(nextRevoked)
+    setPayments(nextPayments)
+    setInvoiceMap(nextInvoiceMap)
+    setTicketMap(nextTicketMap)
+    setInvoiceExtensions(nextExtensions)
+    setPaidIds(nextPaidIds)
+    setRemovedInvoiceIds(nextRemovedInvoiceIds)
+    setResidentList(nextResidentList)
 
     if (selectedResidentId === residentId) {
-      const remaining = residentList.filter((r) => r.id !== residentId)
+      const remaining = nextResidentList.filter((r) => r.id !== residentId)
       setSelectedResidentId(remaining[0]?.id ?? '')
     }
 
+    void pushOpsToCloud({
+      residentList: nextResidentList,
+      payments: nextPayments,
+      invoiceMap: nextInvoiceMap,
+      ticketMap: nextTicketMap,
+      invoiceExtensions: nextExtensions,
+      paidIds: nextPaidIds,
+      removedInvoiceIds: nextRemovedInvoiceIds,
+      revokedResidentLogins: nextRevoked,
+    }).then((synced) => {
+      if (!synced) showToast(tr('paymentSyncFailed'))
+    })
     showToast(tr('apartmentRemoved'))
   }
 
@@ -1770,6 +1851,7 @@ export function DataProvider({
       invoiceExtensions,
       paidIds,
       removedInvoiceIds,
+      revokedResidentLogins,
       bankSettings,
       serviceDirectory,
     }
