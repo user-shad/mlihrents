@@ -82,6 +82,15 @@ export interface PortalOps {
   rentScheduleUsesIntervalMonths?: boolean
   /** When set, all devices clear local payment cache once this timestamp is seen. */
   paymentResetAt?: string
+  /** Rent reminder send log: residentId:YYYY-MM → ISO timestamp. */
+  whatsappReminderLog?: Record<string, string>
+  whatsappReminderLastRun?: {
+    at: string
+    sent: number
+    skipped: number
+    failed: number
+    errors: string[]
+  }
 }
 
 export interface BootstrapData {

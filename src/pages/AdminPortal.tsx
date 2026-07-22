@@ -27,6 +27,7 @@ import {
   remainingBalance,
   rentScheduleLabel,
   residentsForLeaseEndReminder,
+  residentsForRentReminder,
   RentSchedule,
   suggestInstallment,
   unitCodeLabel,
@@ -55,6 +56,7 @@ import { PaymentProofThumb } from '../components/PaymentProofThumb'
 import { isBuildingAdmin, staffCan } from '../lib/staffPermissions'
 import { fetchPaymentProof } from '../lib/paymentProofApi'
 import { analyzePaymentReference } from '../lib/transferProofOcr'
+import { isWhatsAppAutoConfigured, runWhatsAppRentReminders } from '../lib/whatsappAuto'
 
 type Tab = AdminPortalTab
 
@@ -204,6 +206,11 @@ export default function AdminPortal() {
     () => residentsForLeaseEndReminder(residentList),
     [residentList],
   )
+  const rentReminderResidents = useMemo(
+    () => residentsForRentReminder(residentList),
+    [residentList],
+  )
+  const [whatsappReminderRunning, setWhatsappReminderRunning] = useState(false)
 
   const [apartmentSearch, setApartmentSearch] = useState('')
   const [apartmentEditorOpen, setApartmentEditorOpen] = useState(false)
@@ -783,6 +790,38 @@ export default function AdminPortal() {
       return
     }
     window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  async function runAutoWhatsAppReminders(force = false) {
+    if (whatsappReminderRunning) return
+    setWhatsappReminderRunning(true)
+    try {
+      const result = await runWhatsAppRentReminders(force)
+      if (!result.ok) {
+        showToast(tr('whatsappAutoNotConfigured'))
+        return
+      }
+      const run = result.run
+      if (!run) {
+        showToast(tr('whatsappAutoFailed'))
+        return
+      }
+      if (run.failed > 0) {
+        showToast(
+          lang === 'ar'
+            ? `أُرسل ${run.sent} · فشل ${run.failed} · تخطّي ${run.skipped}`
+            : `Sent ${run.sent} · failed ${run.failed} · skipped ${run.skipped}`,
+        )
+      } else {
+        showToast(
+          lang === 'ar'
+            ? `تم إرسال ${run.sent} تذكير · تخطّي ${run.skipped}`
+            : `Sent ${run.sent} reminder(s) · skipped ${run.skipped}`,
+        )
+      }
+    } finally {
+      setWhatsappReminderRunning(false)
+    }
   }
 
   function sendLeaseEndReminder(resident = selectedResident) {
@@ -1941,6 +1980,52 @@ export default function AdminPortal() {
                 ))}
                 {leaseEndReminderResidents.length === 0 && (
                   <p className="meta">{tr('leaseEndRemindersEmpty')}</p>
+                )}
+              </div>
+            </section>
+
+            <section className="panel" style={{ marginTop: '1rem' }}>
+              <div className="file-head">
+                <div>
+                  <h2 style={{ marginBottom: '0.25rem' }}>
+                    {tr('whatsappAutoReminders')}
+                    {rentReminderResidents.length > 0 ? ` (${rentReminderResidents.length})` : ''}
+                  </h2>
+                  <p className="meta" style={{ margin: 0 }}>
+                    {tr('whatsappAutoRemindersLead')}
+                  </p>
+                </div>
+                <button
+                  className="btn btn-primary btn-sm"
+                  type="button"
+                  disabled={whatsappReminderRunning || rentReminderResidents.length === 0}
+                  title={tr('whatsappAutoRemindersHelp')}
+                  onClick={() => void runAutoWhatsAppReminders(false)}
+                >
+                  {whatsappReminderRunning ? tr('syncInProgress') : tr('whatsappAutoSendDue')}
+                </button>
+              </div>
+              {!isWhatsAppAutoConfigured() && (
+                <p className="meta" style={{ color: '#c44', marginTop: '0.75rem' }}>
+                  {tr('whatsappAutoNotConfigured')}
+                </p>
+              )}
+              <div className="list" style={{ marginTop: '0.75rem' }}>
+                {rentReminderResidents.map((resident) => (
+                  <div className="list-row" key={resident.id}>
+                    <div>
+                      <strong>
+                        <AdminUnitLink unit={unitCodeLabel(resident)} tab="payments" />
+                      </strong>
+                      <div className="meta">
+                        {resident.name.trim() || tr('vacantUnit')}
+                        {resident.phone ? ` · ${resident.phone}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {rentReminderResidents.length === 0 && (
+                  <p className="meta">{tr('whatsappAutoRemindersEmpty')}</p>
                 )}
               </div>
             </section>

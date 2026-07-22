@@ -7,6 +7,12 @@
       "maxDuration": 15
     }
   },
+  "crons": [
+    {
+      "path": "/api/whatsapp-reminders",
+      "schedule": "0 5 * * *"
+    }
+  ],
   "redirects": [
     {
       "source": "/:path*",

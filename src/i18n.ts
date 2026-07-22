@@ -345,6 +345,16 @@ const en: Dict = {
   nextApartment: 'Next',
   previousApartmentHelp: 'Previous apartment in the list',
   nextApartmentHelp: 'Next apartment in the list',
+  whatsappAutoReminders: 'Automatic WhatsApp reminders',
+  whatsappAutoRemindersLead:
+    'Sends rent reminders automatically via WhatsApp Cloud API (daily at 9:00 AM UAE, and when you click Send due reminders now). Requires Meta setup — see SETUP-WHATSAPP.md.',
+  whatsappAutoRemindersHelp: 'Send WhatsApp rent reminders to all due units now',
+  whatsappAutoSendDue: 'Send due reminders now',
+  whatsappAutoRemindersEmpty: 'No units need a rent reminder today.',
+  whatsappAutoNotConfigured:
+    'Automatic WhatsApp not configured — set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID on Vercel.',
+  whatsappAutoSent: 'WhatsApp message sent to resident',
+  whatsappAutoFailed: 'Could not send WhatsApp message',
   leaseEndReminders: 'Lease ending soon (2 months notice)',
   leaseEndRemindersLead:
     'Residents whose lease ends in about 2 months. Send a WhatsApp reminder to discuss renewal or move-out.',
@@ -807,6 +817,16 @@ const ar: Dict = {
   nextApartment: 'التالي',
   previousApartmentHelp: 'الشقة السابقة في القائمة',
   nextApartmentHelp: 'الشقة التالية في القائمة',
+  whatsappAutoReminders: 'تذكيرات واتساب التلقائية',
+  whatsappAutoRemindersLead:
+    'يرسل تذكيرات الإيجار تلقائياً عبر WhatsApp Cloud API (يومياً 9:00 صباحاً بتوقيت الإمارات، أو عند الضغط على «إرسال التذكيرات المستحقة»). يتطلب إعداد Meta — راجع SETUP-WHATSAPP.md.',
+  whatsappAutoRemindersHelp: 'إرسال تذكيرات الإيجار الآن لجميع الوحدات المستحقة',
+  whatsappAutoSendDue: 'إرسال التذكيرات المستحقة',
+  whatsappAutoRemindersEmpty: 'لا توجد وحدات تحتاج تذكير إيجار اليوم.',
+  whatsappAutoNotConfigured:
+    'واتساب التلقائي غير مهيأ — اضبط WHATSAPP_ACCESS_TOKEN و WHATSAPP_PHONE_NUMBER_ID على Vercel.',
+  whatsappAutoSent: 'تم إرسال رسالة واتساب للساكن',
+  whatsappAutoFailed: 'تعذر إرسال رسالة واتساب',
   leaseEndReminders: 'عقود تنتهي قريباً (تنبيه قبل شهرين)',
   leaseEndRemindersLead:
     'سكان يقترب موعد انتهاء عقدهم بنحو شهرين. أرسل تذكير واتساب لمناقشة التجديد أو المغادرة.',

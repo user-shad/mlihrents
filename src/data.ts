@@ -229,6 +229,18 @@ export function buildPaymentStatusWhatsAppMessage(
   return `Hello ${name},\n\n${detail}\n\nReview your payment status on the resident portal:\n${portalUrl}\n\n${brandName}`
 }
 
+/** Bilingual payment status update for automatic WhatsApp send. */
+export function buildPaymentStatusWhatsAppMessageBilingual(
+  payment: PaymentRecord,
+  kind: PaymentNotifyKind,
+  portalUrl: string,
+  brandName = 'MLIH Rents',
+) {
+  const en = buildPaymentStatusWhatsAppMessage(payment, kind, 'en', portalUrl, brandName)
+  const ar = buildPaymentStatusWhatsAppMessage(payment, kind, 'ar', portalUrl, brandName)
+  return `${en}\n\n———\n\n${ar}`
+}
+
 export function isValidPin(pin: string) {
   return /^\d{4}$/.test(pin)
 }
@@ -1293,6 +1305,13 @@ export function buildLeaseEndReminderWhatsAppMessage(
   const ar = buildLeaseEndReminderWhatsAppMessageForLang(resident, 'ar', portalUrl, brandName, monthsBefore)
   return `${en}\n\n———\n\n${ar}`
 }
+
+export {
+  isRentReminderDue,
+  residentsForRentReminder,
+  rentReminderLogKey,
+  wasRentReminderSent,
+} from '../lib/rentReminder'
 
 /** ISO due date for installment index (0 = first due in lease start month). */
 export function leaseInstallmentDueIso(

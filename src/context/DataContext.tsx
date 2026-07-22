@@ -38,6 +38,7 @@ import {
   findDuplicateBankReference,
   isValidBankReference,
   buildInstallmentInvoice,
+  buildPaymentStatusWhatsAppMessageBilingual,
   canCollectRent,
   formatMoney,
   isUnitOccupied,
@@ -48,6 +49,7 @@ import {
   unitCodeLabel,
   RentSchedule,
   Resident,
+  type PaymentNotifyKind,
   apartmentUnits,
   buildEmptyApartment,
   migrateResident,
@@ -83,6 +85,8 @@ import {
 } from '../lib/cloudSync'
 import { attachProofsToOps, readLocalProofs } from '../lib/localProofStore'
 import { uploadPaymentProof } from '../lib/paymentProofApi'
+import { siteLegal } from '../legal/siteLegal'
+import { sendWhatsAppAuto } from '../lib/whatsappAuto'
 
 const LEGACY_A1_TEST_ID = 'apt-a1'
 const LEGACY_A1_TEST_INVOICE = 'INV-TEST-A1'
@@ -457,6 +461,21 @@ export function DataProvider({
 
   function showToast(msg: string) {
     setToast(msg)
+  }
+
+  function autoNotifyPaymentWhatsApp(payment: PaymentRecord, kind: PaymentNotifyKind) {
+    const resident = residentList.find((r) => r.id === payment.residentId)
+    const phone = resident?.phone?.trim() ?? ''
+    if (!phone) return
+    const message = buildPaymentStatusWhatsAppMessageBilingual(
+      payment,
+      kind,
+      `${siteLegal.publicUrl}/resident`,
+      siteLegal.brandName,
+    )
+    void sendWhatsAppAuto(phone, message).then((ok) => {
+      if (ok) showToast(tr('whatsappAutoSent'))
+    })
   }
 
   function denyStaff(capability: StaffCapability) {
@@ -1426,6 +1445,15 @@ export function DataProvider({
           ? 'تم تسجيل دفعة جزئية — الفاتورة ما زالت مستحقة'
           : 'Partial payment recorded — invoice remains due',
     )
+    autoNotifyPaymentWhatsApp(
+      {
+        ...payment,
+        status: nextStatus,
+        confirmedAmount: verified,
+        reviewedAt,
+      },
+      exact ? 'approved' : 'partial',
+    )
   }
 
   function rejectBankPayment(paymentId: string, note?: string) {
@@ -1445,6 +1473,15 @@ export function DataProvider({
       ),
     )
     showToast(lang === 'ar' ? 'تم رفض التحويل — الفاتورة ما زالت مستحقة' : 'Transfer rejected — invoice remains due')
+    autoNotifyPaymentWhatsApp(
+      {
+        ...payment,
+        status: 'rejected',
+        reviewedAt,
+        reviewNote: note?.trim() || 'Rejected — amount or proof could not be verified',
+      },
+      'rejected',
+    )
   }
 
   function deletePayment(paymentId: string) {
