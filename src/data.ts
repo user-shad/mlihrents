@@ -1294,6 +1294,30 @@ export function buildLeaseEndReminderWhatsAppMessage(
   return `${en}\n\n———\n\n${ar}`
 }
 
+/** ISO due date for installment index (0 = first due in lease start month). */
+export function leaseInstallmentDueIso(
+  resident: Pick<Resident, 'leaseStart' | 'rentDueDay' | 'rentSchedule'>,
+  installmentIndex: number,
+): string | null {
+  const start = parseLeaseStartDate(resident.leaseStart)
+  if (!start || installmentIndex < 0) return null
+  const intervalMonths = normalizeRentSchedule(resident.rentSchedule)
+  const dueDay = resident.rentDueDay || 1
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1)
+  cursor.setMonth(cursor.getMonth() + installmentIndex * intervalMonths)
+  return calendarDueDateIso(cursor.getFullYear(), cursor.getMonth() + 1, dueDay)
+}
+
+/** Next unpaid installment due date from lease start and amount paid. */
+export function nextLeaseInstallmentDueIso(
+  resident: Pick<
+    Resident,
+    'leaseStart' | 'rentDueDay' | 'rentSchedule' | 'amountPaid' | 'rentAmount'
+  >,
+): string | null {
+  return leaseInstallmentDueIso(resident, openInstallmentIndex(resident))
+}
+
 /** Count rent installments due from lease start through a calendar month (inclusive). */
 export function installmentCountThroughMonth(
   resident: Resident,
@@ -1334,9 +1358,9 @@ export function applyRentPaidThroughMonth(
   paidIds: string[],
   throughYear: number,
   throughMonth: number,
+  lang: 'en' | 'ar' = 'en',
 ) {
-  const throughIso = `${throughYear}-${String(throughMonth).padStart(2, '0')}-31`
-  const throughKey = `${throughYear}-${String(throughMonth).padStart(2, '0')}`
+  const paidSet = new Set(paidIds)
 
   const nextResidents = residentList.map((resident) => {
     if (!isUnitOccupied(resident) || !hasRentPlan(resident)) return resident
@@ -1346,9 +1370,14 @@ export function applyRentPaidThroughMonth(
       ? resident.amountPaid
       : Math.min(resident.contractTotal, Math.max(resident.amountPaid, targetPaid))
     const caughtUp = amountPaid >= targetPaid
+    const nextDueDateIso =
+      nextLeaseInstallmentDueIso({ ...resident, amountPaid }) ??
+      resident.nextDueDateIso
     return {
       ...resident,
       amountPaid,
+      nextDueDateIso,
+      rentDueDay: nextDueDateIso ? rentDueDayFromIso(nextDueDateIso) : resident.rentDueDay,
       status:
         resident.status === 'notice'
           ? resident.status
@@ -1358,18 +1387,18 @@ export function applyRentPaidThroughMonth(
     }
   })
 
-  const paidSet = new Set(paidIds)
   const nextInvoiceMap: Record<string, Invoice[]> = {}
-  for (const [residentId, invoices] of Object.entries(invoiceMap)) {
-    nextInvoiceMap[residentId] = invoices.map((inv) => {
-      const dueKey = inv.dueDateIso?.slice(0, 7)
-      const shouldMarkPaid =
-        (inv.dueDateIso && inv.dueDateIso <= throughIso) ||
-        (dueKey && dueKey <= throughKey)
-      if (!shouldMarkPaid || inv.status === 'paid') return inv
-      paidSet.add(inv.id)
-      return { ...inv, status: 'paid' as const }
-    })
+  for (const resident of nextResidents) {
+    const existing = invoiceMap[resident.id] ?? []
+    for (const inv of existing) paidSet.delete(inv.id)
+
+    if (!isUnitOccupied(resident) || !hasRentPlan(resident) || remainingBalance(resident) <= 0) {
+      nextInvoiceMap[resident.id] = []
+      continue
+    }
+
+    const open = buildInstallmentInvoice(resident, lang)
+    nextInvoiceMap[resident.id] = open ? [open] : []
   }
 
   return {
@@ -1504,7 +1533,7 @@ export function resolveNextDueDateIso(
   >,
 ): string {
   if (isValidIsoDate(resident.nextDueDateIso)) return resident.nextDueDateIso!
-  return nextCalendarInstallmentDueIso(resident)
+  return nextLeaseInstallmentDueIso(resident) ?? nextCalendarInstallmentDueIso(resident)
 }
 
 /** Move a due date forward by N months (schedule interval). */

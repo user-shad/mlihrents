@@ -3,6 +3,7 @@ import {
   amountDueThroughMonth,
   applyRentPaidThroughMonth,
   installmentCountThroughMonth,
+  leaseInstallmentDueIso,
   type Invoice,
   type Resident,
 } from './data'
@@ -50,19 +51,36 @@ describe('rent paid through month', () => {
           dueDate: '1 Jul 2026',
           status: 'due',
         },
+        {
+          id: 'INV-A1-202608',
+          period: 'Aug 2026',
+          amount: 2500,
+          dueDateIso: '2026-08-01',
+          dueDate: '1 Aug 2026',
+          status: 'due',
+        },
       ],
     }
 
-    const fixed = applyRentPaidThroughMonth([resident], invoiceMap, [], 2026, 7)
+    const fixed = applyRentPaidThroughMonth([resident], invoiceMap, ['INV-A1-202607'], 2026, 7)
     expect(fixed.residentList[0].amountPaid).toBe(22_500)
+    expect(fixed.residentList[0].nextDueDateIso).toBe('2026-08-01')
     expect(fixed.residentList[0].status).toBe('active')
-    expect(fixed.invoiceMap['apt-a1'][0].status).toBe('paid')
-    expect(fixed.paidIds).toContain('INV-A1-202607')
+    expect(fixed.invoiceMap['apt-a1']).toHaveLength(1)
+    expect(fixed.invoiceMap['apt-a1'][0].id).toBe('INV-A1-202608')
+    expect(fixed.invoiceMap['apt-a1'][0].status).toBe('due')
+    expect(fixed.paidIds).not.toContain('INV-A1-202607')
   })
 
   it('does not change amountPaid when amountPaidManual is set', () => {
     const resident = sampleResident({ amountPaid: 5000, amountPaidManual: true })
     const fixed = applyRentPaidThroughMonth([resident], {}, [], 2026, 7)
     expect(fixed.residentList[0].amountPaid).toBe(5000)
+  })
+
+  it('derives next due date from lease start after paid-through month', () => {
+    const resident = sampleResident()
+    expect(leaseInstallmentDueIso(resident, 8)).toBe('2026-07-01')
+    expect(leaseInstallmentDueIso(resident, 9)).toBe('2026-08-01')
   })
 })

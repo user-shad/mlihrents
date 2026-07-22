@@ -75,11 +75,75 @@ function calendarDueDateIso(year, month, dueDay) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
-function applyRentPaidThroughMonth(residentList, invoiceMap, paidIds, throughYear, throughMonth) {
-  const throughIso = `${throughYear}-${String(throughMonth).padStart(2, '0')}-31`
-  const throughKey = `${throughYear}-${String(throughMonth).padStart(2, '0')}`
-  const nextDueYear = throughMonth === 12 ? throughYear + 1 : throughYear
-  const nextDueMonth = throughMonth === 12 ? 1 : throughMonth + 1
+function remainingBalance(resident) {
+  return Math.max(0, resident.contractTotal - resident.amountPaid)
+}
+
+function openInstallmentIndex(resident) {
+  if (resident.rentAmount <= 0) return 0
+  return Math.floor(Math.max(0, resident.amountPaid) / resident.rentAmount)
+}
+
+function leaseInstallmentDueIso(resident, installmentIndex) {
+  const start = parseLeaseStartDate(resident.leaseStart)
+  if (!start || installmentIndex < 0) return null
+  const intervalMonths = normalizeRentSchedule(resident.rentSchedule)
+  const dueDay = resident.rentDueDay || 1
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1)
+  cursor.setMonth(cursor.getMonth() + installmentIndex * intervalMonths)
+  return calendarDueDateIso(cursor.getFullYear(), cursor.getMonth() + 1, dueDay)
+}
+
+function nextLeaseInstallmentDueIso(resident) {
+  return leaseInstallmentDueIso(resident, openInstallmentIndex(resident))
+}
+
+function rentDueDayFromIso(iso) {
+  const day = Number(iso.slice(8, 10))
+  return Math.min(28, Math.max(1, Number.isFinite(day) ? day : 1))
+}
+
+function periodLabelFromIso(iso, lang = 'en') {
+  const d = new Date(`${iso}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return iso
+  if (lang === 'ar') return d.toLocaleDateString('ar-AE', { month: 'long', year: 'numeric' })
+  return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+}
+
+function formatIsoDueDate(iso, lang = 'en') {
+  const d = new Date(`${iso}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return iso
+  if (lang === 'ar') return d.toLocaleDateString('ar-AE', { day: 'numeric', month: 'long', year: 'numeric' })
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function isPastDue(iso, today = new Date()) {
+  if (!iso) return false
+  const due = new Date(`${iso}T23:59:59`)
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  return due < start
+}
+
+function buildInstallmentInvoice(resident, lang = 'en') {
+  const remaining = remainingBalance(resident)
+  if (remaining <= 0 || resident.rentAmount <= 0) return null
+  const dueDateIso = resident.nextDueDateIso || nextLeaseInstallmentDueIso(resident)
+  if (!dueDateIso) return null
+  const [y, m] = dueDateIso.split('-')
+  const unit = (resident.apartment || resident.id).replace(/\s+/g, '')
+  const id = `INV-${unit}-${y}${m}`
+  return {
+    id,
+    period: periodLabelFromIso(dueDateIso, lang),
+    amount: Math.min(resident.rentAmount, remaining),
+    dueDateIso,
+    dueDate: formatIsoDueDate(dueDateIso, lang),
+    status: isPastDue(dueDateIso) ? 'overdue' : 'due',
+  }
+}
+
+function applyRentPaidThroughMonth(residentList, invoiceMap, paidIds, throughYear, throughMonth, lang = 'en') {
+  const paidSet = new Set(paidIds)
 
   const nextResidents = residentList.map((resident) => {
     if (!isUnitOccupied(resident) || !hasRentPlan(resident)) return resident
@@ -89,13 +153,12 @@ function applyRentPaidThroughMonth(residentList, invoiceMap, paidIds, throughYea
       ? resident.amountPaid
       : Math.min(resident.contractTotal, Math.max(resident.amountPaid, targetPaid))
     const caughtUp = amountPaid >= targetPaid
-    const dueDay = Math.min(28, Math.max(1, Number(resident.rentDueDay) || 1))
-    const nextDueDateIso = calendarDueDateIso(nextDueYear, nextDueMonth, dueDay)
+    const nextDueDateIso = nextLeaseInstallmentDueIso({ ...resident, amountPaid }) ?? resident.nextDueDateIso
     return {
       ...resident,
       amountPaid,
       nextDueDateIso,
-      rentDueDay: dueDay,
+      rentDueDay: nextDueDateIso ? rentDueDayFromIso(nextDueDateIso) : resident.rentDueDay,
       status:
         resident.status === 'notice'
           ? resident.status
@@ -105,18 +168,18 @@ function applyRentPaidThroughMonth(residentList, invoiceMap, paidIds, throughYea
     }
   })
 
-  const paidSet = new Set(paidIds)
   const nextInvoiceMap = {}
-  for (const [residentId, invoices] of Object.entries(invoiceMap ?? {})) {
-    nextInvoiceMap[residentId] = (invoices ?? []).map((inv) => {
-      const dueKey = inv.dueDateIso?.slice(0, 7)
-      const shouldMarkPaid =
-        (inv.dueDateIso && inv.dueDateIso <= throughIso) ||
-        (dueKey && dueKey <= throughKey)
-      if (!shouldMarkPaid || inv.status === 'paid') return inv
-      paidSet.add(inv.id)
-      return { ...inv, status: 'paid' }
-    })
+  for (const resident of nextResidents) {
+    const existing = invoiceMap[resident.id] ?? []
+    for (const inv of existing) paidSet.delete(inv.id)
+
+    if (!isUnitOccupied(resident) || !hasRentPlan(resident) || remainingBalance(resident) <= 0) {
+      nextInvoiceMap[resident.id] = []
+      continue
+    }
+
+    const open = buildInstallmentInvoice(resident, lang)
+    nextInvoiceMap[resident.id] = open ? [open] : []
   }
 
   return {
@@ -124,19 +187,6 @@ function applyRentPaidThroughMonth(residentList, invoiceMap, paidIds, throughYea
     invoiceMap: nextInvoiceMap,
     paidIds: [...paidSet],
   }
-}
-
-function markAllOpenInvoicesPaid(invoiceMap, paidIds) {
-  const paidSet = new Set(paidIds)
-  const nextInvoiceMap = {}
-  for (const [residentId, invoices] of Object.entries(invoiceMap ?? {})) {
-    nextInvoiceMap[residentId] = (invoices ?? []).map((inv) => {
-      if (inv.status === 'paid') return inv
-      paidSet.add(inv.id)
-      return { ...inv, status: 'paid' }
-    })
-  }
-  return { invoiceMap: nextInvoiceMap, paidIds: [...paidSet] }
 }
 
 async function loadToken() {
@@ -177,16 +227,16 @@ async function main() {
     THROUGH_YEAR,
     THROUGH_MONTH,
   )
-  const closedInvoices = markAllOpenInvoicesPaid(fixed.invoiceMap, fixed.paidIds)
 
   const afterPaid = fixed.residentList.reduce((sum, r) => sum + (Number(r.amountPaid) || 0), 0)
   const updatedUnits = fixed.residentList.filter((r, idx) => {
     const prev = (ops.residentList ?? [])[idx]
     return prev && Number(r.amountPaid) !== Number(prev.amountPaid)
   })
+  const invoiceCount = Object.values(fixed.invoiceMap).reduce((n, invs) => n + (invs?.length ?? 0), 0)
 
   console.log(`Through: Jul ${THROUGH_YEAR}`)
-  console.log(`Next due month: Aug ${THROUGH_YEAR}`)
+  console.log(`Next due: lease-based (typically Aug ${THROUGH_YEAR})`)
   console.log(`Occupied units with rent plan: ${fixed.residentList.filter((r) => isUnitOccupied(r) && hasRentPlan(r)).length}`)
   console.log(`Units with amountPaid updated: ${updatedUnits.length}`)
   const manualSkipped = fixed.residentList.filter(
@@ -194,15 +244,15 @@ async function main() {
   ).length
   if (manualSkipped > 0) console.log(`Units skipped (amountPaidManual): ${manualSkipped}`)
   console.log(`Total amountPaid: ${beforePaid.toLocaleString()} -> ${afterPaid.toLocaleString()} AED`)
-  console.log(`Paid invoice ids: ${closedInvoices.paidIds.length}`)
+  console.log(`Open invoices (one per unit): ${invoiceCount}`)
 
   const payload = {
     accounts,
     ops: {
       ...ops,
       residentList: fixed.residentList,
-      invoiceMap: closedInvoices.invoiceMap,
-      paidIds: closedInvoices.paidIds,
+      invoiceMap: fixed.invoiceMap,
+      paidIds: fixed.paidIds,
       payments: (ops.payments ?? []).filter((p) => p.status !== 'pending_review'),
     },
   }
