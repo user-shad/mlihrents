@@ -3,6 +3,7 @@ import type { SyncPayload } from './syncProofStore.js'
 export type PaymentLike = {
   id: string
   status?: string
+  residentId?: string
   transferProof?: { name: string; dataUrl?: string }
 }
 
@@ -147,10 +148,12 @@ function mergeResidentRecord<T extends ResidentLike>(
 
   return {
     ...base,
-    contractTotal: Math.max(remoteTotal, localTotal),
-    rentAmount: Math.max(remoteRent, localRent),
+    contractTotal: preferLocal ? localTotal : Math.max(remoteTotal, localTotal),
+    rentAmount: preferLocal ? localRent : Math.max(remoteRent, localRent),
     amountPaid,
-    amountPaidManual: Boolean(local.amountPaidManual || remote.amountPaidManual),
+    amountPaidManual: preferLocal
+      ? Boolean(local.amountPaidManual)
+      : Boolean(local.amountPaidManual || remote.amountPaidManual),
     rentSchedule:
       localRent > 0 && remoteRent === 0
         ? local.rentSchedule
@@ -159,22 +162,29 @@ function mergeResidentRecord<T extends ResidentLike>(
           : preferLocal
             ? (local.rentSchedule ?? remote.rentSchedule)
             : (remote.rentSchedule ?? local.rentSchedule),
-    rentDueDay:
-      Math.max(Number(local.rentDueDay) || 0, Number(remote.rentDueDay) || 0) ||
-      remote.rentDueDay ||
-      local.rentDueDay,
+    rentDueDay: preferLocal
+      ? Number(local.rentDueDay) || remote.rentDueDay || local.rentDueDay
+      : Math.max(Number(local.rentDueDay) || 0, Number(remote.rentDueDay) || 0) ||
+        remote.rentDueDay ||
+        local.rentDueDay,
     nextDueDateIso: preferLocal
-      ? local.nextDueDateIso || remote.nextDueDateIso
+      ? local.nextDueDateIso ?? remote.nextDueDateIso
       : remote.nextDueDateIso || local.nextDueDateIso,
-    phone: (local.phone ?? '').trim() || remote.phone,
-    pin: local.pin || remote.pin,
-    name: (local.name ?? '').trim() || remote.name,
+    phone: preferLocal ? (local.phone ?? '') : (local.phone ?? '').trim() || remote.phone,
+    pin: preferLocal ? (local.pin ?? '') : local.pin || remote.pin,
+    name: preferLocal ? (local.name ?? '') : (local.name ?? '').trim() || remote.name,
     apartment: remote.apartment,
     id: remote.id,
-    buildingNumber: (local.buildingNumber ?? '').trim()
-      ? local.buildingNumber
-      : remote.buildingNumber,
+    buildingNumber: preferLocal
+      ? (local.buildingNumber ?? '')
+      : (local.buildingNumber ?? '').trim()
+        ? local.buildingNumber
+        : remote.buildingNumber,
   } as T
+}
+
+function revokedResidentSet(ids?: string[]): Set<string> {
+  return new Set((ids ?? []).map((id) => id.trim().toLowerCase()))
 }
 
 /** Merge residents field-wise; preferIncoming=false applies fresher cloud data on pull. */
@@ -182,12 +192,15 @@ export function mergeResidentLists<T extends ResidentLike>(
   remote: T[],
   local: T[],
   preferIncoming = true,
+  revokedResidentIds?: string[],
 ): T[] {
   if (!local.length) return remote
+  const revoked = revokedResidentSet(revokedResidentIds)
   const localById = new Map(local.map((r) => [r.id, r]))
   const merged = remote.map((remoteResident) => {
     const localResident = localById.get(remoteResident.id)
     if (!localResident) return remoteResident
+    if (revoked.has(remoteResident.id.trim().toLowerCase())) return localResident
     if (!residentRentFieldsDiffer(localResident, remoteResident)) return remoteResident
     return mergeResidentRecord(remoteResident, localResident, preferIncoming)
   })
@@ -244,9 +257,20 @@ function mergePaymentRecord<T extends PaymentLike>(existing: T, incoming: T): T 
 }
 
 /** Merge payment rows without dropping pending submissions from another device. */
-export function mergePaymentLists<T extends PaymentLike>(remote: T[], local: T[]): T[] {
+export function mergePaymentLists<T extends PaymentLike>(
+  remote: T[],
+  local: T[],
+  revokedResidentIds?: string[],
+): T[] {
+  const revoked = revokedResidentSet(revokedResidentIds)
+  const filteredRemote = revoked.size
+    ? remote.filter((payment) => {
+        const residentId = payment.residentId?.trim().toLowerCase() ?? ''
+        return !residentId || !revoked.has(residentId)
+      })
+    : remote
   const map = new Map<string, T>()
-  for (const payment of remote) map.set(payment.id, payment)
+  for (const payment of filteredRemote) map.set(payment.id, payment)
   for (const payment of local) {
     const existing = map.get(payment.id)
     if (!existing) {
@@ -284,10 +308,16 @@ export function mergeInvoiceLists<T extends InvoiceLike>(remote: T[], local: T[]
 export function mergeInvoiceMaps<T extends InvoiceLike>(
   remote: Record<string, T[]>,
   local: Record<string, T[]>,
+  revokedResidentIds?: string[],
 ): Record<string, T[]> {
+  const revoked = revokedResidentSet(revokedResidentIds)
   const ids = new Set([...Object.keys(remote), ...Object.keys(local)])
   const merged: Record<string, T[]> = {}
   for (const id of ids) {
+    if (revoked.has(id.trim().toLowerCase())) {
+      if (id in local) merged[id] = local[id] ?? []
+      continue
+    }
     merged[id] = mergeInvoiceLists(remote[id] ?? [], local[id] ?? [])
   }
   return merged
@@ -318,17 +348,29 @@ export function mergeTicketLists<T extends TicketLike>(remote: T[], local: T[]):
 export function mergeTicketMaps<T extends TicketLike>(
   remote: Record<string, T[]>,
   local: Record<string, T[]>,
+  revokedResidentIds?: string[],
 ): Record<string, T[]> {
+  const revoked = revokedResidentSet(revokedResidentIds)
   const ids = new Set([...Object.keys(remote), ...Object.keys(local)])
   const merged: Record<string, T[]> = {}
   for (const id of ids) {
+    if (revoked.has(id.trim().toLowerCase())) {
+      if (id in local) merged[id] = local[id] ?? []
+      continue
+    }
     merged[id] = mergeTicketLists(remote[id] ?? [], local[id] ?? [])
   }
   return merged
 }
 
-export function mergePaidIds(remote: string[] | undefined, local: string[] | undefined): string[] {
-  return [...new Set([...(remote ?? []), ...(local ?? [])])]
+export function mergePaidIds(
+  remote: string[] | undefined,
+  local: string[] | undefined,
+  removedInvoiceIds?: string[],
+): string[] {
+  const removed = new Set((removedInvoiceIds ?? []).map(invoiceIdKey))
+  const merged = [...new Set([...(remote ?? []), ...(local ?? [])])]
+  return removed.size ? merged.filter((id) => !removed.has(invoiceIdKey(id))) : merged
 }
 
 function invoiceIdKey(id: string) {
@@ -366,9 +408,15 @@ export function applyRemovedInvoices<T extends InvoiceLike>(
 export function mergeInvoiceExtensions(
   remote: Record<string, number> | undefined,
   local: Record<string, number> | undefined,
+  removedInvoiceIds?: string[],
 ): Record<string, number> {
-  const merged: Record<string, number> = { ...(remote ?? {}) }
+  const removed = new Set((removedInvoiceIds ?? []).map(invoiceIdKey))
+  const merged: Record<string, number> = {}
+  for (const [id, days] of Object.entries(remote ?? {})) {
+    if (!removed.has(invoiceIdKey(id))) merged[id] = days
+  }
   for (const [id, days] of Object.entries(local ?? {})) {
+    if (removed.has(invoiceIdKey(id))) continue
     merged[id] = Math.max(merged[id] ?? 0, days)
   }
   return merged
@@ -397,37 +445,48 @@ export function mergePortalOps(
   remote: Record<string, unknown>,
   local: Record<string, unknown>,
 ): Record<string, unknown> {
+  const removedInvoiceIds = mergeRemovedInvoiceIds(
+    idList(remote.removedInvoiceIds),
+    idList(local.removedInvoiceIds),
+  )
+  const revokedResidentLogins = mergeRevokedResidentLogins(
+    idList(remote.revokedResidentLogins),
+    idList(local.revokedResidentLogins),
+  )
   return {
     ...remote,
     ...local,
-    residentList: mergeResidentLists(residentList(remote.residentList), residentList(local.residentList), true),
+    residentList: mergeResidentLists(
+      residentList(remote.residentList),
+      residentList(local.residentList),
+      true,
+      revokedResidentLogins,
+    ),
     payments: mergePaymentLists(
       Array.isArray(remote.payments) ? (remote.payments as PaymentLike[]) : [],
       Array.isArray(local.payments) ? (local.payments as PaymentLike[]) : [],
+      revokedResidentLogins,
     ),
-    removedInvoiceIds: mergeRemovedInvoiceIds(
-      idList(remote.removedInvoiceIds),
-      idList(local.removedInvoiceIds),
-    ),
-    revokedResidentLogins: mergeRevokedResidentLogins(
-      idList(remote.revokedResidentLogins),
-      idList(local.revokedResidentLogins),
-    ),
+    removedInvoiceIds,
+    revokedResidentLogins,
     invoiceMap: applyRemovedInvoices(
       mergeInvoiceMaps(
         recordMap<InvoiceLike>(remote.invoiceMap),
         recordMap<InvoiceLike>(local.invoiceMap),
+        revokedResidentLogins,
       ),
-      mergeRemovedInvoiceIds(idList(remote.removedInvoiceIds), idList(local.removedInvoiceIds)),
+      removedInvoiceIds,
     ),
     ticketMap: mergeTicketMaps(
       recordMap<TicketLike>(remote.ticketMap),
       recordMap<TicketLike>(local.ticketMap),
+      revokedResidentLogins,
     ),
-    paidIds: mergePaidIds(idList(remote.paidIds), idList(local.paidIds)),
+    paidIds: mergePaidIds(idList(remote.paidIds), idList(local.paidIds), removedInvoiceIds),
     invoiceExtensions: mergeInvoiceExtensions(
       extensionMap(remote.invoiceExtensions),
       extensionMap(local.invoiceExtensions),
+      removedInvoiceIds,
     ),
   }
 }

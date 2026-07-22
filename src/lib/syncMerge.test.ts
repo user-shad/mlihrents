@@ -88,6 +88,35 @@ describe('syncMerge', () => {
     expect(merged[0]?.amountPaid).toBe(0)
   })
 
+  it('prefers cleared local tenant fields over cloud when local is newer', () => {
+    const remote = [
+      {
+        id: 'apt-a1',
+        name: 'Old Tenant',
+        phone: '0501111111',
+        pin: '1234',
+        contractTotal: 36_000,
+        rentAmount: 3_000,
+        amountPaid: 9_000,
+      },
+    ]
+    const local = [
+      {
+        id: 'apt-a1',
+        name: '',
+        phone: '',
+        pin: '',
+        contractTotal: 0,
+        rentAmount: 0,
+        amountPaid: 0,
+      },
+    ]
+    const merged = mergeResidentLists(remote, local, true, ['apt-a1'])
+    expect(merged[0]?.name).toBe('')
+    expect(merged[0]?.phone).toBe('')
+    expect(merged[0]?.contractTotal).toBe(0)
+  })
+
   it('keeps contract total when cloud sync is newer but local has rent plan', () => {
     const remote = [
       {
@@ -134,6 +163,60 @@ describe('syncMerge', () => {
       { revokedResidentLogins: ['apt-a3'] },
     )
     expect((merged.revokedResidentLogins as string[]).sort()).toEqual(['apt-a1', 'apt-a3'])
+  })
+
+  it('keeps cleared apartment data removed when cloud still has old tenant', () => {
+    const merged = mergePortalOps(
+      {
+        residentList: [
+          {
+            id: 'apt-a1',
+            name: 'Old Tenant',
+            phone: '0501111111',
+            pin: '1234',
+            contractTotal: 36_000,
+            rentAmount: 3_000,
+            amountPaid: 9_000,
+          },
+        ],
+        invoiceMap: {
+          'apt-a1': [{ id: 'INV-A1-202608', status: 'due' }],
+        },
+        payments: [{ id: 'PAY-1', residentId: 'apt-a1', status: 'settled' }],
+        paidIds: ['INV-A1-202608'],
+        ticketMap: { 'apt-a1': [{ id: 'T-1', status: 'open' }] },
+      },
+      {
+        residentList: [
+          {
+            id: 'apt-a1',
+            name: '',
+            phone: '',
+            pin: '',
+            contractTotal: 0,
+            rentAmount: 0,
+            amountPaid: 0,
+          },
+        ],
+        invoiceMap: {},
+        payments: [],
+        paidIds: [],
+        ticketMap: {},
+        removedInvoiceIds: ['INV-A1-202608'],
+        revokedResidentLogins: ['apt-a1'],
+      },
+    )
+    const resident = (merged.residentList as { id: string; name?: string; contractTotal?: number }[])[0]
+    expect(resident?.name).toBe('')
+    expect(resident?.contractTotal).toBe(0)
+    expect((merged.invoiceMap as Record<string, unknown[]>)['apt-a1'] ?? []).toHaveLength(0)
+    expect((merged.payments as { id: string }[]).some((p) => p.id === 'PAY-1')).toBe(false)
+    expect((merged.paidIds as string[]).includes('INV-A1-202608')).toBe(false)
+    expect((merged.ticketMap as Record<string, unknown[]>)['apt-a1'] ?? []).toHaveLength(0)
+  })
+
+  it('drops removed invoice ids from paidIds merge', () => {
+    expect(mergePaidIds(['INV-1', 'INV-2'], ['INV-3'], ['INV-2']).sort()).toEqual(['INV-1', 'INV-3'])
   })
 
   it('merges sync payloads without dropping pending payments', () => {
