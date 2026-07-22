@@ -1,5 +1,5 @@
 /** @deprecated Import from `../config/siteConfig` — kept for existing imports. */
-export { siteConfig, isTradeLicenseConfigured } from '../config/siteConfig'
+export { siteConfig, isTradeLicenseConfigured, publicSiteUrl } from '../config/siteConfig'
 
 import { siteConfig } from '../config/siteConfig'
 

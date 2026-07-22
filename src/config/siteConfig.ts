@@ -59,14 +59,16 @@ function resolveProfile(): SiteProfile {
 
 function resolveLegal(profile: SiteProfile): SiteLegal {
   const base = profile === 'sample' ? SAMPLE_LEGAL : PRODUCTION_LEGAL
-  const publicUrl = env('VITE_PUBLIC_SITE_URL') ?? base.publicUrl
+  const publicUrl = env('VITE_PUBLIC_SITE_URL') ?? (profile === 'sample' ? '' : base.publicUrl)
   let primaryDomain = env('VITE_PRIMARY_DOMAIN') ?? base.primaryDomain
-  if (!env('VITE_PRIMARY_DOMAIN') && env('VITE_PUBLIC_SITE_URL')) {
+  if (env('VITE_PUBLIC_SITE_URL')) {
     try {
       primaryDomain = new URL(publicUrl).host
     } catch {
       primaryDomain = base.primaryDomain
     }
+  } else if (profile === 'sample') {
+    primaryDomain = ''
   }
   return {
     ...base,
@@ -106,4 +108,14 @@ export const siteConfig = {
 export function isTradeLicenseConfigured() {
   const n = siteConfig.legal.tradeLicenseNumber.trim()
   return Boolean(n && !n.startsWith('[Insert') && !n.startsWith('[Demo'))
+}
+
+/** Live site URL — on sample deploys uses the free *.vercel.app URL automatically. */
+export function publicSiteUrl(): string {
+  const configured = env('VITE_PUBLIC_SITE_URL')
+  if (configured) return configured.replace(/\/$/, '')
+  if (siteConfig.isSample && typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin
+  }
+  return siteConfig.legal.publicUrl.replace(/\/$/, '') || 'https://www.mlihrent.com'
 }

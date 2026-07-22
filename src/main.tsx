@@ -6,21 +6,22 @@ import { LangProvider } from './context/LangContext'
 import { DataProvider } from './context/DataContext'
 import { bootstrapPortalData, type BootstrapData } from './lib/cloudSync'
 import { isSupabaseConfigured } from './lib/supabase'
-import { siteConfig } from './config/siteConfig'
+import { siteConfig, publicSiteUrl } from './config/siteConfig'
 import './index.css'
 
 function applySiteDocumentMeta() {
+  const origin = publicSiteUrl()
   document.title = siteConfig.pageTitle
   const description = document.querySelector('meta[name="description"]')
   if (description) description.setAttribute('content', siteConfig.pageDescription)
   const canonical = document.querySelector('link[rel="canonical"]')
-  if (canonical) canonical.setAttribute('href', `${siteConfig.legal.publicUrl}/`)
+  if (canonical) canonical.setAttribute('href', `${origin}/`)
   const ogSite = document.querySelector('meta[property="og:site_name"]')
   if (ogSite) ogSite.setAttribute('content', siteConfig.legal.brandName)
   const ogTitle = document.querySelector('meta[property="og:title"]')
   if (ogTitle) ogTitle.setAttribute('content', siteConfig.pageTitle)
   const ogUrl = document.querySelector('meta[property="og:url"]')
-  if (ogUrl) ogUrl.setAttribute('content', `${siteConfig.legal.publicUrl}/`)
+  if (ogUrl) ogUrl.setAttribute('content', `${origin}/`)
 }
 
 applySiteDocumentMeta()

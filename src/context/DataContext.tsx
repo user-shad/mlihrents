@@ -85,7 +85,7 @@ import {
 } from '../lib/cloudSync'
 import { attachProofsToOps, readLocalProofs } from '../lib/localProofStore'
 import { applyRemovedInvoices } from '../../lib/syncMerge'
-import { siteLegal } from '../legal/siteLegal'
+import { siteLegal, publicSiteUrl } from '../legal/siteLegal'
 import { sendWhatsAppAuto } from '../lib/whatsappAuto'
 
 const LEGACY_A1_TEST_ID = 'apt-a1'
@@ -540,7 +540,7 @@ export function DataProvider({
     const message = buildPaymentStatusWhatsAppMessageBilingual(
       payment,
       kind,
-      `${siteLegal.publicUrl}/resident`,
+      `${publicSiteUrl()}/resident`,
       siteLegal.brandName,
     )
     void sendWhatsAppAuto(phone, message).then((ok) => {

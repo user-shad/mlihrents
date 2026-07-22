@@ -15,8 +15,10 @@ function requireCronOrSyncAuth(req: VercelRequest, res: VercelResponse): boolean
   return requireSyncAuth(req, res)
 }
 
+import { serverPublicSiteUrl } from '../lib/publicSiteUrl.js'
+
 function portalUrl() {
-  return process.env.PUBLIC_SITE_URL?.trim() || 'https://www.mlihrent.com'
+  return serverPublicSiteUrl()
 }
 
 function brandName() {

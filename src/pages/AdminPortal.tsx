@@ -37,7 +37,7 @@ import { statusLabel } from '../i18n'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 import { useData } from '../context/DataContext'
-import { siteLegal } from '../legal/siteLegal'
+import { siteLegal, publicSiteUrl } from '../legal/siteLegal'
 import { Badge, BrandMark, LanguageSwitch, NavIcon, RentBalanceCard } from '../components/ui'
 import AdminInvoiceLink from '../components/AdminInvoiceLink'
 import AdminPaymentLink from '../components/AdminPaymentLink'
@@ -286,7 +286,7 @@ export default function AdminPortal() {
     Record<string, { loading?: boolean; result?: string }>
   >({})
 
-  const residentPortalUrl = `${siteLegal.publicUrl}/resident`
+  const residentPortalUrl = `${publicSiteUrl()}/resident`
 
   useEffect(() => {
     setBankDraft(bankSettings)
@@ -773,7 +773,7 @@ export default function AdminPortal() {
         phone,
       },
       adminResidentInvoices,
-      `${siteLegal.publicUrl}/resident`,
+      `${publicSiteUrl()}/resident`,
       siteLegal.brandName,
     )
     const url = whatsappChatUrl(phone, message)
@@ -834,7 +834,7 @@ export default function AdminPortal() {
           : resident.name,
         phone,
       },
-      `${siteLegal.publicUrl}/resident`,
+      `${publicSiteUrl()}/resident`,
       siteLegal.brandName,
     )
     const url = whatsappChatUrl(phone, message)

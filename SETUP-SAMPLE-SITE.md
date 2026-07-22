@@ -1,54 +1,46 @@
-# Sample site (separate domain, no impact on MLIHrent)
+# Sample site (free Vercel URL — no custom domain)
 
-Run a **demo copy** of this portal on another domain or Vercel URL. Production **mlihrent.com** is unchanged unless you deploy with `VITE_SITE_PROFILE=sample` there (do not do that on the live project).
+Run a **demo copy** on Vercel’s free `https://your-project.vercel.app` address. You do **not** need to buy or connect a domain. Production **mlihrent.com** is unchanged.
 
 ## What stays separate
 
 | Item | Production (mlihrent) | Sample site |
 |------|------------------------|-------------|
-| Domain | www.mlihrent.com | Your new domain / `*.vercel.app` |
-| Tenant & payment data | Production Redis/Blob | **New** storage connection |
-| Sync token | Production `SYNC_API_TOKEN` | **New** random token |
-| Branding | MLIHrent | Sample Rents (configurable) |
+| URL | www.mlihrent.com | `https://sample-rents.vercel.app` (example) |
+| Tenant & payment data | Production Redis/Blob | **New** storage on the sample project |
+| Sync token | Production token | **New** random token |
 
-## Quick setup (≈15 minutes)
+## Quick setup (≈10 minutes)
 
-1. **Vercel** → **Add New Project** → import the same GitHub repo (`mlihrents`).
-2. Name it e.g. `sample-rents` (not the existing mlihrents project).
-3. **Settings → Environment Variables** — copy from [`env.sample.example`](./env.sample.example):
-   - `VITE_SITE_PROFILE` = `sample`
-   - `VITE_PUBLIC_SITE_URL` / `PUBLIC_SITE_URL` = your new URL (e.g. `https://sample-rents.vercel.app`)
-   - New `SYNC_API_TOKEN` + matching `VITE_SYNC_API_TOKEN`
-4. **Storage** → connect **new** Redis or Blob on this project only ([SETUP-SYNC.md](./SETUP-SYNC.md)).
-5. **Deploy**.
-6. Optional: **Settings → Domains** → add your custom domain.
+1. **Vercel** → **Add New Project** → import GitHub repo `mlihrents`.
+2. Name it e.g. **`sample-rents`** (separate from the live mlihrents project).
+3. **Environment Variables** — minimum required:
 
-## Verify isolation
+   | Variable | Value |
+   |----------|--------|
+   | `VITE_SITE_PROFILE` | `sample` |
+   | `SYNC_API_TOKEN` | new random string |
+   | `VITE_SYNC_API_TOKEN` | same as above |
 
-- Open the sample URL — you should see an orange **“Demo site”** banner at the top.
-- Admin sync health should show the **sample** storage backend, not production.
-- Changes on sample must **not** appear on www.mlihrent.com.
+   No domain or URL variables needed — the app uses the free `*.vercel.app` URL automatically.
 
-## Custom branding (optional)
+4. **Storage** → connect **new** Redis or Blob ([SETUP-SYNC.md](./SETUP-SYNC.md)).
+5. **Deploy** → open the URL Vercel gives you (e.g. `https://sample-rents.vercel.app`).
 
-| Variable | Example |
-|----------|---------|
-| `VITE_SITE_BRAND` | `Sunset Towers` |
-| `VITE_SITE_HERO_TITLE` | `Sunset` |
-| `VITE_SITE_HERO_ACCENT` | `Towers` |
-| `VITE_SITE_LEGAL_NAME` | Your company legal name |
-| `VITE_SITE_PHONE` | `+971 50 123 4567` |
+**Do not** add a custom domain unless you want one later. **Do not** set these env vars on the live mlihrents project.
 
-Leave unset on the **mlihrents** Vercel project — defaults remain MLIHrent.
+## Verify
+
+- Orange **“Demo site”** banner at the top
+- Brand shows **Sample Rents**
+- Changes on the sample URL do **not** appear on www.mlihrent.com
 
 ## Local demo
 
 ```bash
 cp env.sample.example .env.local
-# Edit .env.local — set tokens and URLs
+# Set SYNC tokens in .env.local
 npm run dev
 ```
 
-## Branch deploy (optional)
-
-You can deploy branch `sample-site` to the sample Vercel project while **production keeps deploying `master`**.
+Opens at `http://localhost:5173` with sample branding.
