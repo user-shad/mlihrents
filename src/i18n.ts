@@ -337,6 +337,10 @@ const en: Dict = {
   sendLeaseEndReminder: 'Send lease end reminder',
   sendLeaseEndReminderHelp:
     'Opens WhatsApp with a bilingual reminder 2 months before the lease end date.',
+  previousApartment: 'Previous',
+  nextApartment: 'Next',
+  previousApartmentHelp: 'Previous apartment in the list',
+  nextApartmentHelp: 'Next apartment in the list',
   leaseEndReminders: 'Lease ending soon (2 months notice)',
   leaseEndRemindersLead:
     'Residents whose lease ends in about 2 months. Send a WhatsApp reminder to discuss renewal or move-out.',
@@ -791,6 +795,10 @@ const ar: Dict = {
   sendReminderHelp: 'يفتح واتساب مع تذكير بالإيجار بالإنجليزية والعربية.',
   sendLeaseEndReminder: 'إرسال تذكير انتهاء العقد',
   sendLeaseEndReminderHelp: 'يفتح واتساب بتذكير ثنائي اللغة قبل انتهاء العقد بشهرين.',
+  previousApartment: 'السابق',
+  nextApartment: 'التالي',
+  previousApartmentHelp: 'الشقة السابقة في القائمة',
+  nextApartmentHelp: 'الشقة التالية في القائمة',
   leaseEndReminders: 'عقود تنتهي قريباً (تنبيه قبل شهرين)',
   leaseEndRemindersLead:
     'سكان يقترب موعد انتهاء عقدهم بنحو شهرين. أرسل تذكير واتساب لمناقشة التجديد أو المغادرة.',

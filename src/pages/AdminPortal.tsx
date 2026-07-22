@@ -315,6 +315,19 @@ export default function AdminPortal() {
     })
   }, [residentList, apartmentSearch])
 
+  const sortedApartments = useMemo(
+    () =>
+      [...residentList].sort(
+        (a, b) => apartmentSortKey(a.apartment) - apartmentSortKey(b.apartment),
+      ),
+    [residentList],
+  )
+
+  const apartmentNavIndex = useMemo(
+    () => sortedApartments.findIndex((r) => r.id === selectedResidentId),
+    [sortedApartments, selectedResidentId],
+  )
+
   useEffect(() => {
     if (apartmentEditorOpen) return
     if (!selectedResidentId) return
@@ -385,6 +398,47 @@ export default function AdminPortal() {
     setTab(nextTab)
     const code = currentUnitCode()
     navigate(adminPortalHref(code || undefined, nextTab), { replace: true })
+  }
+
+  function goToAdjacentApartment(delta: -1 | 1) {
+    const nextIdx = apartmentNavIndex + delta
+    if (nextIdx < 0 || nextIdx >= sortedApartments.length) return
+    const next = sortedApartments[nextIdx]
+    setSelectedResidentId(next.id)
+    setApartmentEditorOpen(false)
+    const unit = unitCodeLabel(next)
+    navigate(
+      adminPortalHref({ unit: unit !== '—' ? unit : undefined, tab }),
+      { replace: true },
+    )
+  }
+
+  function renderApartmentNavButtons() {
+    const hasPrev = apartmentNavIndex > 0
+    const hasNext =
+      apartmentNavIndex >= 0 && apartmentNavIndex < sortedApartments.length - 1
+    return (
+      <>
+        <button
+          className="btn btn-ghost btn-sm"
+          type="button"
+          disabled={!hasPrev}
+          title={tr('previousApartmentHelp')}
+          onClick={() => goToAdjacentApartment(-1)}
+        >
+          {tr('previousApartment')}
+        </button>
+        <button
+          className="btn btn-ghost btn-sm"
+          type="button"
+          disabled={!hasNext}
+          title={tr('nextApartmentHelp')}
+          onClick={() => goToAdjacentApartment(1)}
+        >
+          {tr('nextApartment')}
+        </button>
+      </>
+    )
   }
 
   async function checkPaymentReference(payment: PaymentRecord) {
@@ -1329,6 +1383,7 @@ export default function AdminPortal() {
                         </p>
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {renderApartmentNavButtons()}
                         <button
                           className="btn btn-ghost btn-sm"
                           type="button"
@@ -2031,6 +2086,7 @@ export default function AdminPortal() {
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {renderApartmentNavButtons()}
                     <button
                       className="btn btn-ghost btn-sm"
                       type="button"
